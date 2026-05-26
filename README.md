@@ -5,7 +5,7 @@ Personal Pi UI tweaks.
 ## Install
 
 ```sh
-pi install git:github.com/Michaelliv/pi-ui-tweaks
+pi install git:github.com/zigai/pi-ui-tweaks
 ```
 
 ## Extensions

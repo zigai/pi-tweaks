@@ -10,7 +10,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Michaelliv/pi-ui-tweaks.git"
+    "url": "git+https://github.com/zigai/pi-ui-tweaks.git"
   },
   "type": "module",
   "scripts": {
