@@ -1,6 +1,6 @@
-# pi-ui-tweaks
+# Pi UI Tweaks
 
-Personal Pi UI tweaks.
+Pi extension for customizing Pi UI behavior.
 
 ## Install
 
