@@ -49,6 +49,74 @@ function isFenceLine(line: string): boolean {
     return /^```[a-zA-Z0-9]*$/.test(stripAnsi(line).trim());
 }
 
+function isBlankRenderedLine(line: string): boolean {
+    return stripAnsi(line).trim().length === 0;
+}
+
+function isIntroLine(line: string): boolean {
+    return stripAnsi(line).trimEnd().endsWith(":");
+}
+
+function isIntroducedBlockLine(line: string): boolean {
+    const plainLine = stripAnsi(line);
+    const trimmedStart = plainLine.trimStart();
+
+    return (
+        /^[-*+]\s+/.test(trimmedStart) ||
+        /^\d+[.)]\s+/.test(trimmedStart) ||
+        trimmedStart.startsWith("```") ||
+        trimmedStart.startsWith("|") ||
+        /^ {2,}\S/.test(plainLine)
+    );
+}
+
+function isMicroHeadingLine(line: string): boolean {
+    const text = stripAnsi(line).trim();
+
+    return (
+        text.length > 0 &&
+        text.length <= 48 &&
+        !/[.!?;:]$/.test(text) &&
+        !/^[-*+]\s+/.test(text) &&
+        !/^\d+[.)]\s+/.test(text) &&
+        !text.startsWith("|") &&
+        !text.startsWith("```")
+    );
+}
+
+function isPlainParagraphLine(line: string): boolean {
+    return (
+        !isBlankRenderedLine(line) &&
+        !isMicroHeadingLine(line) &&
+        !isIntroLine(line) &&
+        !isIntroducedBlockLine(line)
+    );
+}
+
+function shouldCollapseBlankLine(lines: string[], index: number): boolean {
+    const previousLine = lines[index - 1];
+    const nextLine = lines[index + 1];
+    if (previousLine === undefined || nextLine === undefined) {
+        return false;
+    }
+
+    if (isIntroLine(previousLine) && isIntroducedBlockLine(nextLine)) {
+        return true;
+    }
+
+    return isPlainParagraphLine(previousLine) && isPlainParagraphLine(nextLine);
+}
+
+function collapseAssistantBlankLines(lines: string[]): string[] {
+    return lines.filter((line, index) => {
+        if (!isBlankRenderedLine(line)) {
+            return true;
+        }
+
+        return !shouldCollapseBlankLine(lines, index);
+    });
+}
+
 function shouldHideFences(instance: object): boolean {
     return fencesHiddenInstances.has(instance);
 }
@@ -84,11 +152,11 @@ async function patchMarkdownFences(): Promise<void> {
         this: Markdown,
         width: number,
     ): string[] {
-        const lines = originalMarkdownRender.call(this, width);
-        if (!shouldHideFences(this)) {
-            return lines;
+        let lines = originalMarkdownRender.call(this, width);
+        if (shouldHideFences(this)) {
+            lines = lines.filter((line) => !isFenceLine(line));
         }
-        return lines.filter((line) => !isFenceLine(line));
+        return collapseAssistantBlankLines(lines);
     };
 
     const distDir = await resolvePiDistDir();

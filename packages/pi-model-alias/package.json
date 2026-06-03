@@ -1,0 +1,32 @@
+{
+  "name": "@zigai/pi-model-alias",
+  "version": "0.1.0",
+  "description": "Pi extension for configuring model aliases.",
+  "keywords": [
+    "model-alias",
+    "pi-extension",
+    "pi-package"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zigai/pi-ui-tweaks.git",
+    "directory": "packages/pi-model-alias"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "*.json"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

@@ -1,8 +1,8 @@
 {
-  "name": "pi-ui-tweaks",
+  "name": "pi-ui-tweaks-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "Personal Pi package for footer, assistant rendering, and UI tweaks.",
+  "description": "Monorepo for personal Pi UI tweaks.",
   "keywords": [
     "pi-extension",
     "pi-package",
@@ -12,6 +12,9 @@
     "type": "git",
     "url": "git+https://github.com/zigai/pi-ui-tweaks.git"
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "scripts": {
     "lint": "oxlint -c ./.oxlintrc.json .",
@@ -19,7 +22,9 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check": "npm run format:check && npm run lint && npm run typecheck",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "release --root .",
+    "release:dry-run": "release --dry --root ."
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.77.0",
@@ -33,12 +38,5 @@
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
-  },
-  "pi": {
-    "extensions": [
-      "./extensions/footer/index.ts",
-      "./extensions/assistant-rendering/index.ts",
-      "./extensions/loader-time/index.ts"
-    ]
   }
 }

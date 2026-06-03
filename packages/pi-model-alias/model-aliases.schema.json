@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-model-alias/main/model-aliases.schema.json",
+  "title": "Pi model aliases",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "aliases": {
+      "type": "array",
+      "default": [],
+      "description": "Model aliases to expose in Pi model selection and rewrite before provider requests.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider", "model", "alias"],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Provider id for the model to alias."
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Original provider model id sent to the API."
+          },
+          "alias": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Model id shown to Pi and accepted by model lookup."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional display name. Defaults to the alias id."
+          }
+        }
+      }
+    }
+  }
+}

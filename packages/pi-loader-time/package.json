@@ -1,0 +1,33 @@
+{
+  "name": "@zigai/pi-loader-time",
+  "version": "0.1.0",
+  "description": "Pi package that adds elapsed time to loader messages.",
+  "keywords": [
+    "loader",
+    "pi-extension",
+    "pi-package",
+    "pi-ui"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zigai/pi-ui-tweaks.git",
+    "directory": "packages/pi-loader-time"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "*.json"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-tui": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

@@ -307,6 +307,12 @@ export function createFooterComponent(
         dispose: unsubscribe,
         invalidate() {},
         render(width: number): string[] {
+            // Keep one terminal cell unused as a guard against ambiguous-width glyphs
+            // (notably Nerd Font icons like the branch icon) and OSC/ANSI width
+            // edge-cases. If the terminal renders one of those glyphs wider than
+            // pi-tui's visibleWidth() calculation, a full-width footer can soft-wrap
+            // into an apparent blank line and make the bottom chrome jump.
+            const renderWidth = Math.max(1, width - 1);
             const variant: FooterVariant = ACTIVE_FOOTER_VARIANT;
             const itemsByKey = buildFooterItems(ctx, footerData, getThinkingLevel());
             const leftVariants = buildSideVariants(itemsByKey, FOOTER_LAYOUT.left, variant, "left");
@@ -326,14 +332,12 @@ export function createFooterComponent(
                     }
                     const leftWidth = visibleWidth(left);
 
-                    if (leftWidth + gap + rightWidth > width) {
+                    if (leftWidth + gap + rightWidth > renderWidth) {
                         continue;
                     }
 
-                    const padding = renderPadding(
-                        Math.max(gap, width - leftWidth - rightWidth - 2),
-                        variant,
-                    );
+                    const paddingWidth = Math.max(0, renderWidth - leftWidth - rightWidth - 2);
+                    const padding = renderPadding(paddingWidth, variant);
                     if (right.length > 0) {
                         return [` ${left}${padding}${right} `];
                     }
@@ -343,11 +347,11 @@ export function createFooterComponent(
 
             const fallbackRight = rightVariants.find((value) => value.length > 0) ?? "";
             if (fallbackRight.length > 0) {
-                return [truncateToWidth(fallbackRight, width, "")];
+                return [truncateToWidth(fallbackRight, renderWidth, "")];
             }
 
             const fallbackLeft = leftVariants.find((value) => value.length > 0) ?? "";
-            return [truncateToWidth(fallbackLeft, width, "")];
+            return [truncateToWidth(fallbackLeft, renderWidth, "")];
         },
     };
 }

@@ -1,0 +1,34 @@
+{
+  "name": "@zigai/pi-footer",
+  "version": "0.1.0",
+  "description": "Pi package for a custom footer and worked-for token speed widget.",
+  "keywords": [
+    "footer",
+    "pi-extension",
+    "pi-package",
+    "pi-ui"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zigai/pi-ui-tweaks.git",
+    "directory": "packages/pi-footer"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "*.json"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

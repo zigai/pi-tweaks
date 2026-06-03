@@ -1,0 +1,33 @@
+{
+  "name": "@zigai/pi-submit-mode",
+  "version": "0.1.0",
+  "description": "Pi package that customizes busy Enter and Alt+Enter submit behavior.",
+  "keywords": [
+    "keybindings",
+    "pi-extension",
+    "pi-package",
+    "pi-ui"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zigai/pi-ui-tweaks.git",
+    "directory": "packages/pi-submit-mode"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "*.json"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
