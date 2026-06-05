@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-loader-time",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi package that adds elapsed time to loader messages.",
   "keywords": [
     "loader",

@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-model-alias",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi extension for configuring model aliases.",
   "keywords": [
     "model-alias",

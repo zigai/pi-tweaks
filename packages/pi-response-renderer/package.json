@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-response-renderer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi package for personal response rendering tweaks.",
   "keywords": [
     "pi-extension",
