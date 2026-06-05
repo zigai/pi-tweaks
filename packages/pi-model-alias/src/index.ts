@@ -259,6 +259,17 @@ function installRegistryPatch(registry: PatchedModelRegistry, state: RuntimeStat
     };
 }
 
+function payloadModel(payload: unknown): string | undefined {
+    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+        return undefined;
+    }
+    const model = (payload as Record<string, unknown>).model;
+    if (typeof model === "string") {
+        return model;
+    }
+    return undefined;
+}
+
 function rewritePayloadModel(payload: unknown, targetModel: string): unknown {
     if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
         return payload;
@@ -267,6 +278,28 @@ function rewritePayloadModel(payload: unknown, targetModel: string): unknown {
         ...(payload as Record<string, unknown>),
         model: targetModel,
     };
+}
+
+function aliasForProviderRequest(
+    payload: unknown,
+    model: ModelLike | undefined,
+    loaded: LoadedConfig,
+): AliasConfig | undefined {
+    if (model === undefined) {
+        return undefined;
+    }
+
+    const modelAlias = getAliasForLookup(model.provider, model.id, loaded);
+    if (modelAlias !== undefined) {
+        return modelAlias;
+    }
+
+    const requestModel = payloadModel(payload);
+    if (requestModel === undefined || requestModel === model.id) {
+        return undefined;
+    }
+
+    return getAliasForLookup(model.provider, requestModel, loaded);
 }
 
 export default function modelAliasExtension(pi: ExtensionAPI) {
@@ -281,11 +314,8 @@ export default function modelAliasExtension(pi: ExtensionAPI) {
     });
 
     pi.on("before_provider_request", (event, ctx) => {
-        if (ctx.model === undefined) {
-            return undefined;
-        }
         const loaded = state.loadConfig();
-        const alias = getAliasForLookup(ctx.model.provider, ctx.model.id, loaded);
+        const alias = aliasForProviderRequest(event.payload, ctx.model, loaded);
         if (alias === undefined) {
             return undefined;
         }
