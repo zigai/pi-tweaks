@@ -1,6 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { pathToFileURL } from "node:url";
 
 import {
     ACTIVE_FOOTER_VARIANT,
@@ -73,31 +72,16 @@ function ansiColor(text: string, options: { fg?: string; bg?: string; bold?: boo
     return `\x1b[${codes.join(";")}m${text}\x1b[0m`;
 }
 
-function hyperlink(text: string, url: string): string {
-    if (!process.stdout.isTTY) {
-        return url;
-    }
-    return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
-}
-
 function renderColoredText(text: string, colors: SegmentColors): string {
     return ansiColor(text, { fg: colors.fg, bg: colors.bg });
 }
 
 function renderBlockItem(item: FooterItem): string {
-    let linked = ` ${item.text} `;
-    if (item.url !== undefined && item.url.length > 0) {
-        linked = hyperlink(` ${item.text} `, item.url);
-    }
-    return renderColoredText(linked, item.colors);
+    return renderColoredText(` ${item.text} `, item.colors);
 }
 
 function renderPlainItem(item: FooterItem): string {
-    let linked = item.text;
-    if (item.url !== undefined && item.url.length > 0) {
-        linked = hyperlink(item.text, item.url);
-    }
-    return renderColoredText(linked, PLAIN_COLORS);
+    return renderColoredText(item.text, PLAIN_COLORS);
 }
 
 function getProviderDisplayName(provider: string): string {
@@ -239,7 +223,6 @@ function buildFooterItems(
 ): Partial<Record<FooterKey, FooterItem>> {
     const branch = footerData.getGitBranch();
     const pathText = collapseHome(ctx.cwd);
-    const pathUrl = pathToFileURL(ctx.cwd).href;
     const providerId = ctx.model?.provider ?? "no-provider";
     const providerLabel = getProviderDisplayName(providerId);
     const modelLabel = ctx.model?.id ?? "no-model";
@@ -251,7 +234,6 @@ function buildFooterItems(
         path: {
             key: "path",
             text: pathText,
-            url: pathUrl,
             colors: BLOCK_COLORS.path,
         },
         provider: {
@@ -307,12 +289,12 @@ export function createFooterComponent(
         dispose: unsubscribe,
         invalidate() {},
         render(width: number): string[] {
-            // Keep one terminal cell unused as a guard against ambiguous-width glyphs
-            // (notably Nerd Font icons like the branch icon) and OSC/ANSI width
-            // edge-cases. If the terminal renders one of those glyphs wider than
-            // pi-tui's visibleWidth() calculation, a full-width footer can soft-wrap
-            // into an apparent blank line and make the bottom chrome jump.
-            const renderWidth = Math.max(1, width - 1);
+            // Keep spare terminal cells unused as a guard against ambiguous-width
+            // glyphs (notably Nerd Font icons like the branch icon). A footer line
+            // that reaches the exact terminal width can soft-wrap into an apparent
+            // blank line and make the bottom chrome jump during heavy tool output.
+            const renderWidth = Math.max(0, width - 2);
+            if (renderWidth === 0) return [""];
             const variant: FooterVariant = ACTIVE_FOOTER_VARIANT;
             const itemsByKey = buildFooterItems(ctx, footerData, getThinkingLevel());
             const leftVariants = buildSideVariants(itemsByKey, FOOTER_LAYOUT.left, variant, "left");
@@ -326,22 +308,28 @@ export function createFooterComponent(
             for (const left of leftVariants) {
                 for (const right of rightVariants) {
                     const rightWidth = visibleWidth(right);
-                    let gap = 0;
-                    if (right.length > 0) {
-                        gap = 1;
-                    }
                     const leftWidth = visibleWidth(left);
+                    const edgePaddingWidth = 2;
+                    let minimumInnerGap = 0;
+                    if (right.length > 0) {
+                        minimumInnerGap = 1;
+                    }
+                    const requiredWidth =
+                        edgePaddingWidth + leftWidth + minimumInnerGap + rightWidth;
 
-                    if (leftWidth + gap + rightWidth > renderWidth) {
+                    if (requiredWidth > renderWidth) {
                         continue;
                     }
 
-                    const paddingWidth = Math.max(0, renderWidth - leftWidth - rightWidth - 2);
+                    const paddingWidth = Math.max(
+                        minimumInnerGap,
+                        renderWidth - edgePaddingWidth - leftWidth - rightWidth,
+                    );
                     const padding = renderPadding(paddingWidth, variant);
                     if (right.length > 0) {
-                        return [` ${left}${padding}${right} `];
+                        return [truncateToWidth(` ${left}${padding}${right} `, renderWidth, "")];
                     }
-                    return [` ${left}${padding} `];
+                    return [truncateToWidth(` ${left}${padding} `, renderWidth, "")];
                 }
             }
 

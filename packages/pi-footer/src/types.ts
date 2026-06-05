@@ -42,6 +42,5 @@ export type FooterData = {
 export type FooterItem = {
     key: FooterKey;
     text: string;
-    url?: string;
     colors: SegmentColors;
 };
