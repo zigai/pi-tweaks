@@ -1,6 +1,6 @@
 # Pi Submit Mode
 
-Pi package that customizes busy Enter and Alt+Enter submit behavior.
+This Pi extension makes `Enter` queue a follow-up and `Alt+Enter` steer the current run.
 
 ## Install
 

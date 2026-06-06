@@ -1,6 +1,8 @@
 # Pi Model Alias
 
-Pi extension for configuring model aliases.
+This Pi extension lets you give long provider model IDs short, friendly names in Pi.
+
+Use it when a provider model identifier is hard to type or hard to scan in the model picker. Pi will show and accept your alias, but provider requests are rewritten back to the original model ID before they are sent.
 
 ## Install
 
@@ -10,7 +12,7 @@ pi install @zigai/pi-model-alias
 
 ## Configuration
 
-Create `~/.pi/agent/model-aliases.json`:
+Create `~/.pi/agent/model-aliases.json` and add one object for each alias you want:
 
 ```json
 {
@@ -26,4 +28,11 @@ Create `~/.pi/agent/model-aliases.json`:
 }
 ```
 
-Each alias copies the original model configuration, shows the alias in model lists, resolves lookups for the alias, and rewrites provider request payloads back to the original model id.
+Fields:
+
+- `provider`: the Pi provider ID that owns the original model.
+- `model`: the provider's real model ID.
+- `alias`: the short model ID you want to type or select in Pi.
+- `name`: the display name shown in model lists. This can match `alias`.
+
+After configuration, the extension copies the original model configuration, adds the alias to Pi's model list, resolves lookups for the alias, and rewrites outgoing provider payloads back to the original `model` value.
