@@ -1,24 +1,24 @@
 {
   "name": "@zigai/pi-response-renderer",
   "version": "0.1.5",
-  "description": "Pi package for personal response rendering tweaks.",
+  "description": "Pi package for making assistant responses more compact.",
   "keywords": [
     "pi",
     "pi-coding-agent",
     "pi-extension",
     "pi-package",
-    "pi-ux",
+    "pi-tweaks",
     "rendering"
   ],
-  "homepage": "https://github.com/zigai/pi-ux-tweaks/tree/main/packages/pi-response-renderer#readme",
+  "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-response-renderer#readme",
   "bugs": {
-    "url": "https://github.com/zigai/pi-ux-tweaks/issues"
+    "url": "https://github.com/zigai/pi-tweaks/issues"
   },
   "license": "MIT",
   "author": "zigai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zigai/pi-ux-tweaks.git",
+    "url": "git+https://github.com/zigai/pi-tweaks.git",
     "directory": "packages/pi-response-renderer"
   },
   "files": [

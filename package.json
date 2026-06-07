@@ -1,24 +1,24 @@
 {
-  "name": "pi-ux-tweaks-monorepo",
+  "name": "pi-tweaks-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "Monorepo for personal Pi UX tweaks.",
+  "description": "Monorepo for personal Pi tweaks.",
   "keywords": [
     "pi",
     "pi-coding-agent",
     "pi-extension",
     "pi-package",
-    "pi-ux"
+    "pi-tweaks"
   ],
-  "homepage": "https://github.com/zigai/pi-ux-tweaks#readme",
+  "homepage": "https://github.com/zigai/pi-tweaks#readme",
   "bugs": {
-    "url": "https://github.com/zigai/pi-ux-tweaks/issues"
+    "url": "https://github.com/zigai/pi-tweaks/issues"
   },
   "license": "MIT",
   "author": "zigai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zigai/pi-ux-tweaks.git"
+    "url": "git+https://github.com/zigai/pi-tweaks.git"
   },
   "workspaces": [
     "packages/*"

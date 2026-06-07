@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-ux-tweaks/main/packages/pi-model-filter/model-filters.schema.json",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-model-filter/model-filters.schema.json",
   "title": "Pi model filter",
   "type": "object",
   "additionalProperties": false,
