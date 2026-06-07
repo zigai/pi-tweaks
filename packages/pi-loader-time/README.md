@@ -7,7 +7,7 @@ When an operation takes longer than expected, the loader shows how long it has b
 ## Install
 
 ```sh
-pi install @zigai/pi-loader-time
+pi install git:github.com/zigai/pi-ux-tweaks
 ```
 
 The timer starts when a loader starts and is cleared when that loader stops. Durations are displayed in seconds, minutes, or hours depending on how long the loader has been running.

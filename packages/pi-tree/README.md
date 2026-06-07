@@ -7,7 +7,7 @@ The preview helps when scanning a long session because you can inspect message c
 ## Install
 
 ```sh
-pi install @zigai/pi-tree
+pi install git:github.com/zigai/pi-ux-tweaks
 ```
 
 ## Features

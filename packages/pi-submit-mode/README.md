@@ -5,5 +5,5 @@ This Pi extension makes `Enter` queue a follow-up and `Alt+Enter` steer the curr
 ## Install
 
 ```sh
-pi install @zigai/pi-submit-mode
+pi install git:github.com/zigai/pi-ux-tweaks
 ```

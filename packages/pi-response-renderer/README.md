@@ -13,7 +13,7 @@ The goal is a cleaner transcript with less visual noise while keeping the messag
 ## Install
 
 ```sh
-pi install @zigai/pi-response-renderer
+pi install git:github.com/zigai/pi-ux-tweaks
 ```
 
 The extension only changes how messages are rendered in the UI. It does not rewrite saved conversation content.
