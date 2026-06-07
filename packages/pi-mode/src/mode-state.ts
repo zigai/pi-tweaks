@@ -14,6 +14,8 @@ import {
     MODE_UI_ADD,
     MODE_UI_BACK,
     MODE_UI_CONFIGURE,
+    MODE_UI_SHOW_NAME_OFF,
+    MODE_UI_SHOW_NAME_ON,
     THINKING_UNSET_LABEL,
 } from "./constants.ts";
 import {
@@ -24,6 +26,7 @@ import {
     getProjectModesPath,
     withFileLock,
 } from "./storage.ts";
+import { setShowModeName, shouldShowModeName } from "./settings.ts";
 import type { ModeRuntime, ModesFile, ModesPatch, ModeSpec, ModeSpecPatch } from "./types.ts";
 
 type ScopedModelItem = {
@@ -785,9 +788,14 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
     while (true) {
         await ensureRuntime(pi, ctx);
         const names = orderedModeNames(runtime.data.modes);
+        let showModeNameChoice = MODE_UI_SHOW_NAME_OFF;
+        if (shouldShowModeName()) {
+            showModeNameChoice = MODE_UI_SHOW_NAME_ON;
+        }
         const choice = await ctx.ui.select("Configure modes", [
             ...names,
             MODE_UI_ADD,
+            showModeNameChoice,
             MODE_UI_BACK,
         ]);
         if (choice === undefined || choice.length === 0 || choice === MODE_UI_BACK) return;
@@ -797,6 +805,18 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
             if (created !== undefined && created.length > 0) {
                 await editModeUI(pi, ctx, created);
             }
+            continue;
+        }
+
+        if (choice === MODE_UI_SHOW_NAME_ON || choice === MODE_UI_SHOW_NAME_OFF) {
+            const next = !shouldShowModeName();
+            setShowModeName(next);
+            requestEditorRender?.();
+            let displayState = "disabled";
+            if (next) {
+                displayState = "enabled";
+            }
+            ctx.ui.notify(`Mode name display ${displayState}`, "info");
             continue;
         }
 
