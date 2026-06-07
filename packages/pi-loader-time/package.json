@@ -8,17 +8,17 @@
     "pi-coding-agent",
     "pi-extension",
     "pi-package",
-    "pi-ui"
+    "pi-ux"
   ],
-  "homepage": "https://github.com/zigai/pi-ui-tweaks/tree/main/packages/pi-loader-time#readme",
+  "homepage": "https://github.com/zigai/pi-ux-tweaks/tree/main/packages/pi-loader-time#readme",
   "bugs": {
-    "url": "https://github.com/zigai/pi-ui-tweaks/issues"
+    "url": "https://github.com/zigai/pi-ux-tweaks/issues"
   },
   "license": "MIT",
   "author": "zigai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zigai/pi-ui-tweaks.git",
+    "url": "git+https://github.com/zigai/pi-ux-tweaks.git",
     "directory": "packages/pi-loader-time"
   },
   "files": [

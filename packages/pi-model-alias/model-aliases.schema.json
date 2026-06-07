@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-model-alias/main/model-aliases.schema.json",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-ux-tweaks/main/packages/pi-model-alias/model-aliases.schema.json",
   "title": "Pi model aliases",
   "type": "object",
   "additionalProperties": false,
