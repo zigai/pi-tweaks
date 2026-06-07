@@ -17,3 +17,13 @@ pi install git:github.com/zigai/pi-ux-tweaks
 ```
 
 The extension only changes how messages are rendered in the UI. It does not rewrite saved conversation content.
+
+## Screenshots
+
+Before:
+
+![Pi Response Renderer before screenshot](assets/response-renderer-before.png)
+
+After:
+
+![Pi Response Renderer after screenshot](assets/response-renderer-after.png)
