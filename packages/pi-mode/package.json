@@ -1,0 +1,42 @@
+{
+  "name": "@zigai/pi-mode",
+  "version": "0.1.0",
+  "description": "Pi package that adds prompt modes for model and thinking-level switching.",
+  "keywords": [
+    "mode",
+    "pi",
+    "pi-coding-agent",
+    "pi-extension",
+    "pi-package",
+    "pi-ux"
+  ],
+  "homepage": "https://github.com/zigai/pi-ux-tweaks/tree/main/packages/pi-mode#readme",
+  "bugs": {
+    "url": "https://github.com/zigai/pi-ux-tweaks/issues"
+  },
+  "license": "MIT",
+  "author": "zigai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zigai/pi-ux-tweaks.git",
+    "directory": "packages/pi-mode"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

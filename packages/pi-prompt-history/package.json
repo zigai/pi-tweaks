@@ -1,0 +1,42 @@
+{
+  "name": "@zigai/pi-prompt-history",
+  "version": "0.1.0",
+  "description": "Pi package that adds cross-session prompt history to the prompt editor.",
+  "keywords": [
+    "history",
+    "pi",
+    "pi-coding-agent",
+    "pi-extension",
+    "pi-package",
+    "pi-ux",
+    "prompt-history"
+  ],
+  "homepage": "https://github.com/zigai/pi-ux-tweaks/tree/main/packages/pi-prompt-history#readme",
+  "bugs": {
+    "url": "https://github.com/zigai/pi-ux-tweaks/issues"
+  },
+  "license": "MIT",
+  "author": "zigai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zigai/pi-ux-tweaks.git",
+    "directory": "packages/pi-prompt-history"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
