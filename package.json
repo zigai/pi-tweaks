@@ -35,10 +35,10 @@
     "release:dry-run": "release --dry --root ."
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.77.0",
-    "@earendil-works/pi-ai": "^0.77.0",
-    "@earendil-works/pi-coding-agent": "^0.77.0",
-    "@earendil-works/pi-tui": "^0.77.0",
+    "@earendil-works/pi-agent-core": "^0.79.0",
+    "@earendil-works/pi-ai": "^0.79.0",
+    "@earendil-works/pi-coding-agent": "^0.79.0",
+    "@earendil-works/pi-tui": "^0.79.0",
     "@types/node": "^24.10.1",
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0",
@@ -62,7 +62,8 @@
       "./packages/pi-submit-mode/src/index.ts",
       "./packages/pi-mode/src/index.ts",
       "./packages/pi-prompt-history/src/index.ts",
-      "./packages/pi-mention-skill/src/index.ts"
+      "./packages/pi-mention-skill/src/index.ts",
+      "./packages/pi-trust/src/index.ts"
     ]
   }
 }
