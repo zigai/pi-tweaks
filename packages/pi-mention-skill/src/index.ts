@@ -176,6 +176,23 @@ function colorSkillMentions(line: string, pi: ExtensionAPI, ctx: ExtensionContex
     });
 }
 
+const ANSI_ESCAPE_PATTERN = new RegExp(
+    `${String.fromCharCode(27)}(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])`,
+    "g",
+);
+
+function stripAnsi(value: string): string {
+    return value.replace(ANSI_ESCAPE_PATTERN, "");
+}
+
+function autocompleteStartIndex(renderedLines: string[]): number {
+    for (let index = renderedLines.length - 1; index >= 0; index -= 1) {
+        const line = renderedLines[index];
+        if (line !== undefined && stripAnsi(line).startsWith("─")) return index + 1;
+    }
+    return renderedLines.length;
+}
+
 function enhanceEditor(editor: EditorLike, pi: ExtensionAPI, ctx: ExtensionContext): EditorLike {
     const originalHandleInput = editor.handleInput.bind(editor);
     editor.handleInput = (data: string) => {
@@ -197,7 +214,15 @@ function enhanceEditor(editor: EditorLike, pi: ExtensionAPI, ctx: ExtensionConte
 
     const originalRender = editor.render.bind(editor);
     editor.render = (width: number) => {
-        return originalRender(width).map((line) => colorSkillMentions(line, pi, ctx));
+        const renderedLines = originalRender(width);
+        let colorThrough = renderedLines.length;
+        if (editor.isShowingAutocomplete?.() === true) {
+            colorThrough = autocompleteStartIndex(renderedLines);
+        }
+        return renderedLines.map((line, index) => {
+            if (index >= colorThrough) return line;
+            return colorSkillMentions(line, pi, ctx);
+        });
     };
 
     return editor;
