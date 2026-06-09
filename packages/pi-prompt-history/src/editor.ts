@@ -11,17 +11,9 @@ const HISTORY_FACTORY_BASE = Symbol.for("zigai.pi-prompt-history.editor-factory-
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
-type EditorInternals = {
-    state: { lines: string[]; cursorLine: number; cursorCol: number };
-    lastAction: unknown;
-    setCursorCol(column: number): void;
-};
-
 type EditorLike = CustomEditor & {
     addToHistory?: (text: string) => void;
     render(width: number): string[];
-    handleInput(data: string): void;
-    requestRenderNow?: () => void;
 };
 
 type WrappedEditorFactory = EditorFactory & {
@@ -30,60 +22,7 @@ type WrappedEditorFactory = EditorFactory & {
 
 let loadCounter = 0;
 
-function moveToCodexLineStart(editor: EditorLike): void {
-    const self = editor as unknown as EditorInternals;
-    const state = self.state;
-
-    self.lastAction = null;
-    if (state.cursorCol === 0 && state.cursorLine > 0) {
-        state.cursorLine -= 1;
-    }
-    self.setCursorCol(0);
-    editor.requestRenderNow?.();
-}
-
-function moveToCodexLineEnd(editor: EditorLike): void {
-    const self = editor as unknown as EditorInternals;
-    const state = self.state;
-    const currentLine = state.lines[state.cursorLine] || "";
-
-    self.lastAction = null;
-    if (state.cursorCol >= currentLine.length && state.cursorLine < state.lines.length - 1) {
-        state.cursorLine += 1;
-        const nextLine = state.lines[state.cursorLine] || "";
-        self.setCursorCol(nextLine.length);
-        editor.requestRenderNow?.();
-        return;
-    }
-    self.setCursorCol(currentLine.length);
-    editor.requestRenderNow?.();
-}
-
-function enhanceEditor(
-    editor: EditorLike,
-    keybindings: ConstructorParameters<typeof CustomEditor>[2],
-    history: PromptEntry[],
-    requestRender: () => void,
-): EditorLike {
-    editor.requestRenderNow ??= requestRender;
-
-    const originalHandleInput = editor.handleInput.bind(editor);
-    editor.handleInput = (data: string) => {
-        if (editor.onExtensionShortcut?.(data) === true) return;
-
-        if (keybindings.matches(data, "tui.editor.cursorLineStart")) {
-            moveToCodexLineStart(editor);
-            return;
-        }
-
-        if (keybindings.matches(data, "tui.editor.cursorLineEnd")) {
-            moveToCodexLineEnd(editor);
-            return;
-        }
-
-        originalHandleInput(data);
-    };
-
+function enhanceEditor(editor: EditorLike, history: PromptEntry[]): EditorLike {
     for (const prompt of history) {
         editor.addToHistory?.(prompt.text);
     }
@@ -96,7 +35,7 @@ function setEditor(ctx: ExtensionContext, history: PromptEntry[]): void {
     const factory = ((tui, theme, keybindings) => {
         const editor = (baseFactory?.(tui, theme, keybindings) ??
             new CustomEditor(tui, theme, keybindings)) as EditorLike;
-        return enhanceEditor(editor, keybindings, history, () => tui.requestRender());
+        return enhanceEditor(editor, history);
     }) as WrappedEditorFactory;
     factory[HISTORY_FACTORY_BASE] = baseFactory;
 
