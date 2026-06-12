@@ -68,15 +68,24 @@ function patchLoaderTime(): void {
     if (state[LOADER_TIME_PATCH_KEY] === true) {
         return;
     }
-    state[LOADER_TIME_PATCH_KEY] = true;
-
     const prototype = Loader.prototype as unknown as {
-        start(): void;
-        stop(): void;
-        updateDisplay(): void;
+        start?: () => void;
+        stop?: () => void;
+        updateDisplay?: () => void;
     };
-    const originalStart = Reflect.get(prototype, "start") as (this: Loader) => void;
-    const originalStop = Reflect.get(prototype, "stop") as (this: Loader) => void;
+    const originalStart = Reflect.get(prototype, "start") as ((this: Loader) => void) | undefined;
+    const originalStop = Reflect.get(prototype, "stop") as ((this: Loader) => void) | undefined;
+    const originalUpdateDisplay = Reflect.get(prototype, "updateDisplay") as
+        | ((this: Loader) => void)
+        | undefined;
+    if (
+        typeof originalStart !== "function" ||
+        typeof originalStop !== "function" ||
+        typeof originalUpdateDisplay !== "function"
+    ) {
+        return;
+    }
+    state[LOADER_TIME_PATCH_KEY] = true;
 
     prototype.start = function patchedStart(this: Loader): void {
         loaderStartTimes.set(this, Date.now());
