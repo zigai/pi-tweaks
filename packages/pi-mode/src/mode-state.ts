@@ -161,6 +161,22 @@ function normalizeThinkingLevel(level: ThinkingLevel | undefined): ThinkingLevel
     return undefined;
 }
 
+function getLoadErrorCode(error: unknown): string | undefined {
+    if (!(error instanceof Error)) return undefined;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (typeof code === "string") return code;
+    return undefined;
+}
+
+function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error);
+}
+
+function throwLoadError(filePath: string, error: unknown): never {
+    throw new Error(`Failed to load ${filePath}: ${errorMessage(error)}`);
+}
+
 function sanitizeModeSpec(spec: ModeSpecJson | undefined): ModeSpec {
     if (spec === undefined) return {};
 
@@ -225,6 +241,7 @@ async function loadModesFile(
     filePath: string,
     ctx: ExtensionContext,
     pi: ExtensionAPI,
+    options?: { throwOnInvalid?: boolean },
 ): Promise<ModesFile> {
     try {
         const raw = await fs.readFile(filePath, "utf8");
@@ -244,7 +261,9 @@ async function loadModesFile(
         };
         ensureDefaultModeEntries(file, ctx, pi);
         return file;
-    } catch {
+    } catch (error: unknown) {
+        if (getLoadErrorCode(error) === "ENOENT") return createDefaultModes(ctx, pi);
+        if (options?.throwOnInvalid === true) throwLoadError(filePath, error);
         return createDefaultModes(ctx, pi);
     }
 }
@@ -404,16 +423,23 @@ async function persistRuntime(pi: ExtensionAPI, ctx: ExtensionContext): Promise<
     const patch = computeModesPatch(runtime.baseline, runtime.data, false);
     if (patch === null) return;
 
-    await withFileLock(runtime.filePath, async () => {
-        const latest = await loadModesFile(runtime.filePath, ctx, pi);
-        applyModesPatch(latest, patch);
-        ensureDefaultModeEntries(latest, ctx, pi);
-        await saveModesFile(runtime.filePath, latest);
+    try {
+        await withFileLock(runtime.filePath, async () => {
+            const latest = await loadModesFile(runtime.filePath, ctx, pi, { throwOnInvalid: true });
+            applyModesPatch(latest, patch);
+            ensureDefaultModeEntries(latest, ctx, pi);
+            await saveModesFile(runtime.filePath, latest);
 
-        runtime.data = latest;
-        runtime.baseline = cloneModesFile(latest);
-        runtime.fileMtimeMs = await getMtimeMs(runtime.filePath);
-    });
+            runtime.data = latest;
+            runtime.baseline = cloneModesFile(latest);
+            runtime.fileMtimeMs = await getMtimeMs(runtime.filePath);
+        });
+    } catch (error: unknown) {
+        if (ctx.hasUI) {
+            ctx.ui.notify(`Mode settings were not saved: ${errorMessage(error)}`, "error");
+        }
+        throw error;
+    }
 }
 
 function getCurrentSelectionSpec(pi: ExtensionAPI): ModeSpec {
@@ -810,7 +836,12 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
 
         if (choice === MODE_UI_SHOW_NAME_ON || choice === MODE_UI_SHOW_NAME_OFF) {
             const next = !shouldShowModeName();
-            setShowModeName(next);
+            try {
+                setShowModeName(next);
+            } catch (error: unknown) {
+                ctx.ui.notify(`Mode name display was not saved: ${errorMessage(error)}`, "error");
+                continue;
+            }
             requestEditorRender?.();
             let displayState = "disabled";
             if (next) {

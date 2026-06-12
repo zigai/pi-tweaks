@@ -1,3 +1,4 @@
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
     closeSync,
     existsSync,
@@ -9,7 +10,6 @@ import {
     unlinkSync,
     writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 export const SHOW_MODE_NAME_SETTINGS_KEY = "modeShowName";
@@ -21,7 +21,7 @@ let cachedShowModeName: boolean | undefined;
 let cachedSettingsMtimeMs: number | null | undefined;
 
 function getSettingsPath(): string {
-    return join(homedir(), ".pi", "agent", "settings.json");
+    return join(getAgentDir(), "settings.json");
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -137,15 +137,21 @@ function getSettingsMtimeMs(): number | null {
     }
 }
 
-function readSettingsObject(): Record<string, unknown> {
+function readSettingsObject(options?: { throwOnInvalid?: boolean }): Record<string, unknown> {
+    const settingsPath = getSettingsPath();
     try {
-        const raw = readFileSync(getSettingsPath(), "utf8");
+        const raw = readFileSync(settingsPath, "utf8");
         const parsed = JSON.parse(raw) as unknown;
         if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
             return { ...parsed };
         }
-    } catch {
-        // Ignore malformed or missing settings files and fall back to defaults.
+        if (options?.throwOnInvalid === true) {
+            throw new Error(`${settingsPath} must contain a JSON object.`);
+        }
+    } catch (error: unknown) {
+        if (getErrorCode(error) === "ENOENT") return {};
+        if (options?.throwOnInvalid === true) throwError(error);
+        // Ignore malformed settings files while reading and fall back to defaults.
     }
 
     return {};
@@ -154,7 +160,7 @@ function readSettingsObject(): Record<string, unknown> {
 function updateSettingsObject(update: (settings: Record<string, unknown>) => void): void {
     const settingsPath = getSettingsPath();
     withSettingsLock(settingsPath, () => {
-        const settings = readSettingsObject();
+        const settings = readSettingsObject({ throwOnInvalid: true });
         update(settings);
         atomicWriteUtf8Sync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
     });
