@@ -10,10 +10,9 @@ pi install git:github.com/zigai/pi-tweaks
 
 ## Features
 
-- Hides `/skill:*` entries from the interactive slash autocomplete menu by default.
-- Adds mention autocomplete for loaded skills, with fuzzy matching by skill name and description.
-- Uses Pi's native autocomplete trigger-character support when available, so typing the configured mention character opens skill suggestions naturally.
-- Expands mentions such as `$skill-name` anywhere in a prompt into the corresponding skill instructions before the model sees the message.
+- Adds fuzzy skill autocomplete with `$` mentions.
+- Expands mentions such as `$skill-name` before the model sees the prompt.
+- Keeps `/skill:*` entries out of slash autocomplete by default.
 
 ## Usage
 
