@@ -113,7 +113,10 @@ export async function loadPromptHistoryForCwd(
         const tail = await readTail(file.filePath);
         if (tail.length === 0) continue;
         const lines = tail.split("\n").filter((line) => line.length > 0);
-        for (const line of lines) {
+        for (let lineIndex = lines.length - 1; lineIndex >= 0; lineIndex -= 1) {
+            const line = lines[lineIndex];
+            if (line === undefined) continue;
+
             let entry: SessionEntry;
             try {
                 entry = JSON.parse(line) as SessionEntry;
