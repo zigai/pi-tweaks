@@ -14,7 +14,7 @@
  * show timestamps for every visible entry instead of only labeled nodes.
  */
 
-import { keyText, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, keyText, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
     getKeybindings,
     Text,
@@ -32,7 +32,6 @@ import {
     unlinkSync,
     writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -170,7 +169,7 @@ function isTreeTimestampMode(value: unknown): value is TreeTimestampMode {
 }
 
 function getSettingsPath(): string {
-    return join(homedir(), ".pi", "agent", "settings.json");
+    return join(getAgentDir(), "settings.json");
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -277,15 +276,21 @@ function atomicWriteUtf8Sync(filePath: string, content: string): void {
     }
 }
 
-function readSettingsObject(): Record<string, unknown> {
+function readSettingsObject(options?: { throwOnInvalid?: boolean }): Record<string, unknown> {
+    const settingsPath = getSettingsPath();
     try {
-        const raw = readFileSync(getSettingsPath(), "utf8");
+        const raw = readFileSync(settingsPath, "utf8");
         const parsed = JSON.parse(raw) as unknown;
         if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
             return { ...parsed };
         }
-    } catch {
-        // Ignore malformed or missing settings files and fall back to defaults.
+        if (options?.throwOnInvalid === true) {
+            throw new Error(`${settingsPath} must contain a JSON object.`);
+        }
+    } catch (error: unknown) {
+        if (getErrorCode(error) === "ENOENT") return {};
+        if (options?.throwOnInvalid === true) throwError(error);
+        // Ignore malformed settings files while reading and fall back to defaults.
     }
 
     return {};
@@ -294,7 +299,7 @@ function readSettingsObject(): Record<string, unknown> {
 function updateSettingsObject(update: (settings: Record<string, unknown>) => void): void {
     const settingsPath = getSettingsPath();
     withSettingsLock(settingsPath, () => {
-        const settings = readSettingsObject();
+        const settings = readSettingsObject({ throwOnInvalid: true });
         update(settings);
         atomicWriteUtf8Sync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
     });
@@ -348,18 +353,34 @@ function getConfiguredThemeName(): string | undefined {
     return undefined;
 }
 
+function warnSettingsWriteFailed(error: unknown): void {
+    let suffix = "";
+    if (error instanceof Error && error.message.length > 0) {
+        suffix = `: ${error.message}`;
+    }
+    console.warn(`[pi-tree] settings update was not saved${suffix}`);
+}
+
 function persistPreviewEnabled(enabled: boolean): void {
-    updateSettingsObject((settings) => {
-        settings[PREVIEW_SETTINGS_KEY] = enabled;
-    });
-    cachedPreviewEnabled = enabled;
+    try {
+        updateSettingsObject((settings) => {
+            settings[PREVIEW_SETTINGS_KEY] = enabled;
+        });
+        cachedPreviewEnabled = enabled;
+    } catch (error: unknown) {
+        warnSettingsWriteFailed(error);
+    }
 }
 
 function persistMode(mode: TreeTimestampMode): void {
-    updateSettingsObject((settings) => {
-        settings[SETTINGS_KEY] = mode;
-    });
-    cachedMode = mode;
+    try {
+        updateSettingsObject((settings) => {
+            settings[SETTINGS_KEY] = mode;
+        });
+        cachedMode = mode;
+    } catch (error: unknown) {
+        warnSettingsWriteFailed(error);
+    }
 }
 
 function cycleMode(mode: TreeTimestampMode): TreeTimestampMode {
@@ -609,6 +630,32 @@ async function resolvePiDistDir(): Promise<string> {
     return dirname(codingAgentEntry);
 }
 
+function warnInternalPatchUnavailable(feature: string, error?: unknown): void {
+    let suffix = "";
+    if (error instanceof Error && error.message.length > 0) {
+        suffix = `: ${error.message}`;
+    }
+    console.warn(`[pi-tree] ${feature} unavailable; Pi internals may have changed${suffix}`);
+}
+
+async function loadTreeInternals(): Promise<[TreeSelectorModule, ThemeModule] | undefined> {
+    try {
+        const distDir = await resolvePiDistDir();
+        const treeSelectorPath = pathToFileURL(
+            join(distDir, "modes/interactive/components/tree-selector.js"),
+        ).href;
+        const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
+
+        return (await Promise.all([import(treeSelectorPath), import(themePath)])) as [
+            TreeSelectorModule,
+            ThemeModule,
+        ];
+    } catch (error: unknown) {
+        warnInternalPatchUnavailable("tree selector patch", error);
+        return undefined;
+    }
+}
+
 function patchTreeHeaderText(): void {
     const globalState = globalThis as typeof globalThis & {
         [TREE_HELP_PATCH_KEY]?: boolean;
@@ -617,26 +664,38 @@ function patchTreeHeaderText(): void {
 
     if (globalState[TREE_TITLE_PATCH_KEY] !== true) {
         const textPrototype = Text.prototype as unknown as {
-            render: (width: number) => string[];
+            render?: (width: number) => string[];
             text?: string;
         };
         const originalTextRender = textPrototype.render;
-        textPrototype.render = function patchedTextRender(this: { text?: string }, width: number) {
-            if (this.text?.includes("  Session Tree") === true) {
-                return [];
-            }
-            return originalTextRender.call(this, width);
-        };
-        globalState[TREE_TITLE_PATCH_KEY] = true;
+        if (typeof originalTextRender === "function") {
+            textPrototype.render = function patchedTextRender(
+                this: { text?: string },
+                width: number,
+            ) {
+                if (this.text?.includes("  Session Tree") === true) {
+                    return [];
+                }
+                return originalTextRender.call(this, width);
+            };
+            globalState[TREE_TITLE_PATCH_KEY] = true;
+        } else {
+            warnInternalPatchUnavailable("tree title patch");
+        }
     }
 
     if (globalState[TREE_HELP_PATCH_KEY] === true) return;
 
     const truncatedTextPrototype = TruncatedText.prototype as unknown as {
-        render: (width: number) => string[];
+        render?: (width: number) => string[];
         text?: string;
     };
     const originalRender = truncatedTextPrototype.render;
+    if (typeof originalRender !== "function") {
+        warnInternalPatchUnavailable("tree help patch");
+        return;
+    }
+
     truncatedTextPrototype.render = function patchedRender(this: { text?: string }, width: number) {
         if (this.text?.includes("↑/↓: move.") === true) {
             this.text = `  ${getTreeHelpText()}`;
@@ -655,16 +714,10 @@ async function patchTreeSelector(): Promise<void> {
     };
     if (globalState[PATCH_KEY] === true) return;
 
-    const distDir = await resolvePiDistDir();
-    const treeSelectorPath = pathToFileURL(
-        join(distDir, "modes/interactive/components/tree-selector.js"),
-    ).href;
-    const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
+    const internals = await loadTreeInternals();
+    if (internals === undefined) return;
 
-    const [{ TreeSelectorComponent }, { initTheme, theme }] = (await Promise.all([
-        import(treeSelectorPath),
-        import(themePath),
-    ])) as [TreeSelectorModule, ThemeModule];
+    const [{ TreeSelectorComponent }, { initTheme, theme }] = internals;
 
     initTheme(getConfiguredThemeName(), false);
 
