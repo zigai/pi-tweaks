@@ -1,4 +1,9 @@
-import { getAgentDir, ModelRegistry, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+    getAgentDir,
+    ModelRegistry,
+    type ExtensionAPI,
+    type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -35,6 +40,7 @@ type LoadedConfig = {
 
 type RuntimeState = {
     configCache?: LoadedConfig;
+    reportedErrorKey?: string;
     loadConfig: () => LoadedConfig;
 };
 
@@ -89,6 +95,7 @@ function validateAliasList(parsed: Record<string, unknown>): AliasConfig[] {
         throw new Error('"aliases" must be an array.');
     }
 
+    const seenAliases = new Map<string, number>();
     return value.map((entry, index) => {
         if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
             throw new Error(`aliases[${index}] must be an object.`);
@@ -99,6 +106,16 @@ function validateAliasList(parsed: Record<string, unknown>): AliasConfig[] {
         const model = readRequiredString(candidate, "model", index);
         const alias = readRequiredString(candidate, "alias", index);
         const name = readOptionalString(candidate, "name", index);
+
+        const aliasKey = `${provider}\0${alias}`;
+        const duplicateIndex = seenAliases.get(aliasKey);
+        if (duplicateIndex !== undefined) {
+            throw new Error(
+                `aliases[${index}] duplicates aliases[${duplicateIndex}] for provider "${provider}" and alias "${alias}".`,
+            );
+        }
+        seenAliases.set(aliasKey, index);
+
         return { provider, model, alias, name };
     });
 }
@@ -115,21 +132,23 @@ function validateConfig(config: unknown): ModelAliasesConfig {
 }
 
 function safeReadConfig(state: RuntimeState): LoadedConfig {
+    let mtimeMs = -1;
     try {
-        let mtimeMs = -1;
         try {
             mtimeMs = statSync(CONFIG_FILE).mtimeMs;
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-                return {
+                const loaded: LoadedConfig = {
                     path: CONFIG_FILE,
                     mtimeMs: -1,
                     aliases: [],
                 };
+                state.configCache = loaded;
+                return loaded;
             }
             throw error;
         }
-        if (state.configCache?.mtimeMs === mtimeMs && state.configCache.error === undefined) {
+        if (state.configCache?.mtimeMs === mtimeMs) {
             return state.configCache;
         }
 
@@ -151,13 +170,73 @@ function safeReadConfig(state: RuntimeState): LoadedConfig {
         }
         const loaded: LoadedConfig = {
             path: CONFIG_FILE,
-            mtimeMs: -1,
+            mtimeMs,
             aliases: [],
             error: `Failed to load ${CONFIG_FILE}: ${message}`,
         };
         state.configCache = loaded;
         return loaded;
     }
+}
+
+function buildModelIdSetByProvider(models: ModelLike[]): Map<string, Set<string>> {
+    const modelIds = new Map<string, Set<string>>();
+    for (const model of models) {
+        let providerModels = modelIds.get(model.provider);
+        if (providerModels === undefined) {
+            providerModels = new Set<string>();
+            modelIds.set(model.provider, providerModels);
+        }
+        providerModels.add(model.id);
+    }
+    return modelIds;
+}
+
+function getAliasModelIdCollision(
+    aliases: AliasConfig[],
+    nativeModels: ModelLike[],
+): string | undefined {
+    const modelIdsByProvider = buildModelIdSetByProvider(nativeModels);
+    for (const alias of aliases) {
+        if (modelIdsByProvider.get(alias.provider)?.has(alias.alias) === true) {
+            return `alias "${alias.alias}" for provider "${alias.provider}" conflicts with an existing model id; choose an alias that is not already registered by that provider.`;
+        }
+    }
+    return undefined;
+}
+
+function loadConfigForRegistry(state: RuntimeState, registry: PatchedModelRegistry): LoadedConfig {
+    const loaded = state.loadConfig();
+    if (loaded.error !== undefined || loaded.aliases.length === 0) {
+        return loaded;
+    }
+
+    const nativeModels = registry[ORIGINAL_GET_ALL_KEY]?.call(registry) ?? [];
+    const collision = getAliasModelIdCollision(loaded.aliases, nativeModels);
+    if (collision === undefined) {
+        return loaded;
+    }
+
+    return {
+        ...loaded,
+        aliases: [],
+        error: `Failed to load ${CONFIG_FILE}: ${collision}`,
+    };
+}
+
+function reportConfigError(state: RuntimeState, ctx: ExtensionContext, loaded: LoadedConfig): void {
+    if (loaded.error === undefined) {
+        state.reportedErrorKey = undefined;
+        return;
+    }
+
+    const errorKey = `${loaded.path}:${loaded.mtimeMs}:${loaded.error}`;
+    if (state.reportedErrorKey === errorKey) {
+        return;
+    }
+
+    state.reportedErrorKey = errorKey;
+    ctx.ui.notify(loaded.error, "error");
 }
 
 function getAliasForModel(model: ModelLike, loaded: LoadedConfig): AliasConfig | undefined {
@@ -225,19 +304,19 @@ function installRegistryPatch(registry: PatchedModelRegistry, state: RuntimeStat
     registry.getAll = function getAll(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_ALL_KEY]?.call(this) ?? [];
         const runtime = this[RUNTIME_KEY] ?? registry[RUNTIME_KEY];
-        return aliasModels(models, runtime!.loadConfig());
+        return aliasModels(models, loadConfigForRegistry(runtime!, this));
     };
 
     registry.getAvailable = function getAvailable(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_AVAILABLE_KEY]?.call(this) ?? [];
         const runtime = this[RUNTIME_KEY] ?? registry[RUNTIME_KEY];
-        return aliasModels(models, runtime!.loadConfig());
+        return aliasModels(models, loadConfigForRegistry(runtime!, this));
     };
 
     registry.find = function find(this: PatchedModelRegistry, provider: string, modelId: string) {
         const finder = this[ORIGINAL_FIND_KEY] ?? registry[ORIGINAL_FIND_KEY];
         const runtime = this[RUNTIME_KEY] ?? registry[RUNTIME_KEY];
-        const loaded = runtime!.loadConfig();
+        const loaded = loadConfigForRegistry(runtime!, this);
         const alias = getAliasForLookup(provider, modelId, loaded);
         if (alias !== undefined) {
             const target = finder?.call(this, provider, alias.model);
@@ -310,11 +389,22 @@ export default function modelAliasExtension(pi: ExtensionAPI) {
     installRegistryPatch(ModelRegistry.prototype as PatchedModelRegistry, state);
 
     pi.on("session_start", async (_event, ctx) => {
-        installRegistryPatch(ctx.modelRegistry as PatchedModelRegistry, state);
+        const registry = ctx.modelRegistry as PatchedModelRegistry;
+        installRegistryPatch(registry, state);
+        reportConfigError(state, ctx, loadConfigForRegistry(state, registry));
+    });
+
+    pi.on("turn_start", (_event, ctx) => {
+        reportConfigError(
+            state,
+            ctx,
+            loadConfigForRegistry(state, ctx.modelRegistry as PatchedModelRegistry),
+        );
     });
 
     pi.on("before_provider_request", (event, ctx) => {
-        const loaded = state.loadConfig();
+        const loaded = loadConfigForRegistry(state, ctx.modelRegistry as PatchedModelRegistry);
+        reportConfigError(state, ctx, loaded);
         const alias = aliasForProviderRequest(event.payload, ctx.model, loaded);
         if (alias === undefined) {
             return undefined;
