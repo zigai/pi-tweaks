@@ -134,20 +134,49 @@ async function resolvePiDistDir(): Promise<string> {
     return dirname(codingAgentEntry);
 }
 
+function warnInternalPatchUnavailable(feature: string, error?: unknown): void {
+    let suffix = "";
+    if (error instanceof Error && error.message.length > 0) {
+        suffix = `: ${error.message}`;
+    }
+    console.warn(
+        `[pi-response-renderer] ${feature} unavailable; Pi internals may have changed${suffix}`,
+    );
+}
+
+async function loadAssistantMessagePrototype(): Promise<
+    AssistantMessageComponentPrototype | undefined
+> {
+    try {
+        const distDir = await resolvePiDistDir();
+        const assistantMessagePath = pathToFileURL(
+            join(distDir, "modes/interactive/components/assistant-message.js"),
+        ).href;
+        const assistantModule = (await import(assistantMessagePath)) as {
+            AssistantMessageComponent?: { prototype?: AssistantMessageComponentPrototype };
+        };
+        return assistantModule.AssistantMessageComponent?.prototype;
+    } catch (error: unknown) {
+        warnInternalPatchUnavailable("assistant message patch", error);
+        return undefined;
+    }
+}
+
 async function patchMarkdownFences(): Promise<void> {
     const state = getPatchState();
     if (state[MARKDOWN_FENCES_PATCH_KEY] === true) {
         return;
     }
-    state[MARKDOWN_FENCES_PATCH_KEY] = true;
 
     const markdownPrototype = Markdown.prototype as {
-        render(width: number): string[];
+        render?: (width: number) => string[];
     };
-    const originalMarkdownRender = Reflect.get(markdownPrototype, "render") as (
-        this: Markdown,
-        width: number,
-    ) => string[];
+    const originalMarkdownRender = Reflect.get(markdownPrototype, "render");
+    if (typeof originalMarkdownRender !== "function") {
+        warnInternalPatchUnavailable("markdown render patch");
+        return;
+    }
+    state[MARKDOWN_FENCES_PATCH_KEY] = true;
     markdownPrototype.render = function patchedMarkdownRender(
         this: Markdown,
         width: number,
@@ -159,22 +188,18 @@ async function patchMarkdownFences(): Promise<void> {
         return collapseAssistantBlankLines(lines);
     };
 
-    const distDir = await resolvePiDistDir();
-    const assistantMessagePath = pathToFileURL(
-        join(distDir, "modes/interactive/components/assistant-message.js"),
-    ).href;
-    const assistantModule = (await import(assistantMessagePath)) as {
-        AssistantMessageComponent?: { prototype?: AssistantMessageComponentPrototype };
-    };
-    const assistantPrototype = assistantModule.AssistantMessageComponent?.prototype;
+    const assistantPrototype = await loadAssistantMessagePrototype();
     if (assistantPrototype === undefined) {
         return;
     }
 
-    const originalRender = Reflect.get(assistantPrototype, "render") as (
-        this: AssistantMessageComponentInstance,
-        width: number,
-    ) => string[];
+    const originalRender = Reflect.get(assistantPrototype, "render") as
+        | ((this: AssistantMessageComponentInstance, width: number) => string[])
+        | undefined;
+    if (typeof originalRender !== "function") {
+        warnInternalPatchUnavailable("assistant render patch");
+        return;
+    }
     assistantPrototype.render = function patchedAssistantRender(
         this: AssistantMessageComponentInstance,
         width: number,
@@ -182,10 +207,13 @@ async function patchMarkdownFences(): Promise<void> {
         return originalRender.call(this, width).map(stripItalicAnsi);
     };
 
-    const originalUpdateContent = Reflect.get(assistantPrototype, "updateContent") as (
-        this: AssistantMessageComponentInstance,
-        message: unknown,
-    ) => void;
+    const originalUpdateContent = Reflect.get(assistantPrototype, "updateContent") as
+        | ((this: AssistantMessageComponentInstance, message: unknown) => void)
+        | undefined;
+    if (typeof originalUpdateContent !== "function") {
+        warnInternalPatchUnavailable("assistant content patch");
+        return;
+    }
     assistantPrototype.updateContent = function patchedUpdateContent(
         this: AssistantMessageComponentInstance,
         message: unknown,
