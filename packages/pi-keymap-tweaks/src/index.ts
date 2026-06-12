@@ -66,7 +66,11 @@ function patchStreamingBehaviorSwap(): void {
     const prototype = AgentSession.prototype as PatchableAgentSessionPrototype;
     if (prototype[SWAP_MARKER] === true) return;
 
-    const originalPrompt = Reflect.get(AgentSession.prototype, "prompt") as AgentSession["prompt"];
+    const originalPrompt = Reflect.get(AgentSession.prototype, "prompt") as
+        | AgentSession["prompt"]
+        | undefined;
+    if (typeof originalPrompt !== "function") return;
+
     AgentSession.prototype.prompt = function promptWithSwappedStreamingBehavior(
         this: AgentSession,
         text: string,
@@ -84,10 +88,11 @@ function patchTerminalLfEnterSubmit(): void {
     const prototype = Editor.prototype as PatchableEditorPrototype;
     if (prototype[TERMINAL_ENTER_MARKER] === true) return;
 
-    const originalHandleInput = Reflect.get(
-        Editor.prototype,
-        "handleInput",
-    ) as Editor["handleInput"];
+    const originalHandleInput = Reflect.get(Editor.prototype, "handleInput") as
+        | Editor["handleInput"]
+        | undefined;
+    if (typeof originalHandleInput !== "function") return;
+
     Editor.prototype.handleInput = function handleSshLfEnterAsSubmit(
         this: Editor,
         data: string,
