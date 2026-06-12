@@ -46,7 +46,7 @@ function stripItalicAnsi(text: string): string {
 }
 
 function isFenceLine(line: string): boolean {
-    return /^```[a-zA-Z0-9]*$/.test(stripAnsi(line).trim());
+    return /^`{3,}[^`]*$/.test(stripAnsi(line).trim());
 }
 
 function isBlankRenderedLine(line: string): boolean {
