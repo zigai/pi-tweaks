@@ -22,7 +22,7 @@ pi install npm:@zigai/pi-mode
 
 Modes can store a provider, model, thinking level, and optional color. Project-local modes live in `.pi/modes.json` when present; otherwise global modes live in `~/.pi/agent/modes.json`.
 
-By default, Pi Mode does not print the mode name in the editor border. To opt in, toggle `Show mode name` from `/mode` → `Configure modes…`, or set `"modeShowName": true` in `~/.pi/agent/settings.json`.
+By default, Pi Mode does not print the mode name in the editor border. To opt in, toggle `Show mode name` from `/mode` → `Configure modes…`, or set `"modeShowName": true` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`. The `/mode` toggle writes to global settings.
 
 ## License
 

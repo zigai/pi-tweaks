@@ -26,7 +26,7 @@ The selected mention loads the same skill content that `/skill:name` would have 
 
 ## Configuration
 
-Configuration lives in Pi's main settings file at `~/.pi/agent/settings.json`.
+Configuration lives in Pi settings: globally in `~/.pi/agent/settings.json`, or per trusted project in `.pi/settings.json`.
 
 The mention character defaults to `$`. To change it, set `mentionSkillTrigger` to a single non-whitespace character:
 
