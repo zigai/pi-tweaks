@@ -1,5 +1,9 @@
 # Pi Mode
 
+[![npm version](https://img.shields.io/npm/v/@zigai/pi-mode.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-mode)
+[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-mode.svg)](https://www.npmjs.com/package/@zigai/pi-mode)
+[![license](https://img.shields.io/npm/l/@zigai/pi-mode.svg)](../../LICENSE)
+
 This Pi extension adds prompt modes for model and thinking-level switching.
 
 ## Install
@@ -19,3 +23,7 @@ pi install npm:@zigai/pi-mode
 Modes can store a provider, model, thinking level, and optional color. Project-local modes live in `.pi/modes.json` when present; otherwise global modes live in `~/.pi/agent/modes.json`.
 
 By default, Pi Mode does not print the mode name in the editor border. To opt in, toggle `Show mode name` from `/mode` → `Configure modes…`, or set `"modeShowName": true` in `~/.pi/agent/settings.json`.
+
+## License
+
+MIT

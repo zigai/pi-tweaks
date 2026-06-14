@@ -1,5 +1,9 @@
 # Pi Response Renderer
 
+[![npm version](https://img.shields.io/npm/v/@zigai/pi-response-renderer.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-response-renderer)
+[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-response-renderer.svg)](https://www.npmjs.com/package/@zigai/pi-response-renderer)
+[![license](https://img.shields.io/npm/l/@zigai/pi-response-renderer.svg)](../../LICENSE)
+
 This Pi extension makes assistant responses more compact by tightening extra blank lines and hiding Markdown code fence markers.
 
 It applies a few small rendering tweaks:
@@ -27,3 +31,7 @@ Before:
 After:
 
 ![Pi Response Renderer after screenshot](assets/response-renderer-after.png)
+
+## License
+
+MIT

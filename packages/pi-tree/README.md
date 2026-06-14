@@ -1,5 +1,9 @@
 # Pi Tree
 
+[![npm version](https://img.shields.io/npm/v/@zigai/pi-tree.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-tree)
+[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-tree.svg)](https://www.npmjs.com/package/@zigai/pi-tree)
+[![license](https://img.shields.io/npm/l/@zigai/pi-tree.svg)](../../LICENSE)
+
 This Pi extension improves `/tree` with timestamps on every entry, a cleaner help/status line, and an optional right-side preview.
 
 The preview helps when scanning a long session because you can inspect message content without opening each branch.
@@ -51,3 +55,7 @@ You can also change the first two settings from inside `/tree`: use Pi's configu
 npm install
 npm run check
 ```
+
+## License
+
+MIT
