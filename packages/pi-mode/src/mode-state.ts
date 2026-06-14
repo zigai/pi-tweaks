@@ -91,7 +91,7 @@ function modeSpec(modes: Record<string, ModeSpec>, name: string): ModeSpec | und
     return undefined;
 }
 
-function computeModesPatch(
+export function computeModesPatch(
     base: ModesFile,
     next: ModesFile,
     includeCurrentMode: boolean,
@@ -144,7 +144,7 @@ function computeModesPatch(
     return patch;
 }
 
-function applyModesPatch(target: ModesFile, patch: ModesPatch): void {
+export function applyModesPatch(target: ModesFile, patch: ModesPatch): void {
     if (patch.currentMode !== undefined) {
         target.currentMode = patch.currentMode;
     }
