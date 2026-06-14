@@ -58,12 +58,12 @@
       "./packages/pi-tree/src/index.ts",
       "./packages/pi-footer/src/index.ts",
       "./packages/pi-response-renderer/src/index.ts",
-      "./packages/pi-loader-time/src/index.ts",
+      "./packages/pi-run-timer/src/index.ts",
       "./packages/pi-keymap-tweaks/src/index.ts",
       "./packages/pi-mode/src/index.ts",
       "./packages/pi-prompt-history/src/index.ts",
       "./packages/pi-mention-skill/src/index.ts",
-      "./packages/pi-trust/src/index.ts"
+      "./packages/pi-trust-all-folders/src/index.ts"
     ]
   }
 }
