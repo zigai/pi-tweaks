@@ -1,16 +1,18 @@
 {
-  "name": "@zigai/pi-loader-time",
+  "name": "@zigai/pi-run-timer",
   "version": "0.1.6",
-  "description": "Pi package that adds elapsed time to loader messages.",
+  "description": "Pi package that shows live loader elapsed time and post-run agent timing stats.",
   "keywords": [
     "loader",
     "pi",
     "pi-coding-agent",
     "pi-extension",
     "pi-package",
-    "pi-tweaks"
+    "pi-tweaks",
+    "stats",
+    "timer"
   ],
-  "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-loader-time#readme",
+  "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-run-timer#readme",
   "bugs": {
     "url": "https://github.com/zigai/pi-tweaks/issues"
   },
@@ -19,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zigai/pi-tweaks.git",
-    "directory": "packages/pi-loader-time"
+    "directory": "packages/pi-run-timer"
   },
   "files": [
     "src",
@@ -31,6 +33,7 @@
     "access": "public"
   },
   "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
   },
   "pi": {
