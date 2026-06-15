@@ -1,24 +1,25 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { createFooterComponent } from "./footer-rendering.ts";
+import {
+    installLiveFooter,
+    patchFooterReset,
+    rememberFooterForTransition,
+} from "./footer-transition.ts";
 
 export default function uiEnhancements(pi: ExtensionAPI) {
+    patchFooterReset();
+
+    const getThinkingLevel = () => pi.getThinkingLevel();
+
     const installFooter = (ctx: ExtensionContext) => {
-        ctx.ui.setFooter((tui, _theme, footerData) =>
-            createFooterComponent(
-                ctx,
-                footerData,
-                () => pi.getThinkingLevel(),
-                () => tui.requestRender(),
-            ),
-        );
+        installLiveFooter(ctx, getThinkingLevel);
     };
 
     pi.on("session_start", async (_event, ctx) => {
         installFooter(ctx);
     });
 
-    pi.on("session_shutdown", async (_event, ctx) => {
-        ctx.ui.setFooter(undefined);
+    pi.on("session_shutdown", async (event, ctx) => {
+        rememberFooterForTransition(ctx, event.reason, getThinkingLevel());
     });
 }

@@ -32,6 +32,17 @@ export type FooterKey = "path" | "branch" | "provider" | "model" | "thinking" | 
 export type Rgb = [number, number, number];
 export type SegmentColors = { bg: string; fg: string };
 export type ContextUsage = ReturnType<ExtensionContext["getContextUsage"]>;
+export type FooterModel = {
+    provider: string;
+    id: string;
+    contextWindow?: number;
+};
+export type FooterContext = {
+    cwd: string;
+    model?: FooterModel;
+    mcpServers?: unknown[];
+    getContextUsage(): ContextUsage;
+};
 
 export type FooterData = {
     getGitBranch(): string | null;

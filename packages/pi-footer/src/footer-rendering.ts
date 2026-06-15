@@ -1,4 +1,3 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import {
@@ -11,6 +10,7 @@ import {
 } from "./constants.ts";
 import type {
     ContextUsage,
+    FooterContext,
     FooterData,
     FooterItem,
     FooterKey,
@@ -128,7 +128,7 @@ function getContextText(usage: ContextUsage, fallbackWindow?: number): string {
     return `${contextPercent.toFixed(1)}%/${formatTokens(contextWindow)}`;
 }
 
-function getMcpText(ctx: ExtensionContext, footerData: FooterData): string | null {
+function getMcpText(ctx: FooterContext, footerData: FooterData): string | null {
     const statuses = Array.from(footerData.getExtensionStatuses().values())
         .map(sanitizeStatusText)
         .filter((status) => status.length > 0);
@@ -136,7 +136,7 @@ function getMcpText(ctx: ExtensionContext, footerData: FooterData): string | nul
     const mcpStatus = statuses.find((status) => /^MCP:/i.test(status));
     if (mcpStatus !== undefined && mcpStatus.length > 0) return mcpStatus;
 
-    const serverCount = (ctx as ExtensionContext & { mcpServers?: unknown[] }).mcpServers?.length;
+    const serverCount = ctx.mcpServers?.length;
     if (typeof serverCount === "number") {
         return `MCP: ${serverCount} servers`;
     }
@@ -217,7 +217,7 @@ function renderPadding(width: number, variant: FooterVariant): string {
 }
 
 function buildFooterItems(
-    ctx: ExtensionContext,
+    ctx: FooterContext,
     footerData: FooterData,
     thinkingLevel: string,
 ): Partial<Record<FooterKey, FooterItem>> {
@@ -278,7 +278,7 @@ function buildFooterItems(
 }
 
 export function createFooterComponent(
-    ctx: ExtensionContext,
+    ctx: FooterContext,
     footerData: FooterData,
     getThinkingLevel: () => string,
     requestRender: () => void,
