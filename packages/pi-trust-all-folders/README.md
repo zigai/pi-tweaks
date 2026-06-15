@@ -18,12 +18,6 @@ Or install the full tweak bundle:
 pi install git:github.com/zigai/pi-tweaks
 ```
 
-## Behavior
-
-When Pi asks whether to trust a project folder, this extension answers yes for the current Pi process. This allows Pi to load project-local instructions, settings, resources, packages, and extensions without showing the built-in trust prompt.
-
-Use this only for machines and project folders you trust.
-
 ## License
 
 MIT
