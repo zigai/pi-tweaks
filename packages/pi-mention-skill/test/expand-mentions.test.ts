@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { expandSkillMentions } from "../src/expand-mentions.ts";
+import type { ContextEvent } from "@earendil-works/pi-coding-agent";
+
+import { expandSkillMentions, expandSkillMentionsInMessages } from "../src/expand-mentions.ts";
 import { stripFrontmatter } from "../src/skill-commands.ts";
 import type { SkillCommand } from "../src/types.ts";
 
@@ -77,4 +79,78 @@ void test("expandSkillMentions returns original text when no known mentions are 
     const expanded = await expandSkillMentions("Use $missing", [], "$");
 
     assert.equal(expanded, "Use $missing");
+});
+
+void test("expandSkillMentionsInMessages expands user text without mutating queued display text", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
+    try {
+        const filePath = path.join(dir, "python.md");
+        await writeFile(filePath, "Use Python carefully.\n", "utf8");
+        const messages: ContextEvent["messages"] = [
+            {
+                role: "user",
+                content: [{ type: "text", text: "Please use $python" }],
+                timestamp: 1,
+            },
+        ];
+
+        const expanded = await expandSkillMentionsInMessages(
+            messages,
+            [skillCommand("python", filePath)],
+            "$",
+        );
+
+        const original = messages[0];
+        assert.equal(original?.role, "user");
+        if (original?.role === "user" && Array.isArray(original.content)) {
+            assert.equal(original.content[0]?.type, "text");
+            if (original.content[0]?.type === "text") {
+                assert.equal(original.content[0].text, "Please use $python");
+            }
+        }
+
+        assert.notEqual(expanded, messages);
+        const message = expanded[0];
+        assert.equal(message?.role, "user");
+        if (message?.role !== "user" || !Array.isArray(message.content)) {
+            assert.fail("expected expanded user message with array content");
+        }
+        const text = message.content[0];
+        assert.equal(text?.type, "text");
+        if (text?.type !== "text") assert.fail("expected text content");
+        assert.match(text.text, /^<skill name="python"/);
+        assert.match(text.text, /Please use python$/);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+void test("expandSkillMentionsInMessages leaves existing skill blocks alone", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
+    try {
+        const filePath = path.join(dir, "python.md");
+        await writeFile(filePath, "Use Python carefully.\n", "utf8");
+        const messages: ContextEvent["messages"] = [
+            {
+                role: "user",
+                content: [
+                    {
+                        type: "text",
+                        text: '<skill name="existing" location="/tmp/existing.md">\nMentions $python.\n</skill>',
+                    },
+                ],
+                timestamp: 1,
+            },
+        ];
+
+        const expanded = await expandSkillMentionsInMessages(
+            messages,
+            [skillCommand("python", filePath)],
+            "$",
+        );
+
+        assert.equal(expanded, messages);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });
