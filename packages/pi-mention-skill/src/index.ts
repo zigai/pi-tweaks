@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { createSkillMentionProvider } from "./autocomplete.ts";
 import { applyMentionSkillEditor } from "./editor.ts";
-import { expandSkillMentions } from "./expand-mentions.ts";
+import { expandSkillMentions, expandSkillMentionsInMessages } from "./expand-mentions.ts";
 import { configuredMentionSkillSettings } from "./settings.ts";
 import { getSkillCommands } from "./skill-commands.ts";
 
@@ -23,5 +23,16 @@ export default function (pi: ExtensionAPI): void {
         const expanded = await expandSkillMentions(event.text, getSkillCommands(pi), trigger);
         if (expanded === event.text) return { action: "continue" };
         return { action: "transform", text: expanded, images: event.images };
+    });
+
+    pi.on("context", async (event, ctx) => {
+        const { trigger } = configuredMentionSkillSettings(ctx);
+        const messages = await expandSkillMentionsInMessages(
+            event.messages,
+            getSkillCommands(pi),
+            trigger,
+        );
+        if (messages === event.messages) return;
+        return { messages };
     });
 }
