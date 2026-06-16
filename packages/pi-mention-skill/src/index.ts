@@ -20,6 +20,10 @@ export default function (pi: ExtensionAPI): void {
         const { trigger } = configuredMentionSkillSettings(ctx);
         if (!event.text.includes(trigger)) return { action: "continue" };
 
+        if (event.streamingBehavior !== undefined) {
+            return { action: "continue" };
+        }
+
         const expanded = await expandSkillMentions(event.text, getSkillCommands(pi), trigger);
         if (expanded === event.text) return { action: "continue" };
         return { action: "transform", text: expanded, images: event.images };
