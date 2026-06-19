@@ -63,6 +63,7 @@
       "./packages/pi-mode/src/index.ts",
       "./packages/pi-prompt-history/src/index.ts",
       "./packages/pi-mention-skill/src/index.ts",
+      "./packages/pi-mention-project/src/index.ts",
       "./packages/pi-trust-all-folders/src/index.ts"
     ]
   }
