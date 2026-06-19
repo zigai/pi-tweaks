@@ -7,31 +7,6 @@ import {
 } from "./mention-syntax.ts";
 import type { ProjectDirectory } from "./types.ts";
 
-function escapeXmlText(value: string): string {
-    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function escapeXmlAttribute(value: string): string {
-    return escapeXmlText(value).replace(/"/g, "&quot;");
-}
-
-function formatProjectBlock(project: ProjectDirectory): string {
-    const name = escapeXmlAttribute(project.name);
-    const projectPath = escapeXmlAttribute(project.path);
-    const root = escapeXmlAttribute(project.root);
-    return `<project name="${name}" path="${projectPath}" root="${root}">\nDirectory: ${escapeXmlText(project.path)}\n</project>`;
-}
-
-function formatCombinedProjectBlock(projects: ProjectDirectory[]): string {
-    if (projects.length === 1) {
-        const project = projects[0];
-        if (project !== undefined) return formatProjectBlock(project);
-    }
-
-    const content = projects.map((project) => formatProjectBlock(project)).join("\n\n");
-    return `<projects>\n${content}\n</projects>`;
-}
-
 function projectMap(projects: ProjectDirectory[]): Map<string, ProjectDirectory> {
     const byName = new Map<string, ProjectDirectory>();
     for (const project of projects) {
@@ -41,69 +16,36 @@ function projectMap(projects: ProjectDirectory[]): Map<string, ProjectDirectory>
     return byName;
 }
 
-function mentionedProjectNames(
-    text: string,
-    projects: ProjectDirectory[],
-    trigger: string,
-): Set<string> {
-    const names = new Set<string>();
-    const knownNames = projectNameSet(projects);
-
-    for (const match of text.matchAll(projectMentionPattern(trigger))) {
-        const parsed = parseProjectMentionName(match[2], match[3], knownNames);
-        if (parsed !== undefined) {
-            names.add(parsed.name);
-        }
-    }
-
-    return names;
-}
-
-function removeProjectMentionSigils(
-    text: string,
-    projects: ProjectDirectory[],
-    trigger: string,
-): string {
-    const knownNames = projectNameSet(projects);
-    return text
-        .replace(
-            projectMentionPattern(trigger),
-            (
-                match: string,
-                leading: string,
-                quotedName: string | undefined,
-                unquotedName: string | undefined,
-            ) => {
-                const parsed = parseProjectMentionName(quotedName, unquotedName, knownNames);
-                if (parsed === undefined) return match;
-                return `${leading}${parsed.name}${parsed.suffix}`;
-            },
-        )
-        .trim();
-}
-
 export function expandProjectMentions(
     text: string,
     projects: ProjectDirectory[],
     trigger: string,
 ): string {
     const byName = projectMap(projects);
-    const names = mentionedProjectNames(text, projects, trigger);
-    if (names.size === 0) return text;
+    const knownNames = projectNameSet(projects);
+    let changed = false;
 
-    const loaded: ProjectDirectory[] = [];
-    for (const name of names) {
-        const project = byName.get(name);
-        if (project !== undefined) {
-            loaded.push(project);
-        }
-    }
-    if (loaded.length === 0) return text;
+    const expanded = text.replace(
+        projectMentionPattern(trigger),
+        (
+            match: string,
+            leading: string,
+            quotedName: string | undefined,
+            unquotedName: string | undefined,
+        ) => {
+            const parsed = parseProjectMentionName(quotedName, unquotedName, knownNames);
+            if (parsed === undefined) return match;
 
-    const projectBlock = formatCombinedProjectBlock(loaded);
-    const userMessage = removeProjectMentionSigils(text, projects, trigger);
-    if (userMessage.length === 0) return projectBlock;
-    return `${projectBlock}\n\n${userMessage}`;
+            const project = byName.get(parsed.name);
+            if (project === undefined) return match;
+
+            changed = true;
+            return `${leading}${project.path}${parsed.suffix}`;
+        },
+    );
+
+    if (!changed) return text;
+    return expanded;
 }
 
 type ContextMessage = ContextEvent["messages"][number];

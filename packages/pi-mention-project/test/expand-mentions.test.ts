@@ -14,27 +14,23 @@ function project(name: string, root = "/tmp/projects"): ProjectDirectory {
     };
 }
 
-void test("expandProjectMentions prepends known projects once and removes only known sigils", () => {
+void test("expandProjectMentions replaces known project mentions with absolute paths", () => {
     const expanded = expandProjectMentions(
         "Please inspect #pi-tweaks, ignore #unknown, then #pi-tweaks.",
         [project("pi-tweaks")],
         "#",
     );
 
-    assert.match(expanded, /^<project name="pi-tweaks"/);
-    assert.match(expanded, /path="\/tmp\/projects\/pi-tweaks"/);
-    assert.match(expanded, /Directory: \/tmp\/projects\/pi-tweaks/);
-    assert.match(expanded, /Please inspect pi-tweaks, ignore #unknown, then pi-tweaks\.$/);
-    assert.equal(expanded.match(/<project name="pi-tweaks"/g)?.length, 1);
+    assert.equal(
+        expanded,
+        "Please inspect /tmp/projects/pi-tweaks, ignore #unknown, then /tmp/projects/pi-tweaks.",
+    );
 });
 
-void test("expandProjectMentions combines multiple projects and supports regex-special triggers", () => {
+void test("expandProjectMentions replaces multiple projects and supports regex-special triggers", () => {
     const expanded = expandProjectMentions("+one and +two?", [project("one"), project("two")], "+");
 
-    assert.match(expanded, /^<projects>/);
-    assert.match(expanded, /<project name="one"/);
-    assert.match(expanded, /<project name="two"/);
-    assert.match(expanded, /one and two\?$/);
+    assert.equal(expanded, "/tmp/projects/one and /tmp/projects/two?");
 });
 
 void test("expandProjectMentions supports quoted project names", () => {
@@ -44,8 +40,24 @@ void test("expandProjectMentions supports quoted project names", () => {
         "#",
     );
 
-    assert.match(expanded, /^<project name="My Project"/);
-    assert.match(expanded, /Check My Project today\.$/);
+    assert.equal(expanded, "Check /tmp/projects/My Project today.");
+});
+
+void test("expandProjectMentions replaces project mentions for configured project roots", () => {
+    const expanded = expandProjectMentions(
+        "#zgod #sesh #gameops verify it for these projects too",
+        [
+            project("zgod", "/home/zigai/Projects"),
+            project("sesh", "/home/zigai/Projects"),
+            project("gameops", "/home/zigai/Projects"),
+        ],
+        "#",
+    );
+
+    assert.equal(
+        expanded,
+        "/home/zigai/Projects/zgod /home/zigai/Projects/sesh /home/zigai/Projects/gameops verify it for these projects too",
+    );
 });
 
 void test("expandProjectMentions returns original text when no known mentions are present", () => {
@@ -83,8 +95,7 @@ void test("expandProjectMentionsInMessages expands user text without mutating qu
     const text = message.content[0];
     assert.equal(text?.type, "text");
     if (text?.type !== "text") assert.fail("expected text content");
-    assert.match(text.text, /^<project name="pi-tweaks"/);
-    assert.match(text.text, /Please inspect pi-tweaks$/);
+    assert.equal(text.text, "Please inspect /tmp/projects/pi-tweaks");
 });
 
 void test("expandProjectMentionsInMessages leaves existing project blocks alone", () => {
