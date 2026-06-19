@@ -2,16 +2,6 @@
 
 A collection of small Pi extensions for improving interaction, display, and model selection.
 
-## Install
-
-Install the full bundle from the root package:
-
-```sh
-pi install git:github.com/zigai/pi-tweaks
-```
-
-Or install only the individual packages you want from the package table.
-
 ## Packages
 
 | Package                                                        | What it does                                                                                                     | Install                                      |
