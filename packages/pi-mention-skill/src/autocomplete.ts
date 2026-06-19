@@ -18,7 +18,7 @@ function skillToItem(command: SkillCommand, trigger = DEFAULT_MENTION_TRIGGER): 
     const name = skillName(command);
     return {
         value: `${trigger}${name}`,
-        label: `${trigger}${name}`,
+        label: name,
         description: command.description,
     };
 }

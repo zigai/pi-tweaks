@@ -55,6 +55,10 @@ void test("createSkillMentionProvider suggests skills after the configured trigg
         suggestions?.items.map((item) => item.value),
         ["$python"],
     );
+    assert.deepEqual(
+        suggestions?.items.map((item) => item.label),
+        ["python"],
+    );
 });
 
 void test("createSkillMentionProvider falls back outside mention context and can hide slash skills", async () => {
