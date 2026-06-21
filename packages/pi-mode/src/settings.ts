@@ -19,11 +19,12 @@ import { Type, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 export const SHOW_MODE_NAME_SETTINGS_KEY = "modeShowName";
+export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
 
 const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
 const STALE_SETTINGS_LOCK_MS = 30_000;
 const SettingsObjectSchema = Type.Object({});
-const ShowModeNameSchema = Type.Boolean();
+const BooleanSettingSchema = Type.Boolean();
 
 type SettingsReadContext = {
     cwd: string;
@@ -31,8 +32,13 @@ type SettingsReadContext = {
 };
 
 let settingsReadContext: SettingsReadContext | undefined;
-let cachedShowModeName: boolean | undefined;
-let cachedSettingsMtimeKey: string | undefined;
+let cachedSettings:
+    | {
+          mtimeKey: string;
+          showModeName: boolean;
+          useThinkingBorderColors: boolean;
+      }
+    | undefined;
 
 type ProjectTrustContext = ExtensionContext & {
     isProjectTrusted?: () => boolean;
@@ -52,8 +58,7 @@ export function setSettingsContext(ctx: ExtensionContext): void {
         settingsReadContext.projectTrusted !== next.projectTrusted
     ) {
         settingsReadContext = next;
-        cachedShowModeName = undefined;
-        cachedSettingsMtimeKey = undefined;
+        cachedSettings = undefined;
     }
 }
 
@@ -243,29 +248,62 @@ function updateSettingsObject(update: (settings: Record<string, unknown>) => voi
     });
 }
 
-function applyShowModeNameSetting(settings: Record<string, unknown>, fallback: boolean): boolean {
-    return (
-        parseOptionalBoolean(ShowModeNameSchema, settings[SHOW_MODE_NAME_SETTINGS_KEY]) ?? fallback
-    );
+function applyBooleanSetting(
+    settings: Record<string, unknown>,
+    key: string,
+    fallback: boolean,
+): boolean {
+    const parsed = parseOptionalBoolean(BooleanSettingSchema, settings[key]);
+    if (parsed === undefined) return fallback;
+    return parsed;
 }
 
-export function shouldShowModeName(): boolean {
+function readModeSettings(): {
+    showModeName: boolean;
+    useThinkingBorderColors: boolean;
+} {
     const mtimeKey = getSettingsMtimeKey();
-    if (cachedShowModeName !== undefined && cachedSettingsMtimeKey === mtimeKey) {
-        return cachedShowModeName;
+    if (cachedSettings?.mtimeKey === mtimeKey) {
+        return cachedSettings;
     }
 
     const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
     const manager = SettingsManager.create(context.cwd, getAgentDir(), {
         projectTrusted: context.projectTrusted,
     });
-    let show = false;
-    show = applyShowModeNameSetting(manager.getGlobalSettings() as Record<string, unknown>, show);
-    show = applyShowModeNameSetting(manager.getProjectSettings() as Record<string, unknown>, show);
+    let showModeName = false;
+    let useThinkingBorderColors = false;
 
-    cachedSettingsMtimeKey = mtimeKey;
-    cachedShowModeName = show;
-    return cachedShowModeName;
+    const globalSettings = manager.getGlobalSettings() as Record<string, unknown>;
+    showModeName = applyBooleanSetting(globalSettings, SHOW_MODE_NAME_SETTINGS_KEY, showModeName);
+    useThinkingBorderColors = applyBooleanSetting(
+        globalSettings,
+        USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
+        useThinkingBorderColors,
+    );
+
+    const projectSettings = manager.getProjectSettings() as Record<string, unknown>;
+    showModeName = applyBooleanSetting(projectSettings, SHOW_MODE_NAME_SETTINGS_KEY, showModeName);
+    useThinkingBorderColors = applyBooleanSetting(
+        projectSettings,
+        USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
+        useThinkingBorderColors,
+    );
+
+    cachedSettings = {
+        mtimeKey,
+        showModeName,
+        useThinkingBorderColors,
+    };
+    return cachedSettings;
+}
+
+export function shouldShowModeName(): boolean {
+    return readModeSettings().showModeName;
+}
+
+export function shouldUseThinkingBorderColors(): boolean {
+    return readModeSettings().useThinkingBorderColors;
 }
 
 export function setShowModeName(show: boolean): void {
@@ -273,6 +311,13 @@ export function setShowModeName(show: boolean): void {
         settings[SHOW_MODE_NAME_SETTINGS_KEY] = show;
     });
 
-    cachedSettingsMtimeKey = getSettingsMtimeKey();
-    cachedShowModeName = show;
+    cachedSettings = undefined;
+}
+
+export function setUseThinkingBorderColors(useThinkingBorderColors: boolean): void {
+    updateSettingsObject((settings) => {
+        settings[USE_THINKING_BORDER_COLORS_SETTINGS_KEY] = useThinkingBorderColors;
+    });
+
+    cachedSettings = undefined;
 }

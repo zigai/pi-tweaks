@@ -18,6 +18,8 @@ import {
     MODE_UI_CONFIGURE,
     MODE_UI_SHOW_NAME_OFF,
     MODE_UI_SHOW_NAME_ON,
+    MODE_UI_THINKING_COLORS_OFF,
+    MODE_UI_THINKING_COLORS_ON,
     THINKING_UNSET_LABEL,
 } from "./constants.ts";
 import {
@@ -28,7 +30,12 @@ import {
     getProjectModesPath,
     withFileLock,
 } from "./storage.ts";
-import { setShowModeName, shouldShowModeName } from "./settings.ts";
+import {
+    setShowModeName,
+    setUseThinkingBorderColors,
+    shouldShowModeName,
+    shouldUseThinkingBorderColors,
+} from "./settings.ts";
 import type { ModeRuntime, ModesFile, ModesPatch, ModeSpec, ModeSpecPatch } from "./types.ts";
 
 type ScopedModelItem = {
@@ -403,6 +410,7 @@ export function getModeBorderColor(
     ctx: ExtensionContext,
     pi: ExtensionAPI,
     mode: string,
+    fallbackBorderColor?: (text: string) => string,
 ): (text: string) => string {
     const theme = ctx.ui.theme;
     const spec = runtime.data.modes[mode];
@@ -413,8 +421,13 @@ export function getModeBorderColor(
             theme.getFgAnsi(color);
             return (text: string) => theme.fg(color, text);
         } catch {
-            // fall back to thinking-derived colors
+            // fall through to the configured fallback border color
         }
+    }
+
+    if (!shouldUseThinkingBorderColors()) {
+        if (fallbackBorderColor !== undefined) return fallbackBorderColor;
+        return (text: string) => theme.fg("borderMuted", text);
     }
 
     return theme.getThinkingBorderColor(pi.getThinkingLevel());
@@ -854,10 +867,15 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
         if (shouldShowModeName()) {
             showModeNameChoice = MODE_UI_SHOW_NAME_ON;
         }
+        let thinkingColorsChoice = MODE_UI_THINKING_COLORS_OFF;
+        if (shouldUseThinkingBorderColors()) {
+            thinkingColorsChoice = MODE_UI_THINKING_COLORS_ON;
+        }
         const choice = await ctx.ui.select("Configure modes", [
             ...names,
             MODE_UI_ADD,
             showModeNameChoice,
+            thinkingColorsChoice,
             MODE_UI_BACK,
         ]);
         if (choice === undefined || choice.length === 0 || choice === MODE_UI_BACK) return;
@@ -884,6 +902,26 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
                 displayState = "enabled";
             }
             ctx.ui.notify(`Mode name display ${displayState}`, "info");
+            continue;
+        }
+
+        if (choice === MODE_UI_THINKING_COLORS_ON || choice === MODE_UI_THINKING_COLORS_OFF) {
+            const next = !shouldUseThinkingBorderColors();
+            try {
+                setUseThinkingBorderColors(next);
+            } catch (error: unknown) {
+                ctx.ui.notify(
+                    `Thinking border colors were not saved: ${errorMessage(error)}`,
+                    "error",
+                );
+                continue;
+            }
+            requestEditorRender?.();
+            let displayState = "disabled";
+            if (next) {
+                displayState = "enabled";
+            }
+            ctx.ui.notify(`Thinking border colors ${displayState}`, "info");
             continue;
         }
 

@@ -63,6 +63,7 @@ function enhanceEditor(
     requestRender: () => void,
 ): EditorLike {
     const originalRender = editor.render.bind(editor);
+    const defaultBorderColor = editor.borderColor;
     editor.render = (width: number) => modeLabelLine(originalRender(width), width, editor);
 
     const borderColor = (text: string) => {
@@ -70,7 +71,7 @@ function enhanceEditor(
         if (isBashMode) {
             return ctx.ui.theme.getBashModeBorderColor()(text);
         }
-        return getModeBorderColor(ctx, pi, getCurrentMode())(text);
+        return getModeBorderColor(ctx, pi, getCurrentMode(), defaultBorderColor)(text);
     };
 
     Object.defineProperty(editor, "borderColor", {

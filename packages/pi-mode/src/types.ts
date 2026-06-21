@@ -9,7 +9,8 @@ export type ModeSpec = {
     thinkingLevel?: ThinkingLevel;
     /**
      * Optional theme color token to use for the editor border.
-     * If unset, the border color is derived from the current thinking level.
+     * If unset, the default editor border is used unless thinking-derived
+     * border colors are enabled in settings.
      */
     color?: ThemeColor;
 };
