@@ -1057,6 +1057,10 @@ export async function handleSessionActivated(
         runtime.currentMode = CUSTOM_MODE_NAME;
         customOverlay = getCurrentSelectionSpec(pi);
     }
+
+    if (ctx.hasUI) {
+        requestEditorRender?.();
+    }
 }
 
 export async function handleModelSelect(
