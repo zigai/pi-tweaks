@@ -58,6 +58,7 @@
       "./packages/pi-tree/src/index.ts",
       "./packages/pi-footer/src/index.ts",
       "./packages/pi-response-renderer/src/index.ts",
+      "./packages/pi-plain-user-messages/src/index.ts",
       "./packages/pi-run-timer/src/index.ts",
       "./packages/pi-keymap-tweaks/src/index.ts",
       "./packages/pi-mode/src/index.ts",
