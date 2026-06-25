@@ -70,12 +70,17 @@ function isIntroducedBlockLine(line: string): boolean {
     );
 }
 
+function isMarkdownHeadingLine(line: string): boolean {
+    return /^#{1,6}\s+\S/.test(stripAnsi(line).trimStart());
+}
+
 function isMicroHeadingLine(line: string): boolean {
     const text = stripAnsi(line).trim();
 
     return (
         text.length > 0 &&
         text.length <= 48 &&
+        !isMarkdownHeadingLine(line) &&
         !/[.!?;:]$/.test(text) &&
         !/^[-*+]\s+/.test(text) &&
         !/^\d+[.)]\s+/.test(text) &&
@@ -87,6 +92,7 @@ function isMicroHeadingLine(line: string): boolean {
 function isPlainParagraphLine(line: string): boolean {
     return (
         !isBlankRenderedLine(line) &&
+        !isMarkdownHeadingLine(line) &&
         !isMicroHeadingLine(line) &&
         !isIntroLine(line) &&
         !isIntroducedBlockLine(line)
