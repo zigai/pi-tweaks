@@ -6,15 +6,11 @@
 
 This Pi extension renders user-submitted messages in the transcript as plain text instead of Markdown.
 
-The goal is to keep prompts visually copyable exactly as written, including literal Markdown syntax such as `#`, `*`, backticks, links, and lists.
-
 ## Install
 
 ```sh
 pi install npm:@zigai/pi-plain-user-messages
 ```
-
-The extension only changes how user messages are rendered in the UI. It does not rewrite saved conversation content or change assistant response rendering.
 
 ## License
 
