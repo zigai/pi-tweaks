@@ -9,6 +9,7 @@ import { createFooterComponent } from "./footer-rendering.ts";
 import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./types.ts";
 
 const RESET_PATCH_MARKER = Symbol.for("zigai.pi-footer.reset-extension-ui-patch");
+const RESET_PATCH_STATE = Symbol.for("zigai.pi-footer.reset-extension-ui-patch-state");
 const TRANSITION_STATE_KEY = "__zigaiPiFooterTransitionState__";
 const BRIDGE_FOOTER_TTL_MS = 15_000;
 
@@ -25,13 +26,6 @@ type FooterResetHost = {
     setExtensionFooter(factory: FooterFactory | undefined): void;
 };
 
-type PatchableInteractiveModePrototype = {
-    customFooter?: unknown;
-    resetExtensionUI?: (this: FooterResetHost) => void;
-    setExtensionFooter?: (this: FooterResetHost, factory: FooterFactory | undefined) => void;
-    [RESET_PATCH_MARKER]?: true;
-};
-
 type FooterSnapshot = {
     context: FooterContext;
     thinkingLevel: string;
@@ -45,6 +39,24 @@ type FooterTransitionState = {
     latestSnapshot?: FooterSnapshot;
     pendingShutdownReason?: SessionShutdownEvent["reason"];
     liveInstallGeneration: number;
+};
+
+type FooterResetPatchState = {
+    originalReset: (this: FooterResetHost) => void;
+    afterReset: (
+        host: FooterResetHost,
+        footerKind: string | undefined,
+        snapshot: FooterSnapshot | undefined,
+        transitionState: FooterTransitionState,
+    ) => void;
+};
+
+type PatchableInteractiveModePrototype = {
+    customFooter?: unknown;
+    resetExtensionUI?: (this: FooterResetHost) => void;
+    setExtensionFooter?: (this: FooterResetHost, factory: FooterFactory | undefined) => void;
+    [RESET_PATCH_MARKER]?: true;
+    [RESET_PATCH_STATE]?: FooterResetPatchState;
 };
 
 type FooterTransitionGlobal = typeof globalThis & {
@@ -102,7 +114,10 @@ function createFooterSnapshot(ctx: ExtensionContext, thinkingLevel: string): Foo
 function shouldBridgeFooter(kind: string | undefined, state: FooterTransitionState): boolean {
     if (kind !== "live" && kind !== "bridge") return false;
     if (state.latestSnapshot === undefined) return false;
-    if (state.pendingShutdownReason === undefined) return false;
+    // Session replacements tear down extension UI after `session_shutdown`, but
+    // `/reload` calls `resetExtensionUI()` before the shutdown event. Treat an
+    // otherwise-active footer with no pending reason as that pre-shutdown reload
+    // reset so Pi's built-in footer is not restored while reload is in progress.
     if (state.pendingShutdownReason === "quit") return false;
     return true;
 }
@@ -129,32 +144,52 @@ function installBridgeFooter(host: FooterResetHost, snapshot: FooterSnapshot): v
     timeout.unref?.();
 }
 
+function bridgeAfterFooterReset(
+    host: FooterResetHost,
+    footerKind: string | undefined,
+    snapshot: FooterSnapshot | undefined,
+    state: FooterTransitionState,
+): void {
+    if (!shouldBridgeFooter(footerKind, state)) return;
+    if (snapshot === undefined) return;
+    installBridgeFooter(host, snapshot);
+}
+
 export function patchFooterReset(): void {
     // Pi resets extension-owned UI between session replacements before the
     // replacement session has emitted session_start. Reinstall a snapshot-backed
     // bridge footer in that same reset call so the built-in footer never paints
     // during the handoff.
     const prototype = InteractiveMode.prototype as unknown as PatchableInteractiveModePrototype;
-    if (prototype[RESET_PATCH_MARKER] === true) return;
+
+    const existingPatchState = prototype[RESET_PATCH_STATE];
+    if (existingPatchState !== undefined) {
+        existingPatchState.afterReset = bridgeAfterFooterReset;
+        prototype[RESET_PATCH_MARKER] = true;
+        return;
+    }
 
     const originalReset = prototype.resetExtensionUI;
     const setExtensionFooter = prototype.setExtensionFooter;
     if (typeof originalReset !== "function") return;
     if (typeof setExtensionFooter !== "function") return;
 
+    const patchState: FooterResetPatchState = {
+        originalReset,
+        afterReset: bridgeAfterFooterReset,
+    };
+
     prototype.resetExtensionUI = function patchedFooterReset(this: FooterResetHost): void {
         const footerKind = getFooterComponentKind(this.customFooter);
         const state = getTransitionState();
         const snapshot = state.latestSnapshot;
-        const bridgeFooter = shouldBridgeFooter(footerKind, state);
 
-        originalReset.call(this);
+        patchState.originalReset.call(this);
         state.pendingShutdownReason = undefined;
-
-        if (!bridgeFooter || snapshot === undefined) return;
-        installBridgeFooter(this, snapshot);
+        patchState.afterReset(this, footerKind, snapshot, state);
     };
 
+    prototype[RESET_PATCH_STATE] = patchState;
     prototype[RESET_PATCH_MARKER] = true;
 }
 
