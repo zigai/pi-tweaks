@@ -5,11 +5,9 @@ import {
     patchFooterReset,
     rememberFooterForTransition,
 } from "./footer-transition.ts";
-import { patchTuiShrinkRedraw } from "./tui-shrink-redraw.ts";
 
 export default function uiEnhancements(pi: ExtensionAPI) {
     patchFooterReset();
-    patchTuiShrinkRedraw();
 
     const getThinkingLevel = () => pi.getThinkingLevel();
 
