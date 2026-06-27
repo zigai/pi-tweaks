@@ -9,7 +9,7 @@ This Pi extension makes assistant responses more compact by tightening extra bla
 It applies a few small rendering tweaks:
 
 - hides the visible ``` fence lines around rendered Markdown code blocks in assistant messages
-- collapses some extra blank lines between plain paragraph lines
+- collapses paragraph gaps without squeezing tables or headings
 - removes italic ANSI styling from assistant message output
 
 The goal is a cleaner transcript with less visual noise while keeping the message content itself unchanged.
