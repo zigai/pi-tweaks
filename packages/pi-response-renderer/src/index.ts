@@ -1,4 +1,10 @@
-import { Markdown, type Component } from "@earendil-works/pi-tui";
+import {
+    Markdown,
+    type Component,
+    type DefaultTextStyle,
+    type MarkdownOptions,
+    type MarkdownTheme,
+} from "@earendil-works/pi-tui";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -74,13 +80,162 @@ function isMarkdownHeadingLine(line: string): boolean {
     return /^#{1,6}\s+\S/.test(stripAnsi(line).trimStart());
 }
 
-function isMicroHeadingLine(line: string): boolean {
+function isTableLine(line: string): boolean {
+    // Rendered Markdown tables start with box-drawing characters.
+    return /^[\u2500-\u257F]/.test(stripAnsi(line).trimStart());
+}
+
+type MarkdownRender = (this: Markdown, width: number) => string[];
+
+type StyledMarkdownInstance = {
+    text?: string;
+    paddingX?: number;
+    theme?: MarkdownTheme;
+    defaultTextStyle?: DefaultTextStyle;
+    options?: MarkdownOptions;
+};
+
+function getStylePrefix(styleFn: (text: string) => string): string {
+    const sentinel = "\u0000";
+    const styled = styleFn(sentinel);
+    const sentinelIndex = styled.indexOf(sentinel);
+    if (sentinelIndex >= 0) {
+        return styled.slice(0, sentinelIndex);
+    }
+    return "";
+}
+
+function normalizeRenderedLine(line: string): string {
+    return stripAnsi(line).trim();
+}
+
+function isAtxLevelOneOrTwoHeadingLine(line: string): boolean {
+    return /^ {0,3}#{1,2}(?!#)(?:[ \t]+|$)/.test(line);
+}
+
+function getFenceSequence(line: string): string | undefined {
+    const match = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (match === null) {
+        return undefined;
+    }
+    return match[1];
+}
+
+function getLevelOneOrTwoHeadingSources(markdown: string): string[] {
+    const headings: string[] = [];
+    let fenceSequence: string | undefined;
+
+    for (const line of markdown.split(/\r?\n/)) {
+        const nextFenceSequence = getFenceSequence(line);
+        if (nextFenceSequence !== undefined) {
+            if (fenceSequence === undefined) {
+                fenceSequence = nextFenceSequence;
+                continue;
+            }
+
+            const fenceCharacter = fenceSequence.at(0);
+            if (
+                fenceCharacter !== undefined &&
+                nextFenceSequence.startsWith(fenceCharacter) &&
+                nextFenceSequence.length >= fenceSequence.length
+            ) {
+                fenceSequence = undefined;
+            }
+            continue;
+        }
+
+        if (fenceSequence !== undefined) {
+            continue;
+        }
+
+        if (isAtxLevelOneOrTwoHeadingLine(line)) {
+            headings.push(line);
+        }
+    }
+
+    return headings;
+}
+
+function resolveHeadingLineTexts(
+    instance: Markdown,
+    width: number,
+    renderMarkdown: MarkdownRender,
+): ReadonlySet<string> {
+    const markdownInstance = instance as unknown as StyledMarkdownInstance;
+    if (typeof markdownInstance.text !== "string") {
+        return new Set();
+    }
+    if (markdownInstance.theme === undefined) {
+        return new Set();
+    }
+
+    const headingSources = getLevelOneOrTwoHeadingSources(markdownInstance.text);
+    if (headingSources.length === 0) {
+        return new Set();
+    }
+
+    let paddingX = 0;
+    if (
+        typeof markdownInstance.paddingX === "number" &&
+        Number.isFinite(markdownInstance.paddingX) &&
+        markdownInstance.paddingX >= 0
+    ) {
+        paddingX = markdownInstance.paddingX;
+    }
+
+    const headingLines = new Set<string>();
+    for (const headingSource of headingSources) {
+        const headingMarkdown = new Markdown(
+            headingSource,
+            paddingX,
+            0,
+            markdownInstance.theme,
+            markdownInstance.defaultTextStyle,
+            markdownInstance.options,
+        );
+        for (const line of renderMarkdown.call(headingMarkdown, width)) {
+            if (!isBlankRenderedLine(line)) {
+                headingLines.add(normalizeRenderedLine(line));
+            }
+        }
+    }
+
+    return headingLines;
+}
+
+function resolveHeadingPrefix(instance: Markdown): string {
+    // Level 1-2 headings render without `#`, so use their ANSI heading prefix.
+    const theme = (instance as unknown as StyledMarkdownInstance).theme;
+    if (typeof theme?.heading !== "function") {
+        return "";
+    }
+    return getStylePrefix(theme.heading);
+}
+
+function isRenderedHeadingLine(
+    line: string,
+    headingPrefix: string,
+    headingLineTexts: ReadonlySet<string>,
+): boolean {
+    if (headingPrefix.length > 0 && line.trimStart().startsWith(headingPrefix)) {
+        return true;
+    }
+    return headingLineTexts.has(normalizeRenderedLine(line));
+}
+
+function isMicroHeadingLine(
+    line: string,
+    headingPrefix: string,
+    headingLineTexts: ReadonlySet<string>,
+): boolean {
     const text = stripAnsi(line).trim();
 
     return (
         text.length > 0 &&
         text.length <= 48 &&
         !isMarkdownHeadingLine(line) &&
+        !isRenderedHeadingLine(line, headingPrefix, headingLineTexts) &&
+        !isTableLine(line) &&
         !/[.!?;:]$/.test(text) &&
         !/^[-*+]\s+/.test(text) &&
         !/^\d+[.)]\s+/.test(text) &&
@@ -89,17 +244,28 @@ function isMicroHeadingLine(line: string): boolean {
     );
 }
 
-function isPlainParagraphLine(line: string): boolean {
+function isPlainParagraphLine(
+    line: string,
+    headingPrefix: string,
+    headingLineTexts: ReadonlySet<string>,
+): boolean {
     return (
         !isBlankRenderedLine(line) &&
         !isMarkdownHeadingLine(line) &&
-        !isMicroHeadingLine(line) &&
+        !isRenderedHeadingLine(line, headingPrefix, headingLineTexts) &&
+        !isTableLine(line) &&
+        !isMicroHeadingLine(line, headingPrefix, headingLineTexts) &&
         !isIntroLine(line) &&
         !isIntroducedBlockLine(line)
     );
 }
 
-function shouldCollapseBlankLine(lines: string[], index: number): boolean {
+function shouldCollapseBlankLine(
+    lines: string[],
+    index: number,
+    headingPrefix: string,
+    headingLineTexts: ReadonlySet<string>,
+): boolean {
     const previousLine = lines[index - 1];
     const nextLine = lines[index + 1];
     if (previousLine === undefined || nextLine === undefined) {
@@ -110,16 +276,23 @@ function shouldCollapseBlankLine(lines: string[], index: number): boolean {
         return true;
     }
 
-    return isPlainParagraphLine(previousLine) && isPlainParagraphLine(nextLine);
+    return (
+        isPlainParagraphLine(previousLine, headingPrefix, headingLineTexts) &&
+        isPlainParagraphLine(nextLine, headingPrefix, headingLineTexts)
+    );
 }
 
-function collapseAssistantBlankLines(lines: string[]): string[] {
+function collapseAssistantBlankLines(
+    lines: string[],
+    headingPrefix: string,
+    headingLineTexts: ReadonlySet<string>,
+): string[] {
     return lines.filter((line, index) => {
         if (!isBlankRenderedLine(line)) {
             return true;
         }
 
-        return !shouldCollapseBlankLine(lines, index);
+        return !shouldCollapseBlankLine(lines, index, headingPrefix, headingLineTexts);
     });
 }
 
@@ -191,7 +364,11 @@ async function patchMarkdownFences(): Promise<void> {
         if (shouldHideFences(this)) {
             lines = lines.filter((line) => !isFenceLine(line));
         }
-        return collapseAssistantBlankLines(lines);
+        return collapseAssistantBlankLines(
+            lines,
+            resolveHeadingPrefix(this),
+            resolveHeadingLineTexts(this, width, originalMarkdownRender),
+        );
     };
 
     const assistantPrototype = await loadAssistantMessagePrototype();
