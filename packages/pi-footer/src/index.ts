@@ -5,11 +5,9 @@ import {
     patchFooterReset,
     rememberFooterForTransition,
 } from "./footer-transition.ts";
-import { installSmoothShrinkViewportPatch } from "./tui-shrink-viewport.ts";
 
 export default function uiEnhancements(pi: ExtensionAPI) {
     patchFooterReset();
-    installSmoothShrinkViewportPatch();
 
     const getThinkingLevel = () => pi.getThinkingLevel();
 
