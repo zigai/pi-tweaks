@@ -5,9 +5,11 @@ import {
     patchFooterReset,
     rememberFooterForTransition,
 } from "./footer-transition.ts";
+import { installFooterShrinkPaddingPatch } from "./tui-footer-shrink-padding.ts";
 
 export default function uiEnhancements(pi: ExtensionAPI) {
     patchFooterReset();
+    installFooterShrinkPaddingPatch();
 
     const getThinkingLevel = () => pi.getThinkingLevel();
 

@@ -126,7 +126,6 @@ function installBridgeFooter(host: FooterResetHost, snapshot: FooterSnapshot): v
     const generationAtInstall = getTransitionState().liveInstallGeneration;
 
     host.setExtensionFooter((tui, _theme, footerData) => {
-        tui.setClearOnShrink?.(true);
         const component = createFooterComponent(
             snapshot.context,
             footerData,
@@ -196,7 +195,6 @@ export function patchFooterReset(): void {
 
 export function installLiveFooter(ctx: ExtensionContext, getThinkingLevel: () => string): void {
     ctx.ui.setFooter((tui, _theme, footerData) => {
-        tui.setClearOnShrink(true);
         const component = createFooterComponent(ctx, footerData, getThinkingLevel, () =>
             tui.requestRender(),
         );

@@ -12,7 +12,7 @@ type TestTui = {
 
 type CapturedFooterFactory = (tui: TestTui, theme: unknown, footerData: FooterData) => unknown;
 
-void test("live footer enables Pi native clear-on-shrink rendering", () => {
+void test("live footer leaves native clear-on-shrink disabled", () => {
     let capturedFactory: CapturedFooterFactory | undefined;
 
     const ctx = {
@@ -59,5 +59,5 @@ void test("live footer enables Pi native clear-on-shrink rendering", () => {
 
     capturedFactory(tui, {}, footerData);
 
-    assert.equal(clearOnShrinkEnabled, true);
+    assert.equal(clearOnShrinkEnabled, false);
 });
