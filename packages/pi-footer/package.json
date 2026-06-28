@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-footer",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Pi package that replaces Pi's footer with a compact status line.",
   "keywords": [
     "footer",
