@@ -8,6 +8,7 @@ const FOOTER_SHRINK_PADDING_PATCH_MARKER = Symbol.for(
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
 const TERMINAL_LINE_RESET = `${ESC}[0m${ESC}]8;;${BEL}`;
+const BOTTOM_CHROME_PRECEDING_SIBLINGS = 2;
 
 type PatchableTuiInstance = {
     children: Component[];
@@ -29,6 +30,17 @@ type ComponentContainer = Component & {
 type PatchableTuiPrototype = {
     render?: (this: PatchableTuiInstance, width: number) => string[];
     [FOOTER_SHRINK_PADDING_PATCH_MARKER]?: true;
+};
+
+type ChildLineRange = {
+    index: number;
+    start: number;
+    end: number;
+};
+
+type BottomChromeSpacingResult = {
+    lines: string[];
+    removedRows: number;
 };
 
 function getFooterChildIndex(tui: PatchableTuiInstance): number | undefined {
@@ -110,23 +122,106 @@ function countRenderedChildLines(
     return count;
 }
 
+function getAnchoredTailStartIndex(tui: PatchableTuiInstance): number | undefined {
+    const footerIndex = getFooterChildIndex(tui);
+    if (footerIndex === undefined) return undefined;
+
+    const focusedIndex = getFocusedTopLevelChildIndex(tui, footerIndex);
+    if (focusedIndex === undefined) return footerIndex;
+
+    // Pi renders the working loader and the extension/widget spacer as the two
+    // top-level siblings immediately before the editor container. Keep them in
+    // the anchored bottom chrome so shrink padding appears above the loader
+    // instead of adding rows between loader/widgets and editor.
+    if (focusedIndex >= BOTTOM_CHROME_PRECEDING_SIBLINGS) {
+        return focusedIndex - BOTTOM_CHROME_PRECEDING_SIBLINGS;
+    }
+    return focusedIndex;
+}
+
 function getAnchoredTailLength(
     tui: PatchableTuiInstance,
     width: number,
     lineCount: number,
+    removedBottomChromeRows: number,
 ): number {
     const footerIndex = getFooterChildIndex(tui);
-    if (footerIndex === undefined) return 1;
+    const tailStartIndex = getAnchoredTailStartIndex(tui);
+    if (footerIndex === undefined || tailStartIndex === undefined) return 1;
 
-    const focusedIndex = getFocusedTopLevelChildIndex(tui, footerIndex);
-    let tailStartIndex = footerIndex;
-    if (focusedIndex !== undefined) {
-        tailStartIndex = focusedIndex;
+    const tailLength = Math.max(
+        1,
+        countRenderedChildLines(tui.children, tailStartIndex, footerIndex, width) -
+            removedBottomChromeRows,
+    );
+    return Math.min(tailLength, lineCount);
+}
+
+function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
+    const ranges: ChildLineRange[] = [];
+    let start = 0;
+
+    for (let index = 0; index < tui.children.length; index += 1) {
+        const child = tui.children[index];
+        if (child === undefined) continue;
+
+        const lineCount = child.render(width).length;
+        ranges.push({ index, start, end: start + lineCount });
+        start += lineCount;
     }
 
-    const tailLength = countRenderedChildLines(tui.children, tailStartIndex, footerIndex, width);
-    if (tailLength <= 0) return 1;
-    return Math.min(tailLength, lineCount);
+    return ranges;
+}
+
+function getRangeForChild(
+    ranges: readonly ChildLineRange[],
+    childIndex: number,
+): ChildLineRange | undefined {
+    return ranges.find((range) => range.index === childIndex);
+}
+
+function hasVisibleLine(lines: readonly string[], start: number, end: number): boolean {
+    for (let index = start; index < end; index += 1) {
+        const line = lines[index];
+        if (line !== undefined && line.trim().length > 0) return true;
+    }
+    return false;
+}
+
+function compactBottomChromeSpacing(
+    tui: PatchableTuiInstance,
+    lines: readonly string[],
+    width: number,
+): BottomChromeSpacingResult {
+    const footerIndex = getFooterChildIndex(tui);
+    if (footerIndex === undefined) return { lines: [...lines], removedRows: 0 };
+
+    const focusedIndex = getFocusedTopLevelChildIndex(tui, footerIndex);
+    if (focusedIndex === undefined) return { lines: [...lines], removedRows: 0 };
+
+    const ranges = getChildLineRanges(tui, width);
+    const focusedRange = getRangeForChild(ranges, focusedIndex);
+    const tailStartIndex = getAnchoredTailStartIndex(tui);
+    if (focusedRange === undefined || tailStartIndex === undefined) {
+        return { lines: [...lines], removedRows: 0 };
+    }
+
+    const gapIndex = focusedRange.start - 1;
+    const gapLine = lines[gapIndex];
+    if (gapIndex < 0 || gapLine === undefined || gapLine.trim().length > 0) {
+        return { lines: [...lines], removedRows: 0 };
+    }
+
+    const tailStartRange = getRangeForChild(ranges, tailStartIndex);
+    if (tailStartRange === undefined) return { lines: [...lines], removedRows: 0 };
+    if (!hasVisibleLine(lines, tailStartRange.start, gapIndex)) {
+        return { lines: [...lines], removedRows: 0 };
+    }
+
+    return {
+        lines: [...lines.slice(0, gapIndex), ...lines.slice(gapIndex + 1)],
+        removedRows: 1,
+    };
 }
 
 function appendPreviousRowsUntil(
@@ -172,8 +267,9 @@ function padAtVisibleBoundary(
     lines: readonly string[],
     targetLength: number,
     width: number,
+    removedBottomChromeRows: number,
 ): string[] {
-    const tailLength = getAnchoredTailLength(tui, width, lines.length);
+    const tailLength = getAnchoredTailLength(tui, width, lines.length, removedBottomChromeRows);
     const maxInsertIndex = Math.max(0, targetLength - tailLength);
     const insertIndex = Math.min(getPaddingInsertIndex(tui, targetLength), maxInsertIndex);
     const tailStart = Math.max(0, lines.length - tailLength);
@@ -187,8 +283,8 @@ function padAtVisibleBoundary(
 }
 
 /**
- * Install an idempotent TUI render patch that pads shrinking transcripts above
- * the focused bottom chrome so the editor remains attached to the footer.
+ * Install an idempotent TUI render patch that compacts Pi's bottom chrome and
+ * pads shrinking transcripts above it so status/widgets, editor, and footer stay attached.
  */
 export function installFooterShrinkPaddingPatch(): void {
     const prototype = TUI.prototype as unknown as PatchableTuiPrototype;
@@ -201,9 +297,15 @@ export function installFooterShrinkPaddingPatch(): void {
         this: PatchableTuiInstance,
         width: number,
     ): string[] {
-        const lines = originalRender.call(this, width);
-        if (!shouldPadShrink(this, lines)) return lines;
-        return padAtVisibleBoundary(this, lines, this.previousLines.length, width);
+        const lines = compactBottomChromeSpacing(this, originalRender.call(this, width), width);
+        if (!shouldPadShrink(this, lines.lines)) return lines.lines;
+        return padAtVisibleBoundary(
+            this,
+            lines.lines,
+            this.previousLines.length,
+            width,
+            lines.removedRows,
+        );
     };
 
     prototype[FOOTER_SHRINK_PADDING_PATCH_MARKER] = true;

@@ -81,6 +81,20 @@ class VariableLines implements Component {
     invalidate(): void {}
 }
 
+class FixedLines implements Component {
+    private readonly lines: string[];
+
+    constructor(lines: string[]) {
+        this.lines = lines;
+    }
+
+    render(): string[] {
+        return this.lines;
+    }
+
+    invalidate(): void {}
+}
+
 class TestEditor implements Component {
     focused = false;
 
@@ -191,6 +205,104 @@ void test("footer shrink padding keeps focused editor attached to footer", () =>
         .map(stripTestAnsi);
 
     assert.equal(tuiInternals.previousLines.length, 28);
+    assert.deepEqual(visibleLines.slice(-4), [
+        "EDITOR TOP",
+        "EDITOR BODY",
+        "EDITOR BOTTOM",
+        "FOOTER",
+    ]);
+    assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
+});
+
+void test("footer shrink padding keeps working loader attached to editor", () => {
+    installFooterShrinkPaddingPatch();
+
+    const terminal = new FakeTerminal();
+    const lines = new VariableLines(24);
+    const statusContainer = new FixedLines(["", "⠴ Working... (40s)"]);
+    const aboveWidgetContainer = new FixedLines([""]);
+    const editorContainer = new Container();
+    const editor = new TestEditor();
+    const belowWidgetContainer = new Container();
+    const tui = new TUI(terminal);
+    tui.setClearOnShrink(true);
+    const tuiInternals = tui as unknown as TuiInternals;
+
+    editorContainer.addChild(editor);
+    tui.addChild(lines);
+    tui.addChild(statusContainer);
+    tui.addChild(aboveWidgetContainer);
+    tui.addChild(editorContainer);
+    tui.addChild(belowWidgetContainer);
+    tui.addChild(markFooterComponent(new TestFooter(), "live"));
+    tui.setFocus(editor);
+
+    tuiInternals.doRender();
+    terminal.writes = [];
+
+    lines.lineCount = 21;
+    tuiInternals.doRender();
+
+    const output = terminal.writes.join("");
+    const visibleLines = tuiInternals.previousLines
+        .slice(tuiInternals.previousViewportTop)
+        .map(stripTestAnsi);
+    const workingIndex = visibleLines.indexOf("⠴ Working... (40s)");
+    const editorTopIndex = visibleLines.indexOf("EDITOR TOP");
+
+    assert.equal(tuiInternals.previousLines.length, 30);
+    assert.notEqual(workingIndex, -1);
+    assert.notEqual(editorTopIndex, -1);
+    assert.equal(editorTopIndex - workingIndex, 1);
+    assert.deepEqual(visibleLines.slice(-4), [
+        "EDITOR TOP",
+        "EDITOR BODY",
+        "EDITOR BOTTOM",
+        "FOOTER",
+    ]);
+    assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
+});
+
+void test("footer shrink padding keeps worked-for widget attached to editor", () => {
+    installFooterShrinkPaddingPatch();
+
+    const terminal = new FakeTerminal();
+    const lines = new VariableLines(24);
+    const statusContainer = new FixedLines([]);
+    const aboveWidgetContainer = new FixedLines(["", "Worked for 4m 34s. [57 tok/s]"]);
+    const editorContainer = new Container();
+    const editor = new TestEditor();
+    const belowWidgetContainer = new Container();
+    const tui = new TUI(terminal);
+    tui.setClearOnShrink(true);
+    const tuiInternals = tui as unknown as TuiInternals;
+
+    editorContainer.addChild(editor);
+    tui.addChild(lines);
+    tui.addChild(statusContainer);
+    tui.addChild(aboveWidgetContainer);
+    tui.addChild(editorContainer);
+    tui.addChild(belowWidgetContainer);
+    tui.addChild(markFooterComponent(new TestFooter(), "live"));
+    tui.setFocus(editor);
+
+    tuiInternals.doRender();
+    terminal.writes = [];
+
+    lines.lineCount = 21;
+    tuiInternals.doRender();
+
+    const output = terminal.writes.join("");
+    const visibleLines = tuiInternals.previousLines
+        .slice(tuiInternals.previousViewportTop)
+        .map(stripTestAnsi);
+    const workedIndex = visibleLines.indexOf("Worked for 4m 34s. [57 tok/s]");
+    const editorTopIndex = visibleLines.indexOf("EDITOR TOP");
+
+    assert.equal(tuiInternals.previousLines.length, 30);
+    assert.notEqual(workedIndex, -1);
+    assert.notEqual(editorTopIndex, -1);
+    assert.equal(editorTopIndex - workedIndex, 1);
     assert.deepEqual(visibleLines.slice(-4), [
         "EDITOR TOP",
         "EDITOR BODY",
