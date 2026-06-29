@@ -54,6 +54,7 @@
   "pi": {
     "extensions": [
       "./packages/pi-model-filter/src/index.ts",
+      "./packages/pi-ui-tweaks/src/index.ts",
       "./packages/pi-model-alias/src/index.ts",
       "./packages/pi-tree/src/index.ts",
       "./packages/pi-footer/src/index.ts",
