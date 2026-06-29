@@ -43,7 +43,7 @@ void test("createSkillMentionProvider suggests skills after the configured trigg
     const provider = createSkillMentionProvider(
         fakePi([skillCommand("python", "Python workflows"), skillCommand("review", "Code review")]),
         fallbackProvider([]),
-        { trigger: "$", hideSlashSkills: true },
+        { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
     );
 
     const suggestions = await provider.getSuggestions(["Use $py"], 0, "Use $py".length, {
@@ -68,7 +68,7 @@ void test("createSkillMentionProvider falls back outside mention context and can
             { value: "skill:python", label: "/skill python" },
             { value: "help", label: "/help" },
         ]),
-        { trigger: "$", hideSlashSkills: true },
+        { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
     );
 
     const suggestions = await provider.getSuggestions(["/"], 0, 1, {
@@ -82,7 +82,7 @@ void test("createSkillMentionProvider returns null when hidden slash skills are 
     const provider = createSkillMentionProvider(
         fakePi([skillCommand("python")]),
         fallbackProvider([{ value: "skill:python", label: "/skill python" }]),
-        { trigger: "$", hideSlashSkills: true },
+        { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
     );
 
     const suggestions = await provider.getSuggestions(["/"], 0, 1, {
@@ -96,6 +96,7 @@ void test("applyCompletion replaces the mention prefix and inserts a trailing sp
     const provider = createSkillMentionProvider(fakePi([]), fallbackProvider([]), {
         trigger: "$",
         hideSlashSkills: true,
+        completionSuffix: " ",
     });
 
     const result = provider.applyCompletion(
@@ -110,5 +111,27 @@ void test("applyCompletion replaces the mention prefix and inserts a trailing sp
         lines: ["Use $python "],
         cursorLine: 0,
         cursorCol: "Use $python ".length,
+    });
+});
+
+void test("applyCompletion uses the configured completion suffix", () => {
+    const provider = createSkillMentionProvider(fakePi([]), fallbackProvider([]), {
+        trigger: "$",
+        hideSlashSkills: true,
+        completionSuffix: "\n",
+    });
+
+    const result = provider.applyCompletion(
+        ["Use $py"],
+        0,
+        "Use $py".length,
+        { value: "$python", label: "$python" },
+        "$py",
+    );
+
+    assert.deepEqual(result, {
+        lines: ["Use $python", ""],
+        cursorLine: 1,
+        cursorCol: 0,
     });
 });

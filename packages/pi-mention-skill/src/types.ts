@@ -25,4 +25,5 @@ export type SkillExpansion = {
 export type MentionSkillSettings = {
     trigger: string;
     hideSlashSkills: boolean;
+    completionSuffix: string;
 };

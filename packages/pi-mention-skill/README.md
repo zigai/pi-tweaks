@@ -44,6 +44,14 @@ Skills are hidden from Pi's default slash autocomplete menu by default. To keep 
 }
 ```
 
+Completions insert a trailing space by default. To change the text inserted after a selected mention, set `mentionSkillCompletionSuffix`:
+
+```json
+{
+  "mentionSkillCompletionSuffix": ""
+}
+```
+
 ## License
 
 MIT

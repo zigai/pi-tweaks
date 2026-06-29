@@ -44,6 +44,7 @@ void test("configuredMentionSkillSettings uses defaults when settings are absent
         assert.deepEqual(configuredMentionSkillSettings(context(cwd, true)), {
             trigger: "$",
             hideSlashSkills: true,
+            completionSuffix: " ",
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -56,18 +57,22 @@ void test("configuredMentionSkillSettings applies global settings and trusted pr
         await writeJson(path.join(agentDir, "settings.json"), {
             mentionSkillTrigger: "#",
             mentionSkillHideSlashSkills: false,
+            mentionSkillCompletionSuffix: "\n",
         });
         await writeJson(path.join(cwd, ".pi", "settings.json"), {
             mentionSkillTrigger: "%",
+            mentionSkillCompletionSuffix: "",
         });
 
         assert.deepEqual(configuredMentionSkillSettings(context(cwd, true)), {
             trigger: "%",
             hideSlashSkills: false,
+            completionSuffix: "",
         });
         assert.deepEqual(configuredMentionSkillSettings(context(cwd, false)), {
             trigger: "#",
             hideSlashSkills: false,
+            completionSuffix: "\n",
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -80,11 +85,13 @@ void test("configuredMentionSkillSettings ignores invalid custom keys", async ()
         await writeJson(path.join(agentDir, "settings.json"), {
             mentionSkillTrigger: "/",
             mentionSkillHideSlashSkills: "no",
+            mentionSkillCompletionSuffix: false,
         });
 
         assert.deepEqual(configuredMentionSkillSettings(context(cwd, true)), {
             trigger: "$",
             hideSlashSkills: true,
+            completionSuffix: " ",
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });

@@ -9,11 +9,14 @@ import { Value } from "typebox/value";
 import type { MentionSkillSettings } from "./types.ts";
 
 export const DEFAULT_MENTION_TRIGGER = "$";
+export const DEFAULT_COMPLETION_SUFFIX = " ";
 const TRIGGER_SETTINGS_KEY = "mentionSkillTrigger";
 const HIDE_SLASH_SKILLS_SETTINGS_KEY = "mentionSkillHideSlashSkills";
+const COMPLETION_SUFFIX_SETTINGS_KEY = "mentionSkillCompletionSuffix";
 
 const MentionTriggerSchema = Type.String({ minLength: 1, maxLength: 1, pattern: "^[^/\\s]$" });
 const HideSlashSkillsSchema = Type.Boolean();
+const CompletionSuffixSchema = Type.String();
 
 type ProjectTrustContext = ExtensionContext & {
     isProjectTrusted?: () => boolean;
@@ -55,12 +58,21 @@ function applyMentionSkillSettings(
     if (hideSlashSkills !== undefined) {
         target.hideSlashSkills = hideSlashSkills;
     }
+
+    const completionSuffix = parseOptionalString(
+        CompletionSuffixSchema,
+        settings[COMPLETION_SUFFIX_SETTINGS_KEY],
+    );
+    if (completionSuffix !== undefined) {
+        target.completionSuffix = completionSuffix;
+    }
 }
 
 export function configuredMentionSkillSettings(ctx: ExtensionContext): MentionSkillSettings {
     const loaded: MentionSkillSettings = {
         trigger: DEFAULT_MENTION_TRIGGER,
         hideSlashSkills: true,
+        completionSuffix: DEFAULT_COMPLETION_SUFFIX,
     };
 
     const manager = SettingsManager.create(ctx.cwd, getAgentDir(), {
