@@ -13,6 +13,45 @@ const MAX_SUGGESTIONS = 20;
 
 type ProjectLoader = () => Promise<ProjectDirectory[]>;
 
+function completionSuffixFor(afterCursor: string, completionSuffix: string): string {
+    if (completionSuffix.length === 0) {
+        return "";
+    }
+    if (afterCursor.length === 0) {
+        return completionSuffix;
+    }
+    if (/^\s/.test(completionSuffix) && /^\s/.test(afterCursor)) {
+        return "";
+    }
+    return completionSuffix;
+}
+
+function lastLineLength(lines: string[]): number {
+    const lastLine = lines[lines.length - 1];
+    if (lastLine === undefined) {
+        return 0;
+    }
+    return lastLine.length;
+}
+
+function applyMentionCompletion(
+    lines: string[],
+    cursorLine: number,
+    beforePrefix: string,
+    value: string,
+    suffix: string,
+    afterCursor: string,
+): { lines: string[]; cursorLine: number; cursorCol: number } {
+    const textBeforeCursor = `${beforePrefix}${value}${suffix}`;
+    const replacementLines = `${textBeforeCursor}${afterCursor}`.split("\n");
+    const cursorLines = textBeforeCursor.split("\n");
+    return {
+        lines: [...lines.slice(0, cursorLine), ...replacementLines, ...lines.slice(cursorLine + 1)],
+        cursorLine: cursorLine + cursorLines.length - 1,
+        cursorCol: lastLineLength(cursorLines),
+    };
+}
+
 function projectToItem(
     project: ProjectDirectory,
     trigger = DEFAULT_MENTION_TRIGGER,
@@ -44,7 +83,7 @@ export function createProjectMentionProvider(
     settings: MentionProjectSettings,
     loadProjects: ProjectLoader,
 ): AutocompleteProvider {
-    const { trigger } = settings;
+    const { trigger, completionSuffix } = settings;
 
     const provider = {
         triggerCharacters: [trigger],
@@ -88,18 +127,15 @@ export function createProjectMentionProvider(
             const currentLine = lines[cursorLine] ?? "";
             const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
             const afterCursor = currentLine.slice(cursorCol);
-            const needsSpace = afterCursor.length === 0 || !/^\s/.test(afterCursor);
-            let suffix = "";
-            if (needsSpace) {
-                suffix = " ";
-            }
-            const newLines = [...lines];
-            newLines[cursorLine] = `${beforePrefix}${item.value}${suffix}${afterCursor}`;
-            return {
-                lines: newLines,
+            const suffix = completionSuffixFor(afterCursor, completionSuffix);
+            return applyMentionCompletion(
+                lines,
                 cursorLine,
-                cursorCol: beforePrefix.length + item.value.length + suffix.length,
-            };
+                beforePrefix,
+                item.value,
+                suffix,
+                afterCursor,
+            );
         },
 
         shouldTriggerFileCompletion(lines: string[], cursorLine: number, cursorCol: number) {

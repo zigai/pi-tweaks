@@ -33,9 +33,12 @@ Optional settings:
 {
   "mentionProjectTrigger": "#",
   "mentionProjectGitReposOnly": true,
-  "mentionProjectIncludeDotFolders": false
+  "mentionProjectIncludeDotFolders": false,
+  "mentionProjectCompletionSuffix": " "
 }
 ```
+
+Completions insert a trailing space by default. Set `mentionProjectCompletionSuffix` to another string, or `""` to insert nothing after a selected mention.
 
 ## License
 

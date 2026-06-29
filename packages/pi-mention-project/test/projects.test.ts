@@ -16,6 +16,7 @@ function settings(
         roots,
         gitReposOnly: true,
         includeDotFolders: false,
+        completionSuffix: " ",
         ...overrides,
     };
 }

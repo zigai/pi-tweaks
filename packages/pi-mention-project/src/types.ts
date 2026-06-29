@@ -21,4 +21,5 @@ export type MentionProjectSettings = {
     roots: string[];
     gitReposOnly: boolean;
     includeDotFolders: boolean;
+    completionSuffix: string;
 };

@@ -20,6 +20,7 @@ function settings(roots: string[]): MentionProjectSettings {
         roots,
         gitReposOnly: true,
         includeDotFolders: false,
+        completionSuffix: " ",
     };
 }
 
@@ -113,5 +114,27 @@ void test("applyCompletion replaces the mention prefix and inserts a trailing sp
         lines: ["Use #pi-tweaks "],
         cursorLine: 0,
         cursorCol: "Use #pi-tweaks ".length,
+    });
+});
+
+void test("applyCompletion uses the configured completion suffix", () => {
+    const provider = createProjectMentionProvider(
+        fallbackProvider([]),
+        { ...settings([]), completionSuffix: "\n" },
+        async () => [],
+    );
+
+    const result = provider.applyCompletion(
+        ["Use #pi"],
+        0,
+        "Use #pi".length,
+        { value: "#pi-tweaks", label: "#pi-tweaks" },
+        "#pi",
+    );
+
+    assert.deepEqual(result, {
+        lines: ["Use #pi-tweaks", ""],
+        cursorLine: 1,
+        cursorCol: 0,
     });
 });

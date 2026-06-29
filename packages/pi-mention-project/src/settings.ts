@@ -9,6 +9,7 @@ import { Value } from "typebox/value";
 import type { MentionProjectSettings } from "./types.ts";
 
 export const DEFAULT_MENTION_TRIGGER = "#";
+export const DEFAULT_COMPLETION_SUFFIX = " ";
 export const INCLUDE_NON_GIT_FLAG = "mention-project-include-non-git";
 export const INCLUDE_DOT_FOLDERS_FLAG = "mention-project-include-dot-folders";
 
@@ -16,10 +17,12 @@ const TRIGGER_SETTINGS_KEY = "mentionProjectTrigger";
 const ROOTS_SETTINGS_KEY = "mentionProjectRoots";
 const GIT_REPOS_ONLY_SETTINGS_KEY = "mentionProjectGitReposOnly";
 const INCLUDE_DOT_FOLDERS_SETTINGS_KEY = "mentionProjectIncludeDotFolders";
+const COMPLETION_SUFFIX_SETTINGS_KEY = "mentionProjectCompletionSuffix";
 
 const MentionTriggerSchema = Type.String({ minLength: 1, maxLength: 1, pattern: "^[^/\\s]$" });
 const ProjectRootsSchema = Type.Array(Type.String({ minLength: 1 }));
 const BooleanSchema = Type.Boolean();
+const CompletionSuffixSchema = Type.String();
 
 type ProjectTrustContext = ExtensionContext & {
     isProjectTrusted?: () => boolean;
@@ -91,6 +94,14 @@ function applyMentionProjectSettings(
     if (includeDotFolders !== undefined) {
         target.includeDotFolders = includeDotFolders;
     }
+
+    const completionSuffix = parseOptionalString(
+        CompletionSuffixSchema,
+        settings[COMPLETION_SUFFIX_SETTINGS_KEY],
+    );
+    if (completionSuffix !== undefined) {
+        target.completionSuffix = completionSuffix;
+    }
 }
 
 export function configuredMentionProjectSettings(ctx: ExtensionContext): MentionProjectSettings {
@@ -99,6 +110,7 @@ export function configuredMentionProjectSettings(ctx: ExtensionContext): Mention
         roots: [],
         gitReposOnly: true,
         includeDotFolders: false,
+        completionSuffix: DEFAULT_COMPLETION_SUFFIX,
     };
 
     const manager = SettingsManager.create(ctx.cwd, getAgentDir(), {

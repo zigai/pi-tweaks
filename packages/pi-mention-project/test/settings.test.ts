@@ -47,6 +47,7 @@ void test("configuredMentionProjectSettings uses defaults when settings are abse
             roots: [],
             gitReposOnly: true,
             includeDotFolders: false,
+            completionSuffix: " ",
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -61,12 +62,14 @@ void test("configuredMentionProjectSettings applies global settings and trusted 
             mentionProjectRoots: ["~/Projects"],
             mentionProjectGitReposOnly: false,
             mentionProjectIncludeDotFolders: true,
+            mentionProjectCompletionSuffix: "\n",
         });
         await writeJson(path.join(cwd, ".pi", "settings.json"), {
             mentionProjectTrigger: "%",
             mentionProjectRoots: ["./local-projects"],
             mentionProjectGitReposOnly: true,
             mentionProjectIncludeDotFolders: false,
+            mentionProjectCompletionSuffix: "",
         });
 
         assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
@@ -74,12 +77,14 @@ void test("configuredMentionProjectSettings applies global settings and trusted 
             roots: ["./local-projects"],
             gitReposOnly: true,
             includeDotFolders: false,
+            completionSuffix: "",
         });
         assert.deepEqual(configuredMentionProjectSettings(context(cwd, false)), {
             trigger: "@",
             roots: ["~/Projects"],
             gitReposOnly: false,
             includeDotFolders: true,
+            completionSuffix: "\n",
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -101,6 +106,7 @@ void test("configuredMentionProjectSettings allows trusted project roots to clea
             roots: [],
             gitReposOnly: true,
             includeDotFolders: false,
+            completionSuffix: " ",
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -110,10 +116,22 @@ void test("configuredMentionProjectSettings allows trusted project roots to clea
 void test("applyMentionProjectCliFlags can relax project filters for one run", () => {
     assert.deepEqual(
         applyMentionProjectCliFlags(
-            { trigger: "#", roots: ["~/Projects"], gitReposOnly: true, includeDotFolders: false },
+            {
+                trigger: "#",
+                roots: ["~/Projects"],
+                gitReposOnly: true,
+                includeDotFolders: false,
+                completionSuffix: " ",
+            },
             { includeNonGit: true, includeDotFolders: true },
         ),
-        { trigger: "#", roots: ["~/Projects"], gitReposOnly: false, includeDotFolders: true },
+        {
+            trigger: "#",
+            roots: ["~/Projects"],
+            gitReposOnly: false,
+            includeDotFolders: true,
+            completionSuffix: " ",
+        },
     );
 });
 
@@ -125,6 +143,7 @@ void test("configuredMentionProjectSettings ignores invalid custom keys", async 
             mentionProjectRoots: [""],
             mentionProjectGitReposOnly: "no",
             mentionProjectIncludeDotFolders: "yes",
+            mentionProjectCompletionSuffix: false,
         });
 
         assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
@@ -132,6 +151,7 @@ void test("configuredMentionProjectSettings ignores invalid custom keys", async 
             roots: [],
             gitReposOnly: true,
             includeDotFolders: false,
+            completionSuffix: " ",
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
