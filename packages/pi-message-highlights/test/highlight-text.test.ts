@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { highlightMessageLine, type HighlightStyles } from "../src/highlight-text.ts";
 
@@ -45,7 +45,7 @@ function stripAnsi(text: string): string {
     return output.join("").replace(/<url>|<path>/g, "");
 }
 
-void test("highlights URLs and file paths without changing visible text", () => {
+test("highlights URLs and file paths without changing visible text", () => {
     const line = "Open https://example.com/docs and packages/pi-footer/src/index.ts.";
     const highlighted = highlightMessageLine(line, styles);
 
@@ -54,7 +54,7 @@ void test("highlights URLs and file paths without changing visible text", () => 
     assert.equal(highlighted.includes(`<path>packages/pi-footer/src/index.ts${ESC}[39m.`), true);
 });
 
-void test("highlights common bare filenames", () => {
+test("highlights common bare filenames", () => {
     const line = "Edit README.md and package.json:12 next.";
     const highlighted = highlightMessageLine(line, styles);
 
@@ -63,14 +63,27 @@ void test("highlights common bare filenames", () => {
     assert.equal(highlighted.includes(`<path>package.json:12${ESC}[39m`), true);
 });
 
-void test("does not highlight path-like text inside a URL twice", () => {
+test("does not highlight slash-separated prose as a file path", () => {
+    const lines = [
+        "Not before — I had only covered the configured/current extensions",
+        "alpha/beta/gamma",
+    ];
+
+    for (const line of lines) {
+        const highlighted = highlightMessageLine(line, styles);
+
+        assert.equal(highlighted, line);
+    }
+});
+
+test("does not highlight path-like text inside a URL twice", () => {
     const highlighted = highlightMessageLine("See https://example.com/src/index.ts", styles);
 
     assert.equal((highlighted.match(/<url>/g) ?? []).length, 1);
     assert.equal((highlighted.match(/<path>/g) ?? []).length, 0);
 });
 
-void test("restores the previous foreground after a highlighted path", () => {
+test("restores the previous foreground after a highlighted path", () => {
     const dim = `${ESC}[38;5;8m`;
     const line = `${dim}Read src/config.ts next${ESC}[39m`;
     const highlighted = highlightMessageLine(line, styles);
@@ -79,7 +92,7 @@ void test("restores the previous foreground after a highlighted path", () => {
     assert.equal(highlighted.includes(`<path>src/config.ts${ESC}[38;5;8m next`), true);
 });
 
-void test("ignores URLs inside OSC control sequences", () => {
+test("ignores URLs inside OSC control sequences", () => {
     const line = `${ESC}]8;;https://example.com${BEL}link${ESC}]8;;${BEL} and ./local/file.ts`;
     const highlighted = highlightMessageLine(line, styles);
 

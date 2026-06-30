@@ -53,17 +53,21 @@ const FILE_EXTENSION_PATTERN = [
     "ya?ml",
     "zsh",
 ].join("|");
-const DIRECTORY_PATH_PATTERN = String.raw`(?:~|\.{1,2}|/|[A-Za-z0-9_.-]+/)[A-Za-z0-9._~+@%/-]*(?:[A-Za-z0-9_~+@%-])`;
-const BARE_FILENAME_PATTERN = String.raw`(?:[A-Za-z0-9_.-]+\.(?:${FILE_EXTENSION_PATTERN})|Dockerfile|Justfile|Makefile|\.(?:env|gitignore|npmrc|prettierignore)(?:\.[A-Za-z0-9_-]+)?)`;
+const EXPLICIT_PATH_PREFIX_PATTERN = String.raw`(?:~/|\.{1,2}/|/)`;
+const PATH_SEGMENT_PATTERN = String.raw`[A-Za-z0-9._~+@%-]+`;
+const PATH_FILENAME_PATTERN = String.raw`${PATH_SEGMENT_PATTERN}\.(?:${FILE_EXTENSION_PATTERN})`;
+const PREFIXED_PATH_PATTERN = String.raw`${EXPLICIT_PATH_PREFIX_PATTERN}${PATH_SEGMENT_PATTERN}(?:/${PATH_SEGMENT_PATTERN})*`;
+const RELATIVE_FILE_PATH_PATTERN = String.raw`${PATH_SEGMENT_PATTERN}(?:/${PATH_SEGMENT_PATTERN})*/${PATH_FILENAME_PATTERN}`;
+const BARE_FILENAME_PATTERN = String.raw`(?:${PATH_FILENAME_PATTERN}|Dockerfile|Justfile|Makefile|\.(?:env|gitignore|npmrc|prettierignore)(?:\.[A-Za-z0-9_-]+)?)`;
 const LINE_SUFFIX_PATTERN = String.raw`(?::\d+(?:-\d+)?(?::\d+)?)?`;
 const FILEPATH_REGEX = new RegExp(
-    String.raw`(^|[\s([{<"'\x60])((?:${DIRECTORY_PATH_PATTERN}|${BARE_FILENAME_PATTERN})${LINE_SUFFIX_PATTERN})(?=$|[\s)\]}>"'\x60,.;:!?])`,
+    String.raw`(^|[\s([{<"'\x60])((?:${PREFIXED_PATH_PATTERN}|${RELATIVE_FILE_PATH_PATTERN}|${BARE_FILENAME_PATTERN})${LINE_SUFFIX_PATTERN})(?=$|[\s)\]}>"'\x60,.;:!?])`,
     "g",
 );
 const TRAILING_URL_PUNCTUATION = /[.,;:!?]+$/;
 const TRAILING_PATH_PUNCTUATION = /[.,;!?]+$/;
 
-export const URL_BLUE_STYLE = `${ESC}[38;5;75m`;
+export const URL_BLUE_STYLE = `${ESC}[38;5;117m`;
 
 export type HighlightStyles = {
     readonly url: string;
