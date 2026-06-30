@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-mode",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Pi package that adds prompt modes for model and thinking-level switching.",
   "keywords": [
     "mode",

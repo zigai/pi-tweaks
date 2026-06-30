@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-run-timer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Pi package that shows live loader elapsed time, optional rotating working-bar messages, and post-run agent timing stats.",
   "keywords": [
     "loader",
