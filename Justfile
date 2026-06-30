@@ -5,7 +5,7 @@ lint:
     npm run lint
 
 test:
-    npm test --if-present
+    npm test
 
 release:
     npm run release

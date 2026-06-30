@@ -30,6 +30,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check": "npm run format:check && npm run lint && npm run typecheck",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "release": "release --root .",
     "release:dry-run": "release --dry --root ."
@@ -43,7 +44,8 @@
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0",
     "oxlint-tsgolint": "^0.23.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",
