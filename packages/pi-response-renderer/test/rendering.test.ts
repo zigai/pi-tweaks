@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import assistantRenderingExtension from "../src/index.ts";
@@ -89,7 +89,7 @@ const italicTheme: MarkdownTheme = {
     italic: (text: string) => `\x1b[3m${text}\x1b[23m`,
 };
 
-void test("preserves the separator before a long rendered Markdown heading", () => {
+test("preserves the separator before a long rendered Markdown heading", () => {
     const lines = renderPlainLines(
         [
             "The standards prefer modules that own one cohesive concept/seam.",
@@ -105,7 +105,7 @@ void test("preserves the separator before a long rendered Markdown heading", () 
     ]);
 });
 
-void test("still collapses blank lines between plain paragraph lines", () => {
+test("still collapses blank lines between plain paragraph lines", () => {
     const lines = renderPlainLines(
         ["First paragraph sentence.", "", "Second paragraph sentence."].join("\n"),
     );
@@ -113,7 +113,7 @@ void test("still collapses blank lines between plain paragraph lines", () => {
     assert.deepEqual(lines, ["First paragraph sentence.", "Second paragraph sentence."]);
 });
 
-void test("preserves the blank line after a rendered Markdown table", () => {
+test("preserves the blank line after a rendered Markdown table", () => {
     const lines = renderVisibleLines(
         [
             "| Layer | Uniform? |",
@@ -132,7 +132,7 @@ void test("preserves the blank line after a rendered Markdown table", () => {
     assert.equal(lines[tableBottomIndex + 2], "So you're right on the architecture.");
 });
 
-void test("preserves the blank line before a rendered Markdown table", () => {
+test("preserves the blank line before a rendered Markdown table", () => {
     const lines = renderVisibleLines(
         ["So the split is:", "", "| A | B |", "|---|---|", "| 1 | 2 |"].join("\n"),
         markdownTheme,
@@ -143,7 +143,7 @@ void test("preserves the blank line before a rendered Markdown table", () => {
     assert.ok(lines[2].startsWith("┌"), "expected a rendered table top border");
 });
 
-void test("preserves blanks around a styled level-2 heading without # prefix", () => {
+test("preserves blanks around a styled level-2 heading without # prefix", () => {
     assertHeadingKeepsParagraphGaps(
         "## Release readiness?",
         "Release readiness?",
@@ -151,11 +151,11 @@ void test("preserves blanks around a styled level-2 heading without # prefix", (
     );
 });
 
-void test("detects color-only heading styles", () => {
+test("detects color-only heading styles", () => {
     assertHeadingKeepsParagraphGaps("## Rollout status?", "Rollout status?", colorHeadingTheme);
 });
 
-void test("preserves blanks around an inline-code level-2 heading without # prefix", () => {
+test("preserves blanks around an inline-code level-2 heading without # prefix", () => {
     assertHeadingKeepsParagraphGaps(
         "## `render()` behavior?",
         "render() behavior?",
@@ -163,7 +163,7 @@ void test("preserves blanks around an inline-code level-2 heading without # pref
     );
 });
 
-void test("preserves blanks around a bold level-2 heading without # prefix", () => {
+test("preserves blanks around a bold level-2 heading without # prefix", () => {
     assertHeadingKeepsParagraphGaps(
         "## **API compatibility?**",
         "API compatibility?",
@@ -171,7 +171,7 @@ void test("preserves blanks around a bold level-2 heading without # prefix", () 
     );
 });
 
-void test("collapses blanks around a fully-bold standalone line (not a heading)", () => {
+test("collapses blanks around a fully-bold standalone line (not a heading)", () => {
     const lines = renderVisibleLines(
         ["Intro paragraph.", "", "**Bold Title?**", "", "Body paragraph."].join("\n"),
         inlineBoldTheme,
@@ -180,7 +180,7 @@ void test("collapses blanks around a fully-bold standalone line (not a heading)"
     assert.deepEqual(lines, ["Intro paragraph.", "Bold Title?", "Body paragraph."]);
 });
 
-void test("does not treat a standalone inline-code line as a heading", () => {
+test("does not treat a standalone inline-code line as a heading", () => {
     const lines = renderVisibleLines(
         [
             "I also saved these commands to:",
@@ -200,7 +200,7 @@ void test("does not treat a standalone inline-code line as a heading", () => {
     ]);
 });
 
-void test("does not treat a paragraph with inline bold as a heading", () => {
+test("does not treat a paragraph with inline bold as a heading", () => {
     const lines = renderVisibleLines(
         ["A paragraph with a **bold word** inside.", "", "Next paragraph."].join("\n"),
         inlineBoldTheme,
@@ -209,7 +209,7 @@ void test("does not treat a paragraph with inline bold as a heading", () => {
     assert.deepEqual(lines, ["A paragraph with a bold word inside.", "Next paragraph."]);
 });
 
-void test("does not treat a fully-italic line as a heading (thinking trace)", () => {
+test("does not treat a fully-italic line as a heading (thinking trace)", () => {
     const lines = renderVisibleLines(
         [
             "First plain paragraph.",

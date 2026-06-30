@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { resolveUiTweaksConfig } from "../src/settings.ts";
 
-void test("ui tweaks settings default to enabled tweaks", () => {
+test("ui tweaks settings default to enabled tweaks", () => {
     const loaded = resolveUiTweaksConfig([]);
 
     assert.equal(loaded.config.hideModelProviderHint, true);
@@ -11,7 +11,7 @@ void test("ui tweaks settings default to enabled tweaks", () => {
     assert.deepEqual(loaded.errors, []);
 });
 
-void test("ui tweaks settings merge sources in precedence order", () => {
+test("ui tweaks settings merge sources in precedence order", () => {
     const loaded = resolveUiTweaksConfig([
         {
             label: "global",
@@ -31,7 +31,7 @@ void test("ui tweaks settings merge sources in precedence order", () => {
     assert.equal(loaded.config.hideSlashCommandSourceTags, false);
 });
 
-void test("ui tweaks enabled false disables every tweak", () => {
+test("ui tweaks enabled false disables every tweak", () => {
     const loaded = resolveUiTweaksConfig([
         {
             label: "global",
@@ -43,7 +43,7 @@ void test("ui tweaks enabled false disables every tweak", () => {
     assert.equal(loaded.config.hideSlashCommandSourceTags, false);
 });
 
-void test("ui tweaks settings report invalid custom values", () => {
+test("ui tweaks settings report invalid custom values", () => {
     const loaded = resolveUiTweaksConfig([
         {
             label: "global",

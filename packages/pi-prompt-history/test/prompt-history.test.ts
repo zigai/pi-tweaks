@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { afterAll, test } from "vitest";
 
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
@@ -18,7 +18,7 @@ const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(path.join(tmpdir(), "pi-prompt-history-agent-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-test.after(async () => {
+afterAll(async () => {
     await rm(agentDir, { recursive: true, force: true });
     if (originalAgentDir === undefined) {
         delete process.env.PI_CODING_AGENT_DIR;
@@ -53,7 +53,7 @@ function jsonLine(entry: SessionEntry): string {
     return JSON.stringify(entry);
 }
 
-void test("collectUserPromptsFromEntries keeps only non-empty user text", () => {
+test("collectUserPromptsFromEntries keeps only non-empty user text", () => {
     const entries: SessionEntry[] = [
         userEntry("  first prompt  ", 10),
         assistantEntry("assistant response", 11),
@@ -74,7 +74,7 @@ void test("collectUserPromptsFromEntries keeps only non-empty user text", () => 
     ]);
 });
 
-void test("loadPromptHistoryForCwd reads recent jsonl files, skips malformed lines, and excludes current session", async () => {
+test("loadPromptHistoryForCwd reads recent jsonl files, skips malformed lines, and excludes current session", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-prompt-history-cwd-"));
     const resolvedCwd = path.resolve(cwd);
     const sessionDir = getSessionDirForCwd(resolvedCwd);
@@ -115,7 +115,7 @@ void test("loadPromptHistoryForCwd reads recent jsonl files, skips malformed lin
     }
 });
 
-void test("buildHistoryList sorts, deduplicates by timestamp and text, and caps history", () => {
+test("buildHistoryList sorts, deduplicates by timestamp and text, and caps history", () => {
     const current: PromptEntry[] = [
         { text: "duplicate", timestamp: 1 },
         { text: "latest", timestamp: 200 },
@@ -132,7 +132,7 @@ void test("buildHistoryList sorts, deduplicates by timestamp and text, and caps 
     assert.deepEqual(history.at(-1), { text: "latest", timestamp: 200 });
 });
 
-void test("historiesMatch compares text and timestamp in order", () => {
+test("historiesMatch compares text and timestamp in order", () => {
     const first: PromptEntry[] = [
         { text: "one", timestamp: 1 },
         { text: "two", timestamp: 2 },

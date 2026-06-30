@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { afterAll, beforeEach, test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { configuredMentionSkillSettings } from "../src/settings.ts";
@@ -11,11 +11,11 @@ const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mention-settings-agent-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
     await rm(path.join(agentDir, "settings.json"), { force: true });
 });
 
-test.after(async () => {
+afterAll(async () => {
     await rm(agentDir, { recursive: true, force: true });
     if (originalAgentDir === undefined) {
         delete process.env.PI_CODING_AGENT_DIR;
@@ -38,7 +38,7 @@ async function writeJson(filePath: string, value: Record<string, unknown>): Prom
     await writeFile(filePath, JSON.stringify(value), "utf8");
 }
 
-void test("configuredMentionSkillSettings uses defaults when settings are absent", async () => {
+test("configuredMentionSkillSettings uses defaults when settings are absent", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-settings-cwd-"));
     try {
         assert.deepEqual(configuredMentionSkillSettings(context(cwd, true)), {
@@ -51,7 +51,7 @@ void test("configuredMentionSkillSettings uses defaults when settings are absent
     }
 });
 
-void test("configuredMentionSkillSettings applies global settings and trusted project overrides", async () => {
+test("configuredMentionSkillSettings applies global settings and trusted project overrides", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-settings-cwd-"));
     try {
         await writeJson(path.join(agentDir, "settings.json"), {
@@ -79,7 +79,7 @@ void test("configuredMentionSkillSettings applies global settings and trusted pr
     }
 });
 
-void test("configuredMentionSkillSettings ignores invalid custom keys", async () => {
+test("configuredMentionSkillSettings ignores invalid custom keys", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-settings-cwd-"));
     try {
         await writeJson(path.join(agentDir, "settings.json"), {

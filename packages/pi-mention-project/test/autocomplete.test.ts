@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 
@@ -38,7 +38,7 @@ function fallbackProvider(items: AutocompleteItem[]): AutocompleteProvider {
     };
 }
 
-void test("createProjectMentionProvider suggests projects after the configured trigger", async () => {
+test("createProjectMentionProvider suggests projects after the configured trigger", async () => {
     const provider = createProjectMentionProvider(
         fallbackProvider([]),
         settings(["/tmp/projects"]),
@@ -60,7 +60,7 @@ void test("createProjectMentionProvider suggests projects after the configured t
     );
 });
 
-void test("createProjectMentionProvider falls back outside project mention context", async () => {
+test("createProjectMentionProvider falls back outside project mention context", async () => {
     const provider = createProjectMentionProvider(
         fallbackProvider([{ value: "help", label: "/help" }]),
         settings(["/tmp/projects"]),
@@ -74,7 +74,7 @@ void test("createProjectMentionProvider falls back outside project mention conte
     assert.deepEqual(suggestions, { prefix: "/", items: [{ value: "help", label: "/help" }] });
 });
 
-void test("createProjectMentionProvider quotes project names that need quoting", async () => {
+test("createProjectMentionProvider quotes project names that need quoting", async () => {
     const provider = createProjectMentionProvider(
         fallbackProvider([]),
         settings(["/tmp/projects"]),
@@ -95,7 +95,7 @@ void test("createProjectMentionProvider quotes project names that need quoting",
     );
 });
 
-void test("applyCompletion replaces the mention prefix and inserts a trailing space when needed", () => {
+test("applyCompletion replaces the mention prefix and inserts a trailing space when needed", () => {
     const provider = createProjectMentionProvider(
         fallbackProvider([]),
         settings([]),
@@ -117,7 +117,7 @@ void test("applyCompletion replaces the mention prefix and inserts a trailing sp
     });
 });
 
-void test("applyCompletion uses the configured completion suffix", () => {
+test("applyCompletion uses the configured completion suffix", () => {
     const provider = createProjectMentionProvider(
         fallbackProvider([]),
         { ...settings([]), completionSuffix: "\n" },

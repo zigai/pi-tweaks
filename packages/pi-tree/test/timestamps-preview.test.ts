@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vitest";
 
 import { calculatePreviewLayout, getPreviewText, padToWidth } from "../src/preview.ts";
 import { cycleMode, formatEntryTimestamp } from "../src/timestamps.ts";
@@ -15,47 +15,58 @@ function node(entry: TreeNode["entry"]): TreeNode {
     return { entry };
 }
 
-void test("cycleMode follows the configured timestamp mode order", () => {
+test("cycleMode follows the configured timestamp mode order", () => {
     assert.equal(cycleMode("off"), "relative");
     assert.equal(cycleMode("relative"), "absolute");
     assert.equal(cycleMode("absolute"), "off");
 });
 
-void test("formatEntryTimestamp handles relative time boundaries", (t) => {
+test("formatEntryTimestamp handles relative time boundaries", () => {
     const now = new Date("2024-06-01T12:00:00.000Z").getTime();
-    t.mock.method(Date, "now", () => now);
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
 
-    assert.equal(formatEntryTimestamp(new Date(now - 500).toISOString(), "relative"), "1s ago");
-    assert.equal(formatEntryTimestamp(new Date(now - 59_000).toISOString(), "relative"), "59s ago");
-    assert.equal(formatEntryTimestamp(new Date(now - 60_000).toISOString(), "relative"), "1m ago");
-    assert.equal(
-        formatEntryTimestamp(new Date(now - 60 * 60_000).toISOString(), "relative"),
-        "1h ago",
-    );
-    assert.equal(
-        formatEntryTimestamp(new Date(now - 24 * 60 * 60_000).toISOString(), "relative"),
-        "1d ago",
-    );
-    assert.equal(
-        formatEntryTimestamp(new Date(now - 7 * 24 * 60 * 60_000).toISOString(), "relative"),
-        "1w ago",
-    );
-    assert.equal(
-        formatEntryTimestamp(new Date(now - 40 * 24 * 60 * 60_000).toISOString(), "relative"),
-        "1mo ago",
-    );
-    assert.equal(
-        formatEntryTimestamp(new Date(now - 400 * 24 * 60 * 60_000).toISOString(), "relative"),
-        "1y ago",
-    );
+    try {
+        assert.equal(formatEntryTimestamp(new Date(now - 500).toISOString(), "relative"), "1s ago");
+        assert.equal(
+            formatEntryTimestamp(new Date(now - 59_000).toISOString(), "relative"),
+            "59s ago",
+        );
+        assert.equal(
+            formatEntryTimestamp(new Date(now - 60_000).toISOString(), "relative"),
+            "1m ago",
+        );
+        assert.equal(
+            formatEntryTimestamp(new Date(now - 60 * 60_000).toISOString(), "relative"),
+            "1h ago",
+        );
+        assert.equal(
+            formatEntryTimestamp(new Date(now - 24 * 60 * 60_000).toISOString(), "relative"),
+            "1d ago",
+        );
+        assert.equal(
+            formatEntryTimestamp(new Date(now - 7 * 24 * 60 * 60_000).toISOString(), "relative"),
+            "1w ago",
+        );
+        assert.equal(
+            formatEntryTimestamp(new Date(now - 40 * 24 * 60 * 60_000).toISOString(), "relative"),
+            "1mo ago",
+        );
+        assert.equal(
+            formatEntryTimestamp(new Date(now - 400 * 24 * 60 * 60_000).toISOString(), "relative"),
+            "1y ago",
+        );
+    } finally {
+        vi.useRealTimers();
+    }
 });
 
-void test("formatEntryTimestamp returns an empty string for missing or invalid timestamps", () => {
+test("formatEntryTimestamp returns an empty string for missing or invalid timestamps", () => {
     assert.equal(formatEntryTimestamp(undefined, "relative"), "");
     assert.equal(formatEntryTimestamp("not a date", "absolute"), "");
 });
 
-void test("getPreviewText extracts and normalizes message content", () => {
+test("getPreviewText extracts and normalizes message content", () => {
     assert.equal(
         getPreviewText(
             node({
@@ -85,7 +96,7 @@ void test("getPreviewText extracts and normalizes message content", () => {
     );
 });
 
-void test("getPreviewText uses meaningful fallbacks for non-text entries", () => {
+test("getPreviewText uses meaningful fallbacks for non-text entries", () => {
     assert.equal(
         getPreviewText(
             node({
@@ -126,12 +137,12 @@ void test("getPreviewText uses meaningful fallbacks for non-text entries", () =>
     );
 });
 
-void test("calculatePreviewLayout only enables preview when both panes fit", () => {
+test("calculatePreviewLayout only enables preview when both panes fit", () => {
     assert.equal(calculatePreviewLayout(79), null);
     assert.deepEqual(calculatePreviewLayout(80), { leftWidth: 33, rightWidth: 44 });
     assert.deepEqual(calculatePreviewLayout(120), { leftWidth: 50, rightWidth: 67 });
 });
 
-void test("padToWidth truncates long text to the requested display width", () => {
+test("padToWidth truncates long text to the requested display width", () => {
     assert.equal(stripAnsi(padToWidth("abcdefghijklmnopqrstuvwxyz", 8)), "abcde...");
 });

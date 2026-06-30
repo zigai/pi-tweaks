@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { afterAll, test } from "vitest";
 
 import type { RuntimeState } from "../src/types.ts";
 
@@ -12,7 +12,7 @@ process.env.PI_CODING_AGENT_DIR = agentDir;
 
 const config = await import("../src/config.ts");
 
-test.after(async () => {
+afterAll(async () => {
     await rm(agentDir, { recursive: true, force: true });
     if (originalAgentDir === undefined) {
         delete process.env.PI_CODING_AGENT_DIR;
@@ -30,7 +30,7 @@ function runtimeState(): RuntimeState {
     return state;
 }
 
-void test("safeReadConfig returns empty aliases for a missing aliases file", () => {
+test("safeReadConfig returns empty aliases for a missing aliases file", () => {
     const loaded = config.safeReadConfig(runtimeState());
 
     assert.equal(loaded.path, config.CONFIG_FILE);
@@ -38,7 +38,7 @@ void test("safeReadConfig returns empty aliases for a missing aliases file", () 
     assert.deepEqual(loaded.aliases, []);
 });
 
-void test("safeReadConfig parses and trims valid aliases", async () => {
+test("safeReadConfig parses and trims valid aliases", async () => {
     await writeFile(
         config.CONFIG_FILE,
         JSON.stringify({
@@ -62,7 +62,7 @@ void test("safeReadConfig parses and trims valid aliases", async () => {
     ]);
 });
 
-void test("safeReadConfig rejects duplicate aliases without throwing", async () => {
+test("safeReadConfig rejects duplicate aliases without throwing", async () => {
     await writeFile(
         config.CONFIG_FILE,
         JSON.stringify({
@@ -80,7 +80,7 @@ void test("safeReadConfig rejects duplicate aliases without throwing", async () 
     assert.match(loaded.error ?? "", /duplicates aliases\[0\]/);
 });
 
-void test("safeReadConfig returns a readable error for malformed JSON", async () => {
+test("safeReadConfig returns a readable error for malformed JSON", async () => {
     await writeFile(config.CONFIG_FILE, "{ not json", "utf8");
 
     const loaded = config.safeReadConfig(runtimeState());

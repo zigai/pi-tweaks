@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -44,7 +44,7 @@ function footerData(branch: string | null, statuses: ReadonlyMap<string, string>
     };
 }
 
-void test("createFooterComponent renders key session status without exceeding width", () => {
+test("createFooterComponent renders key session status without exceeding width", () => {
     const component = createFooterComponent(
         footerContext(),
         footerData("main", new Map([["mcp", "MCP:\n 2\tservers"]])),
@@ -65,7 +65,7 @@ void test("createFooterComponent renders key session status without exceeding wi
     assert.match(plain, /MCP: 2 servers/);
 });
 
-void test("createFooterComponent preserves the primary path and drops optional narrow segments", () => {
+test("createFooterComponent preserves the primary path and drops optional narrow segments", () => {
     const component = createFooterComponent(
         footerContext(),
         footerData("feature/very-long-branch", new Map([["mcp", "MCP: connected"]])),
@@ -86,7 +86,7 @@ void test("createFooterComponent preserves the primary path and drops optional n
     assert.doesNotMatch(plain, /MCP: connected/);
 });
 
-void test("createFooterComponent disposes the branch-change subscription", () => {
+test("createFooterComponent disposes the branch-change subscription", () => {
     let unsubscribed = false;
     const data: FooterData = {
         getGitBranch() {

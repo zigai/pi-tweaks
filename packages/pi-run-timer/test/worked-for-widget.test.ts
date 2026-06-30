@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { WIDGET_KEY } from "../src/constants.ts";
@@ -36,14 +36,14 @@ function widgetContext(): { ctx: ExtensionContext; currentWidget: () => unknown 
     };
 }
 
-void test("formatDuration rounds to seconds and uses readable minute/hour boundaries", () => {
+test("formatDuration rounds to seconds and uses readable minute/hour boundaries", () => {
     assert.equal(formatDuration(-10), "0s");
     assert.equal(formatDuration(1_400), "1s");
     assert.equal(formatDuration(65_000), "1m 05s");
     assert.equal(formatDuration(3_660_000), "1h 01m");
 });
 
-void test("setWorkedForWidget renders duration and token rate within the provided width", () => {
+test("setWorkedForWidget renders duration and token rate within the provided width", () => {
     const { ctx, currentWidget } = widgetContext();
     setWorkedForWidget(ctx, "1m 05s", 42);
 

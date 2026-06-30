@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import test from "node:test";
+import { afterAll, test } from "vitest";
 
 import type { LoadedConfig, ModelLike, PatchedModelRegistry, RuntimeState } from "../src/index.ts";
 
@@ -15,7 +15,7 @@ import type * as ModelFilter from "../src/index.ts";
 const modelFilter = (await import("../src/index.ts")) as unknown as typeof ModelFilter;
 const configPath = join(agentDir, "model-filters.json");
 
-test.after(async () => {
+afterAll(async () => {
     await rm(agentDir, { recursive: true, force: true });
     if (originalAgentDir === undefined) {
         delete process.env.PI_CODING_AGENT_DIR;
@@ -43,14 +43,14 @@ function loadedConfig(
     };
 }
 
-void test("glob patterns match complete provider and model ids", () => {
+test("glob patterns match complete provider and model ids", () => {
     assert.equal(modelFilter.globToRegex("gpt-*").test("gpt-5"), true);
     assert.equal(modelFilter.globToRegex("gpt-?").test("gpt-55"), false);
     assert.equal(modelFilter.globToRegex("local.v1").test("local-v1"), false);
     assert.equal(modelFilter.globToRegex("local.v1").test("local.v1"), true);
 });
 
-void test("include rules constrain matching providers while excludes always hide models", () => {
+test("include rules constrain matching providers while excludes always hide models", () => {
     const includeRules = modelFilter.normalizeRules([{ provider: "openai", models: ["gpt-*"] }]);
     const excludeRules = modelFilter.normalizeRules([{ provider: "*", models: ["*-mini"] }]);
     const visible = modelFilter.filterModels(models, loadedConfig(includeRules, excludeRules));
@@ -61,7 +61,7 @@ void test("include rules constrain matching providers while excludes always hide
     );
 });
 
-void test("safeReadConfig falls back for missing and malformed config files", async () => {
+test("safeReadConfig falls back for missing and malformed config files", async () => {
     await rm(configPath, { force: true });
     const state: RuntimeState = {
         loadConfig() {
@@ -82,7 +82,7 @@ void test("safeReadConfig falls back for missing and malformed config files", as
     assert.deepEqual(malformed.excludeRules, []);
 });
 
-void test("safeReadConfig parses and trims valid config rules", async () => {
+test("safeReadConfig parses and trims valid config rules", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -105,7 +105,7 @@ void test("safeReadConfig parses and trims valid config rules", async () => {
     assert.deepEqual(loaded.excludeRules[0]?.modelPatterns, ["*-mini"]);
 });
 
-void test("registry patch filters list and lookup results and remains idempotent", () => {
+test("registry patch filters list and lookup results and remains idempotent", () => {
     let loaded = loadedConfig(
         modelFilter.normalizeRules([{ provider: "openai", models: ["gpt-5"] }]),
         modelFilter.normalizeRules([{ provider: "*", models: ["*-mini"] }]),

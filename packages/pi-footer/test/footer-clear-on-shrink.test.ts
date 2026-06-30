@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { installLiveFooter } from "../src/footer-transition.ts";
@@ -12,7 +12,7 @@ type TestTui = {
 
 type CapturedFooterFactory = (tui: TestTui, theme: unknown, footerData: FooterData) => unknown;
 
-void test("live footer leaves native clear-on-shrink disabled", () => {
+test("live footer leaves native clear-on-shrink disabled", () => {
     let capturedFactory: CapturedFooterFactory | undefined;
 
     const ctx = {

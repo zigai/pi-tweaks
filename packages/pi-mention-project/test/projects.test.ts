@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 
 import { listProjectDirectories, resolveProjectRoot } from "../src/projects.ts";
 import type { MentionProjectSettings } from "../src/types.ts";
@@ -25,7 +25,7 @@ async function markGitRepo(projectPath: string): Promise<void> {
     await mkdir(path.join(projectPath, ".git"), { recursive: true });
 }
 
-void test("resolveProjectRoot resolves relative roots from cwd", async () => {
+test("resolveProjectRoot resolves relative roots from cwd", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-cwd-"));
     try {
         assert.equal(resolveProjectRoot("projects", cwd), path.join(cwd, "projects"));
@@ -34,7 +34,7 @@ void test("resolveProjectRoot resolves relative roots from cwd", async () => {
     }
 });
 
-void test("listProjectDirectories lists only direct child git directories and ignores dot folders by default", async () => {
+test("listProjectDirectories lists only direct child git directories and ignores dot folders by default", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-roots-"));
     try {
         const firstRoot = path.join(dir, "first");
@@ -74,7 +74,7 @@ void test("listProjectDirectories lists only direct child git directories and ig
     }
 });
 
-void test("listProjectDirectories can include non-git and dot folders when configured", async () => {
+test("listProjectDirectories can include non-git and dot folders when configured", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-filter-"));
     try {
         const root = path.join(dir, "root");
@@ -95,7 +95,7 @@ void test("listProjectDirectories can include non-git and dot folders when confi
     }
 });
 
-void test("listProjectDirectories includes symlinks to git directories", async () => {
+test("listProjectDirectories includes symlinks to git directories", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-symlink-"));
     try {
         const root = path.join(dir, "root");

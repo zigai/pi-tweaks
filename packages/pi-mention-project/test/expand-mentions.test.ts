@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
@@ -14,7 +14,7 @@ function project(name: string, root = "/tmp/projects"): ProjectDirectory {
     };
 }
 
-void test("expandProjectMentions replaces known project mentions with absolute paths", () => {
+test("expandProjectMentions replaces known project mentions with absolute paths", () => {
     const expanded = expandProjectMentions(
         "Please inspect #pi-tweaks, ignore #unknown, then #pi-tweaks.",
         [project("pi-tweaks")],
@@ -27,13 +27,13 @@ void test("expandProjectMentions replaces known project mentions with absolute p
     );
 });
 
-void test("expandProjectMentions replaces multiple projects and supports regex-special triggers", () => {
+test("expandProjectMentions replaces multiple projects and supports regex-special triggers", () => {
     const expanded = expandProjectMentions("+one and +two?", [project("one"), project("two")], "+");
 
     assert.equal(expanded, "/tmp/projects/one and /tmp/projects/two?");
 });
 
-void test("expandProjectMentions supports quoted project names", () => {
+test("expandProjectMentions supports quoted project names", () => {
     const expanded = expandProjectMentions(
         'Check #"My Project" today.',
         [project("My Project")],
@@ -43,7 +43,7 @@ void test("expandProjectMentions supports quoted project names", () => {
     assert.equal(expanded, "Check /tmp/projects/My Project today.");
 });
 
-void test("expandProjectMentions replaces project mentions for configured project roots", () => {
+test("expandProjectMentions replaces project mentions for configured project roots", () => {
     const expanded = expandProjectMentions(
         "#zgod #sesh #gameops verify it for these projects too",
         [
@@ -60,13 +60,13 @@ void test("expandProjectMentions replaces project mentions for configured projec
     );
 });
 
-void test("expandProjectMentions returns original text when no known mentions are present", () => {
+test("expandProjectMentions returns original text when no known mentions are present", () => {
     const expanded = expandProjectMentions("Use #missing", [], "#");
 
     assert.equal(expanded, "Use #missing");
 });
 
-void test("expandProjectMentionsInMessages expands user text without mutating queued display text", () => {
+test("expandProjectMentionsInMessages expands user text without mutating queued display text", () => {
     const messages: ContextEvent["messages"] = [
         {
             role: "user",
@@ -98,7 +98,7 @@ void test("expandProjectMentionsInMessages expands user text without mutating qu
     assert.equal(text.text, "Please inspect /tmp/projects/pi-tweaks");
 });
 
-void test("expandProjectMentionsInMessages leaves existing project blocks alone", () => {
+test("expandProjectMentionsInMessages leaves existing project blocks alone", () => {
     const messages: ContextEvent["messages"] = [
         {
             role: "user",

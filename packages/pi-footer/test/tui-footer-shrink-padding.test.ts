@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { Container, TUI, type Component, type Terminal } from "@earendil-works/pi-tui";
 import { markFooterComponent } from "../src/footer-component.ts";
@@ -127,7 +127,7 @@ class TestFooter implements Component {
     invalidate(): void {}
 }
 
-void test("footer shrink padding preserves visible tail without native clear", () => {
+test("footer shrink padding preserves visible tail without native clear", () => {
     installFooterShrinkPaddingPatch();
 
     const terminal = new FakeTerminal();
@@ -158,7 +158,7 @@ void test("footer shrink padding preserves visible tail without native clear", (
     assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
 });
 
-void test("footer shrink padding yields to full redraw for distant content rebuilds", () => {
+test("footer shrink padding yields to full redraw for distant content rebuilds", () => {
     installFooterShrinkPaddingPatch();
 
     const terminal = new FakeTerminal();
@@ -189,7 +189,7 @@ void test("footer shrink padding yields to full redraw for distant content rebui
     assert.match(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
 });
 
-void test("footer shrink padding keeps small-shrink blanks below numbered content", () => {
+test("footer shrink padding keeps small-shrink blanks below numbered content", () => {
     installFooterShrinkPaddingPatch();
 
     const terminal = new FakeTerminal();
@@ -219,7 +219,7 @@ void test("footer shrink padding keeps small-shrink blanks below numbered conten
     assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
 });
 
-void test("footer shrink padding keeps focused editor attached to footer", () => {
+test("footer shrink padding keeps focused editor attached to footer", () => {
     installFooterShrinkPaddingPatch();
 
     const terminal = new FakeTerminal();
@@ -259,7 +259,7 @@ void test("footer shrink padding keeps focused editor attached to footer", () =>
     assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
 });
 
-void test("footer shrink padding keeps working loader attached to editor", () => {
+test("footer shrink padding keeps working loader attached to editor", () => {
     installFooterShrinkPaddingPatch();
 
     const terminal = new FakeTerminal();
@@ -308,7 +308,7 @@ void test("footer shrink padding keeps working loader attached to editor", () =>
     assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
 });
 
-void test("footer shrink padding keeps worked-for widget attached to editor", () => {
+test("footer shrink padding keeps worked-for widget attached to editor", () => {
     installFooterShrinkPaddingPatch();
 
     const terminal = new FakeTerminal();

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 
 import { resolveRunTimerConfig } from "../src/settings.ts";
 
-void test("run timer right messages default to disabled", () => {
+test("run timer right messages default to disabled", () => {
     const loaded = resolveRunTimerConfig([]);
 
     assert.equal(loaded.config.rightMessages.enabled, false);
@@ -16,7 +16,7 @@ void test("run timer right messages default to disabled", () => {
     assert.deepEqual(loaded.errors, []);
 });
 
-void test("run timer right messages use inline configured messages", () => {
+test("run timer right messages use inline configured messages", () => {
     const loaded = resolveRunTimerConfig([
         {
             label: "global",
@@ -47,40 +47,43 @@ void test("run timer right messages use inline configured messages", () => {
     assert.deepEqual(loaded.config.rightMessages.messages, ["Tip one", "Tip two"]);
 });
 
-void test("run timer right messages load messages from a text file", (t) => {
+test("run timer right messages load messages from a text file", () => {
     const directory = mkdtempSync(join(tmpdir(), "pi-run-timer-"));
-    t.after(() => rmSync(directory, { recursive: true, force: true }));
-    writeFileSync(
-        join(directory, "tips.txt"),
-        "# comments are ignored\n\nFirst file tip\n  Second file tip  \n",
-        "utf8",
-    );
+    try {
+        writeFileSync(
+            join(directory, "tips.txt"),
+            "# comments are ignored\n\nFirst file tip\n  Second file tip  \n",
+            "utf8",
+        );
 
-    const loaded = resolveRunTimerConfig([
-        {
-            label: "global",
-            baseDir: directory,
-            settings: {
-                runTimer: {
-                    rightMessages: {
-                        messages: ["Inline tip"],
-                        messagesFile: "tips.txt",
+        const loaded = resolveRunTimerConfig([
+            {
+                label: "global",
+                baseDir: directory,
+                settings: {
+                    runTimer: {
+                        rightMessages: {
+                            messages: ["Inline tip"],
+                            messagesFile: "tips.txt",
+                        },
                     },
                 },
             },
-        },
-    ]);
+        ]);
 
-    assert.equal(loaded.config.rightMessages.enabled, true);
-    assert.deepEqual(loaded.config.rightMessages.messages, [
-        "Inline tip",
-        "First file tip",
-        "Second file tip",
-    ]);
-    assert.deepEqual(loaded.errors, []);
+        assert.equal(loaded.config.rightMessages.enabled, true);
+        assert.deepEqual(loaded.config.rightMessages.messages, [
+            "Inline tip",
+            "First file tip",
+            "Second file tip",
+        ]);
+        assert.deepEqual(loaded.errors, []);
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
 });
 
-void test("run timer right messages merge sources in precedence order", () => {
+test("run timer right messages merge sources in precedence order", () => {
     const loaded = resolveRunTimerConfig([
         {
             label: "global",
@@ -111,7 +114,7 @@ void test("run timer right messages merge sources in precedence order", () => {
     assert.deepEqual(loaded.config.rightMessages.messages, ["global tip"]);
 });
 
-void test("run timer right messages enabled false skips configured files", () => {
+test("run timer right messages enabled false skips configured files", () => {
     const loaded = resolveRunTimerConfig([
         {
             label: "global",
@@ -133,7 +136,7 @@ void test("run timer right messages enabled false skips configured files", () =>
     assert.deepEqual(loaded.errors, []);
 });
 
-void test("run timer right messages report invalid values", () => {
+test("run timer right messages report invalid values", () => {
     const loaded = resolveRunTimerConfig([
         {
             label: "global",

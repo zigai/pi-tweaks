@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
     installModelSelectorHintPatch,
@@ -82,7 +82,7 @@ function createTestInteractiveMode(): TestInteractiveMode {
     };
 }
 
-void test("model selector hint patch removes provider hint and following spacer", () => {
+test("model selector hint patch removes provider hint and following spacer", () => {
     setHideModelProviderHint(true);
     const modelSelector = createTestModelSelector();
     const before = new TestText("before");
@@ -100,7 +100,7 @@ void test("model selector hint patch removes provider hint and following spacer"
     assert.deepEqual(modelSelector.addedComponents, [before, after]);
 });
 
-void test("model selector hint patch only skips an immediate spacer", () => {
+test("model selector hint patch only skips an immediate spacer", () => {
     setHideModelProviderHint(true);
     const modelSelector = createTestModelSelector();
     const hint = new TestText(MODEL_PROVIDER_HINT_TEXT);
@@ -116,7 +116,7 @@ void test("model selector hint patch only skips an immediate spacer", () => {
     assert.deepEqual(modelSelector.addedComponents, [nonSpacer, laterSpacer]);
 });
 
-void test("model selector hint patch leaves hint visible when disabled", () => {
+test("model selector hint patch leaves hint visible when disabled", () => {
     setHideModelProviderHint(false);
     const modelSelector = createTestModelSelector();
     const hint = new TestText(MODEL_PROVIDER_HINT_TEXT);
@@ -130,7 +130,7 @@ void test("model selector hint patch leaves hint visible when disabled", () => {
     assert.deepEqual(modelSelector.addedComponents, [hint, spacer]);
 });
 
-void test("model selector hint patch is idempotent", () => {
+test("model selector hint patch is idempotent", () => {
     setHideModelProviderHint(true);
     const modelSelector = createTestModelSelector();
 
@@ -141,7 +141,7 @@ void test("model selector hint patch is idempotent", () => {
     assert.equal(Reflect.get(modelSelector, "addChild"), patchedAddChild);
 });
 
-void test("slash command source patch removes source tags", () => {
+test("slash command source patch removes source tags", () => {
     setHideSlashCommandSourceTags(true);
     const interactiveMode = createTestInteractiveMode();
 
@@ -150,7 +150,7 @@ void test("slash command source patch removes source tags", () => {
     assert.equal(interactiveMode.prefixAutocompleteDescription("Open review", {}), "Open review");
 });
 
-void test("slash command source patch leaves source tags visible when disabled", () => {
+test("slash command source patch leaves source tags visible when disabled", () => {
     setHideSlashCommandSourceTags(false);
     const interactiveMode = createTestInteractiveMode();
 
@@ -162,7 +162,7 @@ void test("slash command source patch leaves source tags visible when disabled",
     );
 });
 
-void test("slash command source patch is idempotent", () => {
+test("slash command source patch is idempotent", () => {
     setHideSlashCommandSourceTags(true);
     const interactiveMode = createTestInteractiveMode();
 

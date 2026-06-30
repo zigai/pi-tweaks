@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { applyModesPatch, computeModesPatch } from "../src/mode-state.ts";
 import type { ModesFile } from "../src/types.ts";
@@ -23,14 +23,14 @@ function baseModesFile(): ModesFile {
     };
 }
 
-void test("computeModesPatch returns null when there are no persisted changes", () => {
+test("computeModesPatch returns null when there are no persisted changes", () => {
     const base = baseModesFile();
     const next = baseModesFile();
 
     assert.equal(computeModesPatch(base, next, true), null);
 });
 
-void test("computeModesPatch records additions, deletions, removals, and current mode changes", () => {
+test("computeModesPatch records additions, deletions, removals, and current mode changes", () => {
     const base = baseModesFile();
     const next: ModesFile = {
         version: 1,
@@ -62,7 +62,7 @@ void test("computeModesPatch records additions, deletions, removals, and current
     });
 });
 
-void test("computeModesPatch can omit current mode so runtime-only switches are not written", () => {
+test("computeModesPatch can omit current mode so runtime-only switches are not written", () => {
     const base = baseModesFile();
     const next = baseModesFile();
     next.currentMode = "docs";
@@ -70,7 +70,7 @@ void test("computeModesPatch can omit current mode so runtime-only switches are 
     assert.equal(computeModesPatch(base, next, false), null);
 });
 
-void test("applyModesPatch merges into the latest file without deleting unrelated modes", () => {
+test("applyModesPatch merges into the latest file without deleting unrelated modes", () => {
     const latest: ModesFile = baseModesFile();
     latest.modes.local = {
         provider: "ollama",

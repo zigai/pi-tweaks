@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
@@ -22,13 +22,13 @@ function skillCommand(name: string, filePath: string, description = "test skill"
     } as unknown as SkillCommand;
 }
 
-void test("stripFrontmatter removes yaml blocks and preserves ordinary markdown", () => {
+test("stripFrontmatter removes yaml blocks and preserves ordinary markdown", () => {
     assert.equal(stripFrontmatter("# No frontmatter\nBody"), "# No frontmatter\nBody");
     assert.equal(stripFrontmatter("---\nname: demo\n---\nBody"), "Body");
     assert.equal(stripFrontmatter("---\r\nname: demo\r\n---\r\nBody"), "Body");
 });
 
-void test("expandSkillMentions prepends known skills once and removes only known sigils", async () => {
+test("expandSkillMentions prepends known skills once and removes only known sigils", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
     try {
         const filePath = path.join(dir, "python.md");
@@ -50,7 +50,7 @@ void test("expandSkillMentions prepends known skills once and removes only known
     }
 });
 
-void test("expandSkillMentions combines multiple skills and supports regex-special triggers", async () => {
+test("expandSkillMentions combines multiple skills and supports regex-special triggers", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
     try {
         const firstPath = path.join(dir, "one.md");
@@ -75,13 +75,13 @@ void test("expandSkillMentions combines multiple skills and supports regex-speci
     }
 });
 
-void test("expandSkillMentions returns original text when no known mentions are present", async () => {
+test("expandSkillMentions returns original text when no known mentions are present", async () => {
     const expanded = await expandSkillMentions("Use $missing", [], "$");
 
     assert.equal(expanded, "Use $missing");
 });
 
-void test("expandSkillMentionsInMessages expands user text without mutating queued display text", async () => {
+test("expandSkillMentionsInMessages expands user text without mutating queued display text", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
     try {
         const filePath = path.join(dir, "python.md");
@@ -125,7 +125,7 @@ void test("expandSkillMentionsInMessages expands user text without mutating queu
     }
 });
 
-void test("expandSkillMentionsInMessages leaves existing skill blocks alone", async () => {
+test("expandSkillMentionsInMessages leaves existing skill blocks alone", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
     try {
         const filePath = path.join(dir, "python.md");

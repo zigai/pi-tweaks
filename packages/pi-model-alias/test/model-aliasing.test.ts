@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
     aliasModels,
@@ -34,7 +34,7 @@ const aliases: AliasConfig[] = [
     { provider: "anthropic", model: "claude-opus", alias: "smart" },
 ];
 
-void test("aliases models without mutating unrelated models", () => {
+test("aliases models without mutating unrelated models", () => {
     const loaded = loadedConfig(aliases);
     const aliased = aliasModels(nativeModels, loaded);
 
@@ -45,13 +45,13 @@ void test("aliases models without mutating unrelated models", () => {
     assert.equal(nativeModels[0]?.id, "gpt-5");
 });
 
-void test("does not apply aliases when config has a load error", () => {
+test("does not apply aliases when config has a load error", () => {
     const loaded = loadedConfig(aliases, "invalid config");
 
     assert.deepEqual(aliasModels(nativeModels, loaded), nativeModels);
 });
 
-void test("detects alias collisions with native model ids per provider", () => {
+test("detects alias collisions with native model ids per provider", () => {
     const collision = getAliasModelIdCollision(
         [{ provider: "openai", model: "gpt-5", alias: "gpt-5" }],
         nativeModels,
@@ -66,7 +66,7 @@ void test("detects alias collisions with native model ids per provider", () => {
     assert.equal(crossProviderCollision, undefined);
 });
 
-void test("finds aliases by model and by provider lookup", () => {
+test("finds aliases by model and by provider lookup", () => {
     const loaded = loadedConfig(aliases);
 
     assert.deepEqual(getAliasForModel(nativeModels[0], loaded), aliases[0]);
@@ -74,7 +74,7 @@ void test("finds aliases by model and by provider lookup", () => {
     assert.equal(getAliasForLookup("openai", "missing", loaded), undefined);
 });
 
-void test("rewrites provider request payloads only for object payloads", () => {
+test("rewrites provider request payloads only for object payloads", () => {
     assert.deepEqual(rewritePayloadModel({ model: "fast", messages: [] }, "gpt-5"), {
         model: "gpt-5",
         messages: [],
@@ -83,7 +83,7 @@ void test("rewrites provider request payloads only for object payloads", () => {
     assert.equal(rewritePayloadModel(null, "gpt-5"), null);
 });
 
-void test("resolves provider request aliases from selected model or request payload", () => {
+test("resolves provider request aliases from selected model or request payload", () => {
     const loaded = loadedConfig(aliases);
     const selectedAliasModel = applyAlias(nativeModels[0], aliases[0]);
 
@@ -102,7 +102,7 @@ void test("resolves provider request aliases from selected model or request payl
     assert.equal(aliasForProviderRequest({ model: "fast" }, undefined, loaded), undefined);
 });
 
-void test("registry patch aliases list and lookup methods and updates config at runtime", () => {
+test("registry patch aliases list and lookup methods and updates config at runtime", () => {
     let loaded = loadedConfig([aliases[0]]);
     const state: RuntimeState = {
         loadConfig: () => loaded,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 
 import { atomicWriteUtf8, withFileLock } from "../src/storage.ts";
 
@@ -15,7 +15,7 @@ async function exists(filePath: string): Promise<boolean> {
     }
 }
 
-void test("atomicWriteUtf8 creates parent directories and replaces existing content", async () => {
+test("atomicWriteUtf8 creates parent directories and replaces existing content", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mode-storage-"));
     try {
         const filePath = path.join(dir, "nested", "modes.json");
@@ -28,7 +28,7 @@ void test("atomicWriteUtf8 creates parent directories and replaces existing cont
     }
 });
 
-void test("withFileLock removes lock files when the callback throws", async () => {
+test("withFileLock removes lock files when the callback throws", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mode-storage-"));
     try {
         const filePath = path.join(dir, "modes.json");
@@ -47,7 +47,7 @@ void test("withFileLock removes lock files when the callback throws", async () =
     }
 });
 
-void test("withFileLock removes stale locks before running the callback", async () => {
+test("withFileLock removes stale locks before running the callback", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mode-storage-"));
     try {
         const filePath = path.join(dir, "modes.json");

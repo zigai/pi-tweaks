@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
@@ -39,7 +39,7 @@ function fallbackProvider(items: AutocompleteItem[]): AutocompleteProvider {
     };
 }
 
-void test("createSkillMentionProvider suggests skills after the configured trigger", async () => {
+test("createSkillMentionProvider suggests skills after the configured trigger", async () => {
     const provider = createSkillMentionProvider(
         fakePi([skillCommand("python", "Python workflows"), skillCommand("review", "Code review")]),
         fallbackProvider([]),
@@ -61,7 +61,7 @@ void test("createSkillMentionProvider suggests skills after the configured trigg
     );
 });
 
-void test("createSkillMentionProvider falls back outside mention context and can hide slash skills", async () => {
+test("createSkillMentionProvider falls back outside mention context and can hide slash skills", async () => {
     const provider = createSkillMentionProvider(
         fakePi([skillCommand("python")]),
         fallbackProvider([
@@ -78,7 +78,7 @@ void test("createSkillMentionProvider falls back outside mention context and can
     assert.deepEqual(suggestions, { prefix: "/", items: [{ value: "help", label: "/help" }] });
 });
 
-void test("createSkillMentionProvider returns null when hidden slash skills are the only fallback items", async () => {
+test("createSkillMentionProvider returns null when hidden slash skills are the only fallback items", async () => {
     const provider = createSkillMentionProvider(
         fakePi([skillCommand("python")]),
         fallbackProvider([{ value: "skill:python", label: "/skill python" }]),
@@ -92,7 +92,7 @@ void test("createSkillMentionProvider returns null when hidden slash skills are 
     assert.equal(suggestions, null);
 });
 
-void test("applyCompletion replaces the mention prefix and inserts a trailing space when needed", () => {
+test("applyCompletion replaces the mention prefix and inserts a trailing space when needed", () => {
     const provider = createSkillMentionProvider(fakePi([]), fallbackProvider([]), {
         trigger: "$",
         hideSlashSkills: true,
@@ -114,7 +114,7 @@ void test("applyCompletion replaces the mention prefix and inserts a trailing sp
     });
 });
 
-void test("applyCompletion uses the configured completion suffix", () => {
+test("applyCompletion uses the configured completion suffix", () => {
     const provider = createSkillMentionProvider(fakePi([]), fallbackProvider([]), {
         trigger: "$",
         hideSlashSkills: true,
