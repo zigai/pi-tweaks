@@ -61,18 +61,40 @@ function isStableTerminalSize(tui: PatchableTuiInstance): boolean {
     return true;
 }
 
+function stripTerminalLineReset(line: string): string {
+    if (!line.endsWith(TERMINAL_LINE_RESET)) return line;
+    return line.slice(0, -TERMINAL_LINE_RESET.length);
+}
+
+function getFirstChangedLineIndex(
+    previousLines: readonly string[],
+    lines: readonly string[],
+): number | undefined {
+    const maxLines = Math.max(previousLines.length, lines.length);
+    for (let index = 0; index < maxLines; index += 1) {
+        const previousLine = stripTerminalLineReset(previousLines[index] ?? "");
+        const line = lines[index] ?? "";
+        if (previousLine !== line) return index;
+    }
+    return undefined;
+}
+
+function hasDistantPreViewportChange(tui: PatchableTuiInstance, lines: readonly string[]): boolean {
+    const firstChangedLine = getFirstChangedLineIndex(tui.previousLines, lines);
+    if (firstChangedLine === undefined) return false;
+
+    const fullRedrawBoundary = Math.max(0, tui.previousViewportTop - tui.terminal.rows);
+    return firstChangedLine <= fullRedrawBoundary;
+}
+
 function shouldPadShrink(tui: PatchableTuiInstance, lines: readonly string[]): boolean {
     if (!isStableTerminalSize(tui)) return false;
     if (!hasPiFooter(tui)) return false;
     if (!Array.isArray(tui.previousLines)) return false;
     if (tui.previousLines.length <= lines.length) return false;
     if (tui.previousLines.length < tui.terminal.rows) return false;
+    if (hasDistantPreViewportChange(tui, lines)) return false;
     return lines.length > 0;
-}
-
-function stripTerminalLineReset(line: string): string {
-    if (!line.endsWith(TERMINAL_LINE_RESET)) return line;
-    return line.slice(0, -TERMINAL_LINE_RESET.length);
 }
 
 function getPaddingInsertIndex(tui: PatchableTuiInstance, targetLength: number): number {
