@@ -95,6 +95,20 @@ class FixedLines implements Component {
     invalidate(): void {}
 }
 
+class MutableLines implements Component {
+    lines: string[];
+
+    constructor(lines: string[]) {
+        this.lines = lines;
+    }
+
+    render(): string[] {
+        return this.lines;
+    }
+
+    invalidate(): void {}
+}
+
 class TestEditor implements Component {
     focused = false;
 
@@ -142,6 +156,37 @@ void test("footer shrink padding preserves visible tail without native clear", (
     assert.equal(lineBeforeFooter, "line 12");
     assert.equal(footerLine.includes("FOOTER"), true);
     assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
+});
+
+void test("footer shrink padding yields to full redraw for distant content rebuilds", () => {
+    installFooterShrinkPaddingPatch();
+
+    const terminal = new FakeTerminal();
+    const lines = new MutableLines(
+        Array.from({ length: 40 }, (_value, index) => `old ${index.toString().padStart(2, "0")}`),
+    );
+    const tui = new TUI(terminal);
+    tui.setClearOnShrink(true);
+    const tuiInternals = tui as unknown as TuiInternals;
+    tui.addChild(lines);
+    tui.addChild(markFooterComponent(new TestFooter(), "live"));
+
+    tuiInternals.doRender();
+    terminal.writes = [];
+
+    lines.lines = Array.from({ length: 8 }, (_value, index) => {
+        return `new ${index.toString().padStart(2, "0")}`;
+    });
+    tuiInternals.doRender();
+
+    const output = terminal.writes.join("");
+    const firstLine = stripTestAnsi(tuiInternals.previousLines[0] ?? "");
+    const footerLine = stripTestAnsi(tuiInternals.previousLines.at(-1) ?? "");
+
+    assert.equal(tuiInternals.previousLines.length, 9);
+    assert.equal(firstLine, "new 00");
+    assert.equal(footerLine.includes("FOOTER"), true);
+    assert.match(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
 });
 
 void test("footer shrink padding keeps small-shrink blanks below numbered content", () => {
