@@ -52,9 +52,11 @@ function enhanceEditor(
         if (editor.isShowingAutocomplete?.() === true) {
             colorThrough = autocompleteStartIndex(renderedLines);
         }
+        let projects: ProjectDirectory[] | undefined;
         return renderedLines.map((line, index) => {
-            if (index >= colorThrough) return line;
-            return colorProjectMentions(line, ctx, trigger, getProjects());
+            if (index >= colorThrough || !line.includes(trigger)) return line;
+            projects ??= getProjects();
+            return colorProjectMentions(line, ctx, trigger, projects);
         });
     };
 

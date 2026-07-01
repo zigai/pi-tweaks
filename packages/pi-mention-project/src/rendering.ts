@@ -16,8 +16,10 @@ export function colorProjectMentions(
     trigger: string,
     projects: ProjectDirectory[],
 ): string {
+    if (!line.includes(trigger)) return line;
+
     const knownNames = projectNameSet(projects);
-    if (knownNames.size === 0 || !line.includes(trigger)) return line;
+    if (knownNames.size === 0) return line;
 
     return line.replace(
         projectMentionPattern(trigger),
