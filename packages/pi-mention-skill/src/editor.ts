@@ -5,6 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { autocompleteStartIndex, colorSkillMentions, isSkillMentionContext } from "./rendering.ts";
+import { getSkillCommands, skillName } from "./skill-commands.ts";
 import type { EditorFactory, EditorLike } from "./types.ts";
 
 const MENTION_FACTORY_BASE = Symbol.for("zigai.pi-mention-skill.editor-factory-base");
@@ -44,9 +45,11 @@ function enhanceEditor(
         if (editor.isShowingAutocomplete?.() === true) {
             colorThrough = autocompleteStartIndex(renderedLines);
         }
+        let skillNames: ReadonlySet<string> | undefined;
         return renderedLines.map((line, index) => {
-            if (index >= colorThrough) return line;
-            return colorSkillMentions(line, pi, ctx, trigger);
+            if (index >= colorThrough || !line.includes(trigger)) return line;
+            skillNames ??= new Set(getSkillCommands(pi).map(skillName));
+            return colorSkillMentions(line, pi, ctx, trigger, skillNames);
         });
     };
 

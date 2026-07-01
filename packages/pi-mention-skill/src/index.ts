@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { createSkillMentionProvider } from "./autocomplete.ts";
 import { applyMentionSkillEditor } from "./editor.ts";
-import { expandSkillMentions, expandSkillMentionsInMessages } from "./expand-mentions.ts";
+import { expandSkillMentionsInMessages } from "./expand-mentions.ts";
 import { configuredMentionSkillSettings } from "./settings.ts";
 import { getSkillCommands } from "./skill-commands.ts";
 
@@ -14,19 +14,6 @@ export default function (pi: ExtensionAPI): void {
         ctx.ui.addAutocompleteProvider((current) =>
             createSkillMentionProvider(pi, current, settings),
         );
-    });
-
-    pi.on("input", async (event, ctx) => {
-        const { trigger } = configuredMentionSkillSettings(ctx);
-        if (!event.text.includes(trigger)) return { action: "continue" };
-
-        if (event.streamingBehavior !== undefined) {
-            return { action: "continue" };
-        }
-
-        const expanded = await expandSkillMentions(event.text, getSkillCommands(pi), trigger);
-        if (expanded === event.text) return { action: "continue" };
-        return { action: "transform", text: expanded, images: event.images };
     });
 
     pi.on("context", async (event, ctx) => {

@@ -12,9 +12,12 @@ export function colorSkillMentions(
     pi: ExtensionAPI,
     ctx: ExtensionContext,
     trigger: string,
+    cachedSkillNames?: ReadonlySet<string>,
 ): string {
-    const skillNames = new Set(getSkillCommands(pi).map(skillName));
-    if (skillNames.size === 0 || !line.includes(trigger)) return line;
+    if (!line.includes(trigger)) return line;
+
+    const skillNames = cachedSkillNames ?? new Set(getSkillCommands(pi).map(skillName));
+    if (skillNames.size === 0) return line;
 
     const mentionPattern = new RegExp(`${escapeRegExp(trigger)}([a-z0-9][a-z0-9-]{0,63})`, "g");
     return line.replace(mentionPattern, (match: string, name: string) => {
