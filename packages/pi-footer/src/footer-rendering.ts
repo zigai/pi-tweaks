@@ -8,6 +8,7 @@ import {
     PLAIN_COLORS,
     PLAIN_SEPARATOR_COLORS,
 } from "./constants.ts";
+import { DEFAULT_FOOTER_CONFIG, type FooterConfig } from "./settings.ts";
 import type {
     ContextUsage,
     FooterContext,
@@ -84,13 +85,31 @@ function renderPlainItem(item: FooterItem): string {
     return renderColoredText(item.text, PLAIN_COLORS);
 }
 
-function getProviderDisplayName(provider: string): string {
+function getFallbackProviderDisplayName(provider: string): string {
     switch (provider) {
         case "github-copilot":
             return "copilot";
         default:
             return provider;
     }
+}
+
+function getProviderDisplayName(ctx: FooterContext, provider: string): string {
+    const snapshotDisplayName = ctx.model?.providerDisplayName;
+    if (snapshotDisplayName !== undefined && snapshotDisplayName.length > 0) {
+        return snapshotDisplayName;
+    }
+
+    try {
+        const registryDisplayName = ctx.modelRegistry?.getProviderDisplayName(provider);
+        if (registryDisplayName !== undefined && registryDisplayName.length > 0) {
+            return registryDisplayName;
+        }
+    } catch {
+        return getFallbackProviderDisplayName(provider);
+    }
+
+    return getFallbackProviderDisplayName(provider);
 }
 
 function getThinkingColors(level: string): SegmentColors {
@@ -144,9 +163,11 @@ function getMcpText(ctx: FooterContext, footerData: FooterData): string | null {
     return null;
 }
 
-function getSeparator(variant: FooterVariant, side: FooterSide): string {
+function getSeparator(variant: FooterVariant, side: FooterSide, config: FooterConfig): string {
     if (variant === "blocks") return "";
-    if (side === "left") return renderColoredText(" | ", PLAIN_SEPARATOR_COLORS);
+    if (side === "left") {
+        return renderColoredText(` ${config.separator} `, PLAIN_SEPARATOR_COLORS);
+    }
     return renderColoredText("  ", PLAIN_SEPARATOR_COLORS);
 }
 
@@ -157,8 +178,13 @@ function renderItem(item: FooterItem, variant: FooterVariant): string {
     return renderPlainItem(item);
 }
 
-function joinRenderedItems(rendered: string[], variant: FooterVariant, side: FooterSide): string {
-    return rendered.join(getSeparator(variant, side));
+function joinRenderedItems(
+    rendered: string[],
+    variant: FooterVariant,
+    side: FooterSide,
+    config: FooterConfig,
+): string {
+    return rendered.join(getSeparator(variant, side, config));
 }
 
 function buildSideVariants(
@@ -166,6 +192,7 @@ function buildSideVariants(
     keys: readonly FooterKey[],
     variant: FooterVariant,
     side: FooterSide,
+    config: FooterConfig,
 ): string[] {
     const items = keys
         .map((key) => itemsByKey[key])
@@ -183,6 +210,7 @@ function buildSideVariants(
                 items.slice(0, count).map((item) => renderItem(item, variant)),
                 variant,
                 side,
+                config,
             );
             if (!seen.has(rendered)) {
                 seen.add(rendered);
@@ -195,6 +223,7 @@ function buildSideVariants(
                 items.slice(start).map((item) => renderItem(item, variant)),
                 variant,
                 side,
+                config,
             );
             if (!seen.has(rendered)) {
                 seen.add(rendered);
@@ -224,7 +253,7 @@ function buildFooterItems(
     const branch = footerData.getGitBranch();
     const pathText = collapseHome(ctx.cwd);
     const providerId = ctx.model?.provider ?? "no-provider";
-    const providerLabel = getProviderDisplayName(providerId);
+    const providerLabel = getProviderDisplayName(ctx, providerId);
     const modelLabel = ctx.model?.id ?? "no-model";
     const usage = ctx.getContextUsage();
     const contextText = getContextText(usage, ctx.model?.contextWindow);
@@ -282,6 +311,7 @@ export function createFooterComponent(
     footerData: FooterData,
     getThinkingLevel: () => string,
     requestRender: () => void,
+    config: FooterConfig = DEFAULT_FOOTER_CONFIG,
 ) {
     const unsubscribe = footerData.onBranchChange(() => requestRender());
 
@@ -297,12 +327,19 @@ export function createFooterComponent(
             if (renderWidth === 0) return [""];
             const variant: FooterVariant = ACTIVE_FOOTER_VARIANT;
             const itemsByKey = buildFooterItems(ctx, footerData, getThinkingLevel());
-            const leftVariants = buildSideVariants(itemsByKey, FOOTER_LAYOUT.left, variant, "left");
+            const leftVariants = buildSideVariants(
+                itemsByKey,
+                FOOTER_LAYOUT.left,
+                variant,
+                "left",
+                config,
+            );
             const rightVariants = buildSideVariants(
                 itemsByKey,
                 FOOTER_LAYOUT.right,
                 variant,
                 "right",
+                config,
             );
 
             for (const left of leftVariants) {

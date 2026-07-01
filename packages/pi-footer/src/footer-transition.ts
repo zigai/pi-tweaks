@@ -6,6 +6,7 @@ import {
 
 import { markFooterComponent, getFooterComponentKind } from "./footer-component.ts";
 import { createFooterComponent } from "./footer-rendering.ts";
+import type { FooterConfig } from "./settings.ts";
 import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./types.ts";
 
 const RESET_PATCH_MARKER = Symbol.for("zigai.pi-footer.reset-extension-ui-patch");
@@ -29,6 +30,7 @@ type FooterResetHost = {
 type FooterSnapshot = {
     context: FooterContext;
     thinkingLevel: string;
+    config: FooterConfig;
 };
 
 type MaybeMcpContext = ExtensionContext & {
@@ -78,14 +80,33 @@ function cloneContextUsage(usage: ContextUsage): ContextUsage {
     return { ...usage };
 }
 
-function cloneModel(model: ExtensionContext["model"]): FooterModel | undefined {
+function resolveProviderDisplayName(ctx: ExtensionContext, provider: string): string | undefined {
+    try {
+        const displayName = ctx.modelRegistry.getProviderDisplayName(provider);
+        if (displayName.length > 0) {
+            return displayName;
+        }
+    } catch {
+        return undefined;
+    }
+
+    return undefined;
+}
+
+function cloneModel(ctx: ExtensionContext): FooterModel | undefined {
+    const model = ctx.model;
     if (model === undefined) return undefined;
 
-    return {
+    const cloned: FooterModel = {
         provider: model.provider,
         id: model.id,
         contextWindow: model.contextWindow,
     };
+    const providerDisplayName = resolveProviderDisplayName(ctx, model.provider);
+    if (providerDisplayName !== undefined) {
+        cloned.providerDisplayName = providerDisplayName;
+    }
+    return cloned;
 }
 
 function cloneMcpServers(ctx: ExtensionContext): unknown[] | undefined {
@@ -95,19 +116,24 @@ function cloneMcpServers(ctx: ExtensionContext): unknown[] | undefined {
     return Array.from<unknown>({ length: servers.length });
 }
 
-function createFooterSnapshot(ctx: ExtensionContext, thinkingLevel: string): FooterSnapshot {
+function createFooterSnapshot(
+    ctx: ExtensionContext,
+    thinkingLevel: string,
+    config: FooterConfig,
+): FooterSnapshot {
     const usage = cloneContextUsage(ctx.getContextUsage());
 
     return {
         context: {
             cwd: ctx.cwd,
-            model: cloneModel(ctx.model),
+            model: cloneModel(ctx),
             mcpServers: cloneMcpServers(ctx),
             getContextUsage() {
                 return usage;
             },
         },
         thinkingLevel,
+        config,
     };
 }
 
@@ -131,6 +157,7 @@ function installBridgeFooter(host: FooterResetHost, snapshot: FooterSnapshot): v
             footerData,
             () => snapshot.thinkingLevel,
             () => tui.requestRender(),
+            snapshot.config,
         );
         return markFooterComponent(component, "bridge");
     });
@@ -193,16 +220,24 @@ export function patchFooterReset(): void {
     prototype[RESET_PATCH_MARKER] = true;
 }
 
-export function installLiveFooter(ctx: ExtensionContext, getThinkingLevel: () => string): void {
+export function installLiveFooter(
+    ctx: ExtensionContext,
+    getThinkingLevel: () => string,
+    config: FooterConfig,
+): void {
     ctx.ui.setFooter((tui, _theme, footerData) => {
-        const component = createFooterComponent(ctx, footerData, getThinkingLevel, () =>
-            tui.requestRender(),
+        const component = createFooterComponent(
+            ctx,
+            footerData,
+            getThinkingLevel,
+            () => tui.requestRender(),
+            config,
         );
         return markFooterComponent(component, "live");
     });
 
     const state = getTransitionState();
-    state.latestSnapshot = createFooterSnapshot(ctx, getThinkingLevel());
+    state.latestSnapshot = createFooterSnapshot(ctx, getThinkingLevel(), config);
     state.pendingShutdownReason = undefined;
     state.liveInstallGeneration += 1;
 }
@@ -211,6 +246,7 @@ export function rememberFooterForTransition(
     ctx: ExtensionContext,
     reason: SessionShutdownEvent["reason"],
     thinkingLevel: string,
+    config: FooterConfig,
 ): void {
     const state = getTransitionState();
     state.pendingShutdownReason = reason;
@@ -220,5 +256,5 @@ export function rememberFooterForTransition(
         return;
     }
 
-    state.latestSnapshot = createFooterSnapshot(ctx, thinkingLevel);
+    state.latestSnapshot = createFooterSnapshot(ctx, thinkingLevel, config);
 }

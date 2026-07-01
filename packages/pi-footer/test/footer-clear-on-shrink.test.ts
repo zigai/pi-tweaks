@@ -3,6 +3,7 @@ import { test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { installLiveFooter } from "../src/footer-transition.ts";
+import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
 import type { FooterData } from "../src/types.ts";
 
 type TestTui = {
@@ -32,7 +33,7 @@ test("live footer leaves native clear-on-shrink disabled", () => {
         },
     } as unknown as ExtensionContext;
 
-    installLiveFooter(ctx, () => "medium");
+    installLiveFooter(ctx, () => "medium", DEFAULT_FOOTER_CONFIG);
 
     if (capturedFactory === undefined) {
         assert.fail("expected footer factory to be registered");

@@ -23,6 +23,20 @@ Footer contents:
 pi install npm:@zigai/pi-footer
 ```
 
+## Configuration
+
+Add `footer.separator` to `~/.pi/agent/settings.json` or a trusted project `.pi/settings.json`:
+
+```json
+{
+  "footer": {
+    "separator": "·"
+  }
+}
+```
+
+The default separator is `|`.
+
 ## License
 
 MIT

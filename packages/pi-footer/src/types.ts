@@ -36,10 +36,15 @@ export type FooterModel = {
     provider: string;
     id: string;
     contextWindow?: number;
+    providerDisplayName?: string;
+};
+export type ProviderDisplayNameRegistry = {
+    getProviderDisplayName(provider: string): string;
 };
 export type FooterContext = {
     cwd: string;
     model?: FooterModel;
+    modelRegistry?: ProviderDisplayNameRegistry;
     mcpServers?: unknown[];
     getContextUsage(): ContextUsage;
 };

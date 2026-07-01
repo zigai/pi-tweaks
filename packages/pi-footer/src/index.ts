@@ -5,16 +5,38 @@ import {
     patchFooterReset,
     rememberFooterForTransition,
 } from "./footer-transition.ts";
+import { DEFAULT_FOOTER_CONFIG, loadFooterConfig, type LoadedFooterConfig } from "./settings.ts";
 import { installFooterShrinkPaddingPatch } from "./tui-footer-shrink-padding.ts";
+
+const reportedConfigErrors = new Set<string>();
+
+function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedFooterConfig): void {
+    for (const error of loaded.errors) {
+        if (reportedConfigErrors.has(error)) {
+            continue;
+        }
+        reportedConfigErrors.add(error);
+        ctx.ui.notify(`[pi-footer] ${error}`, "error");
+    }
+}
+
+function loadAndReportFooterConfig(ctx: ExtensionContext): LoadedFooterConfig {
+    const loaded = loadFooterConfig(ctx.cwd, ctx.isProjectTrusted());
+    reportConfigErrors(ctx, loaded);
+    return loaded;
+}
 
 export default function uiEnhancements(pi: ExtensionAPI) {
     patchFooterReset();
     installFooterShrinkPaddingPatch();
 
     const getThinkingLevel = () => pi.getThinkingLevel();
+    let activeFooterConfig = DEFAULT_FOOTER_CONFIG;
 
     const installFooter = (ctx: ExtensionContext) => {
-        installLiveFooter(ctx, getThinkingLevel);
+        const loaded = loadAndReportFooterConfig(ctx);
+        activeFooterConfig = loaded.config;
+        installLiveFooter(ctx, getThinkingLevel, activeFooterConfig);
     };
 
     pi.on("session_start", async (_event, ctx) => {
@@ -22,6 +44,6 @@ export default function uiEnhancements(pi: ExtensionAPI) {
     });
 
     pi.on("session_shutdown", async (event, ctx) => {
-        rememberFooterForTransition(ctx, event.reason, getThinkingLevel());
+        rememberFooterForTransition(ctx, event.reason, getThinkingLevel(), activeFooterConfig);
     });
 }
