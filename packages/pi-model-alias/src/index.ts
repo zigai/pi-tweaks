@@ -1,6 +1,7 @@
 import { ModelRegistry, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { safeReadConfig } from "./config.ts";
+import { installProviderAliasUiPatches } from "./model-selector-provider-patch.ts";
 import { aliasForProviderRequest, rewritePayloadModel } from "./provider-payload.ts";
 import {
     installRegistryPatch,
@@ -16,6 +17,7 @@ export default function modelAliasExtension(pi: ExtensionAPI) {
     };
 
     installRegistryPatch(ModelRegistry.prototype as PatchedModelRegistry, state);
+    installProviderAliasUiPatches(state);
 
     pi.on("session_start", async (_event, ctx) => {
         const registry = ctx.modelRegistry as PatchedModelRegistry;

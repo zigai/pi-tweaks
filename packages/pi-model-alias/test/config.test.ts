@@ -36,6 +36,7 @@ test("safeReadConfig returns empty aliases for a missing aliases file", () => {
     assert.equal(loaded.path, config.CONFIG_FILE);
     assert.equal(loaded.error, undefined);
     assert.deepEqual(loaded.aliases, []);
+    assert.deepEqual(loaded.providerAliases, []);
 });
 
 test("safeReadConfig parses and trims valid aliases", async () => {
@@ -50,6 +51,7 @@ test("safeReadConfig parses and trims valid aliases", async () => {
                     name: " Fast Model ",
                 },
             ],
+            providerAliases: [{ provider: " anthropic ", name: " Claude Work " }],
         }),
         "utf8",
     );
@@ -60,6 +62,7 @@ test("safeReadConfig parses and trims valid aliases", async () => {
     assert.deepEqual(loaded.aliases, [
         { provider: "openai", model: "gpt-5", alias: "fast", name: "Fast Model" },
     ]);
+    assert.deepEqual(loaded.providerAliases, [{ provider: "anthropic", name: "Claude Work" }]);
 });
 
 test("safeReadConfig rejects duplicate aliases without throwing", async () => {
@@ -77,7 +80,27 @@ test("safeReadConfig rejects duplicate aliases without throwing", async () => {
     const loaded = config.safeReadConfig(runtimeState());
 
     assert.deepEqual(loaded.aliases, []);
+    assert.deepEqual(loaded.providerAliases, []);
     assert.match(loaded.error ?? "", /duplicates aliases\[0\]/);
+});
+
+test("safeReadConfig rejects duplicate provider aliases without throwing", async () => {
+    await writeFile(
+        config.CONFIG_FILE,
+        JSON.stringify({
+            providerAliases: [
+                { provider: "openai", name: "OpenAI Work" },
+                { provider: "openai", name: "OpenAI Personal" },
+            ],
+        }),
+        "utf8",
+    );
+
+    const loaded = config.safeReadConfig(runtimeState());
+
+    assert.deepEqual(loaded.aliases, []);
+    assert.deepEqual(loaded.providerAliases, []);
+    assert.match(loaded.error ?? "", /duplicates providerAliases\[0\]/);
 });
 
 test("safeReadConfig returns a readable error for malformed JSON", async () => {
@@ -86,5 +109,6 @@ test("safeReadConfig returns a readable error for malformed JSON", async () => {
     const loaded = config.safeReadConfig(runtimeState());
 
     assert.deepEqual(loaded.aliases, []);
+    assert.deepEqual(loaded.providerAliases, []);
     assert.match(loaded.error ?? "", /Failed to load/);
 });

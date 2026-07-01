@@ -11,14 +11,21 @@ export type AliasConfig = {
     name?: string;
 };
 
+export type ProviderAliasConfig = {
+    provider: string;
+    name: string;
+};
+
 export type ModelAliasesConfig = {
     aliases?: AliasConfig[];
+    providerAliases?: ProviderAliasConfig[];
 };
 
 export type LoadedConfig = {
     path: string;
     mtimeMs: number;
     aliases: AliasConfig[];
+    providerAliases: ProviderAliasConfig[];
     error?: string;
 };
 
@@ -32,4 +39,5 @@ export type BasicModelRegistry = {
     getAll(): ModelLike[];
     getAvailable(): ModelLike[];
     find(provider: string, modelId: string): ModelLike | undefined;
+    getProviderDisplayName(provider: string): string;
 };

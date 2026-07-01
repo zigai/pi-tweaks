@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-model-alias/model-aliases.schema.json",
-  "title": "Pi model aliases",
+  "title": "Pi model and provider aliases",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -36,6 +36,28 @@
             "type": "string",
             "minLength": 1,
             "description": "Optional display name. Defaults to the alias id."
+          }
+        }
+      }
+    },
+    "providerAliases": {
+      "type": "array",
+      "default": [],
+      "description": "Provider display names to show in Pi UI while preserving the real provider id.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider", "name"],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Real Pi provider id to display under another name."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name shown for the provider in Pi UI."
           }
         }
       }

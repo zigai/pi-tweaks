@@ -1,14 +1,15 @@
 {
   "name": "@zigai/pi-model-alias",
   "version": "0.1.10",
-  "description": "Pi package that adds short aliases for provider model IDs.",
+  "description": "Pi package that adds aliases for provider model IDs and provider display names.",
   "keywords": [
     "model-alias",
     "pi",
     "pi-coding-agent",
     "pi-extension",
     "pi-package",
-    "pi-tweaks"
+    "pi-tweaks",
+    "provider-alias"
   ],
   "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-model-alias#readme",
   "bugs": {

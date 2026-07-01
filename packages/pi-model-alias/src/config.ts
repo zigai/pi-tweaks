@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-import type { AliasConfig, LoadedConfig, RuntimeState } from "./types.ts";
+import type { AliasConfig, LoadedConfig, ProviderAliasConfig, RuntimeState } from "./types.ts";
 
 export const CONFIG_FILE = join(getAgentDir(), "model-aliases.json");
 
@@ -17,12 +17,19 @@ const AliasConfigSchema = Type.Object({
     name: Type.Optional(NonBlankString),
 });
 
+const ProviderAliasConfigSchema = Type.Object({
+    provider: NonBlankString,
+    name: NonBlankString,
+});
+
 const ModelAliasesConfigSchema = Type.Object({
     $schema: Type.Optional(Type.String()),
     aliases: Type.Optional(Type.Array(AliasConfigSchema)),
+    providerAliases: Type.Optional(Type.Array(ProviderAliasConfigSchema)),
 });
 
 type ParsedAliasConfig = Static<typeof AliasConfigSchema>;
+type ParsedProviderAliasConfig = Static<typeof ProviderAliasConfigSchema>;
 type ParsedModelAliasesConfig = Static<typeof ModelAliasesConfigSchema>;
 
 function formatSchemaPath(instancePath: string): string {
@@ -62,6 +69,13 @@ function normalizeAliasConfig(entry: ParsedAliasConfig): AliasConfig {
     return normalized;
 }
 
+function normalizeProviderAliasConfig(entry: ParsedProviderAliasConfig): ProviderAliasConfig {
+    return {
+        provider: entry.provider.trim(),
+        name: entry.name.trim(),
+    };
+}
+
 function validateUniqueAliases(aliases: AliasConfig[]): void {
     const seenAliases = new Map<string, number>();
     aliases.forEach((entry, index) => {
@@ -76,15 +90,33 @@ function validateUniqueAliases(aliases: AliasConfig[]): void {
     });
 }
 
-function parseModelAliasesConfig(config: unknown): { aliases: AliasConfig[] } {
+function validateUniqueProviderAliases(providerAliases: ProviderAliasConfig[]): void {
+    const seenProviders = new Map<string, number>();
+    providerAliases.forEach((entry, index) => {
+        const duplicateIndex = seenProviders.get(entry.provider);
+        if (duplicateIndex !== undefined) {
+            throw new Error(
+                `providerAliases[${index}] duplicates providerAliases[${duplicateIndex}] for provider "${entry.provider}".`,
+            );
+        }
+        seenProviders.set(entry.provider, index);
+    });
+}
+
+function parseModelAliasesConfig(config: unknown): {
+    aliases: AliasConfig[];
+    providerAliases: ProviderAliasConfig[];
+} {
     const parsed = parseSchema(
         ModelAliasesConfigSchema,
         config,
         "model-aliases.json",
     ) as ParsedModelAliasesConfig;
     const aliases = (parsed.aliases ?? []).map(normalizeAliasConfig);
+    const providerAliases = (parsed.providerAliases ?? []).map(normalizeProviderAliasConfig);
     validateUniqueAliases(aliases);
-    return { aliases };
+    validateUniqueProviderAliases(providerAliases);
+    return { aliases, providerAliases };
 }
 
 export function safeReadConfig(state: RuntimeState): LoadedConfig {
@@ -98,6 +130,7 @@ export function safeReadConfig(state: RuntimeState): LoadedConfig {
                     path: CONFIG_FILE,
                     mtimeMs: -1,
                     aliases: [],
+                    providerAliases: [],
                 };
                 state.configCache = loaded;
                 return loaded;
@@ -114,6 +147,7 @@ export function safeReadConfig(state: RuntimeState): LoadedConfig {
             path: CONFIG_FILE,
             mtimeMs,
             aliases: parsed.aliases,
+            providerAliases: parsed.providerAliases,
         };
         state.configCache = loaded;
         return loaded;
@@ -128,6 +162,7 @@ export function safeReadConfig(state: RuntimeState): LoadedConfig {
             path: CONFIG_FILE,
             mtimeMs,
             aliases: [],
+            providerAliases: [],
             error: `Failed to load ${CONFIG_FILE}: ${message}`,
         };
         state.configCache = loaded;
