@@ -41,11 +41,14 @@ export function getAliasForLookup(
 }
 
 export function applyAlias(model: ModelLike, alias: AliasConfig): ModelLike {
-    return {
+    const aliased: ModelLike = {
         ...model,
         id: alias.alias,
-        name: alias.name ?? alias.alias,
     };
+    if (alias.name !== undefined) {
+        aliased.name = alias.name;
+    }
+    return aliased;
 }
 
 export function aliasModels(models: ModelLike[], loaded: LoadedConfig): ModelLike[] {

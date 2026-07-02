@@ -50,13 +50,40 @@ const aliases: AliasConfig[] = [
     { provider: "anthropic", model: "claude-opus", alias: "smart" },
 ];
 
+type TestTextComponent = {
+    text: string;
+    setText(text: string): void;
+};
+
+function textComponent(text: string): TestTextComponent {
+    return {
+        text,
+        setText(nextText: string) {
+            this.text = nextText;
+        },
+    };
+}
+
+function textValues(children: unknown[]): string[] {
+    return children.flatMap((child) => {
+        if (typeof child !== "object" || child === null) {
+            return [];
+        }
+        const text = Reflect.get(child, "text");
+        if (typeof text !== "string") {
+            return [];
+        }
+        return [text];
+    });
+}
+
 test("aliases models without mutating unrelated models", () => {
     const loaded = loadedConfig(aliases);
     const aliased = aliasModels(nativeModels, loaded);
 
     assert.deepEqual(aliased, [
         { provider: "openai", id: "fast", name: "Fast" },
-        { provider: "anthropic", id: "smart", name: "smart" },
+        { provider: "anthropic", id: "smart", name: "Claude Opus" },
     ]);
     assert.equal(nativeModels[0]?.id, "gpt-5");
 });
@@ -131,39 +158,81 @@ test("model selector provider patch aliases display providers only", async () =>
             loadedConfig([], undefined, [{ provider: "openai", name: "OpenAI Work" }]),
     };
     const openaiModel = nativeModels[0];
-    if (openaiModel === undefined) {
-        throw new Error("missing openai model fixture");
+    const anthropicModel = nativeModels[1];
+    if (openaiModel === undefined || anthropicModel === undefined) {
+        throw new Error("missing model fixture");
     }
-    const modelItem = {
-        provider: "openai",
-        id: "gpt-5",
-        model: openaiModel,
+    type ModelSelectorMockItem = {
+        provider: string;
+        id: string;
+        model: ModelLike;
     };
-    type ModelSelectorMockItem = typeof modelItem;
+    const modelItems: ModelSelectorMockItem[] = [
+        {
+            provider: "openai",
+            id: "gpt-5",
+            model: openaiModel,
+        },
+        {
+            provider: "anthropic",
+            id: "claude-opus",
+            model: anthropicModel,
+        },
+    ];
+    const successCheckmark = "\x1b[32m ✓\x1b[39m";
     const prototype = {
         allModels: [] as ModelSelectorMockItem[],
         scopedModelItems: [] as ModelSelectorMockItem[],
         activeModels: [] as ModelSelectorMockItem[],
         filteredModels: [] as ModelSelectorMockItem[],
+        listContainer: { children: [] as unknown[] },
+        searchInput: {
+            render(width: number) {
+                return [`> ${" ".repeat(Math.max(0, width - 2))}`];
+            },
+        },
+        selectedIndex: 0,
         scope: "all",
         async loadModels(): Promise<void> {
-            this.allModels = [modelItem];
+            this.allModels = modelItems;
             this.scopedModelItems = [];
-            this.activeModels = [modelItem];
-            this.filteredModels = [modelItem];
+            this.activeModels = modelItems;
+            this.filteredModels = modelItems;
         },
         filterModels(_query: string): void {
             this.filteredModels = this.activeModels;
         },
-        updateList(): void {},
+        updateList(): void {
+            this.listContainer.children = this.filteredModels.map((item, index) => {
+                let prefix = "  ";
+                let checkmark = "";
+                if (index === this.selectedIndex) {
+                    prefix = "→ ";
+                    checkmark = successCheckmark;
+                }
+                return textComponent(`${prefix}${item.id} [${item.provider}]${checkmark}`);
+            });
+            this.listContainer.children.push(
+                textComponent("  (1/2)"),
+                {},
+                textComponent("  Model Name: GPT-5"),
+            );
+        },
     };
 
     installModelSelectorProviderPatch(state, prototype);
     await prototype.loadModels();
+    prototype.updateList();
 
     assert.equal(prototype.allModels[0]?.provider, "OpenAI Work");
     assert.equal(prototype.allModels[0]?.model.provider, "openai");
+    assert.equal(prototype.allModels[0]?.id, "gpt-5");
     assert.equal(prototype.activeModels[0]?.provider, "OpenAI Work");
+    assert.deepEqual(textValues(prototype.listContainer.children), [
+        `→ GPT-5${successCheckmark}      OpenAI Work`,
+        "  Claude Opus  anthropic",
+    ]);
+    assert.equal(prototype.searchInput.render(20)[0], ">              (1/2)");
 });
 
 test("scoped models provider patch aliases rendered and searched providers only", () => {
@@ -179,7 +248,9 @@ test("scoped models provider patch aliases rendered and searched providers only"
     type ScopedMock = {
         filteredItems: ScopedMockItem[];
         footerText: { setText(text: string): void };
-        searchInput: { getValue(): string };
+        listContainer: { children: unknown[] };
+        maxVisible: number;
+        searchInput: { getValue(): string; render(width: number): string[] };
         selectedIndex: number;
         buildItems(this: ScopedMock): ScopedMockItem[];
         getFooterText(this: ScopedMock): string;
@@ -187,7 +258,6 @@ test("scoped models provider patch aliases rendered and searched providers only"
         updateList(this: ScopedMock): void;
     };
     let query = "";
-    const renderedProviders: string[] = [];
     const footerTexts: string[] = [];
     const openaiModel = nativeModels[0];
     if (openaiModel === undefined) {
@@ -200,6 +270,7 @@ test("scoped models provider patch aliases rendered and searched providers only"
             enabled: true,
         },
     ];
+    const successCheckmark = "\x1b[32m ✓\x1b[39m";
     const prototype: ScopedMock = {
         filteredItems: originalItems,
         footerText: {
@@ -207,9 +278,14 @@ test("scoped models provider patch aliases rendered and searched providers only"
                 footerTexts.push(text);
             },
         },
+        listContainer: { children: [] },
+        maxVisible: 8,
         searchInput: {
             getValue() {
                 return query;
+            },
+            render(width: number) {
+                return [`> ${" ".repeat(Math.max(0, width - 2))}`];
             },
         },
         selectedIndex: 0,
@@ -223,10 +299,20 @@ test("scoped models provider patch aliases rendered and searched providers only"
             this.filteredItems = [];
         },
         updateList() {
-            const first = this.filteredItems[0];
-            if (first !== undefined) {
-                renderedProviders.push(first.model.provider);
-            }
+            this.listContainer.children = this.filteredItems.map((item, index) => {
+                let prefix = "  ";
+                if (index === this.selectedIndex) {
+                    prefix = "→ ";
+                }
+                return textComponent(
+                    `${prefix}${item.model.id} [${item.model.provider}]${successCheckmark}`,
+                );
+            });
+            this.listContainer.children.push(
+                textComponent("  (1/1)"),
+                {},
+                textComponent("  Model Name: GPT-5"),
+            );
         },
     };
 
@@ -235,9 +321,13 @@ test("scoped models provider patch aliases rendered and searched providers only"
     query = "Work";
     prototype.refresh();
 
-    assert.deepEqual(renderedProviders, ["OpenAI Work", "OpenAI Work"]);
+    assert.deepEqual(textValues(prototype.listContainer.children), [
+        `→ GPT-5${successCheckmark}  OpenAI Work`,
+    ]);
+    assert.equal(prototype.searchInput.render(20)[0], ">              (1/1)");
     assert.deepEqual(footerTexts, ["footer"]);
     assert.equal(prototype.filteredItems[0], originalItems[0]);
+    assert.equal(prototype.filteredItems[0]?.model.id, "gpt-5");
     assert.equal(prototype.filteredItems[0]?.model.provider, "openai");
 });
 

@@ -1,5 +1,5 @@
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
-import { fuzzyFilter } from "@earendil-works/pi-tui";
+import { fuzzyFilter, visibleWidth } from "@earendil-works/pi-tui";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -12,11 +12,27 @@ const MODEL_SELECTOR_PROVIDER_PATCH_KEY = Symbol.for(
 const SCOPED_MODELS_PROVIDER_PATCH_KEY = Symbol.for(
     "zigai.pi-model-alias.scoped-models-provider-patched",
 );
+const PROVIDER_GAP_EXTRA_WIDTH = 2;
+const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
+const SEARCH_COUNTER_RENDER_PATCH_KEY = Symbol.for(
+    "zigai.pi-model-alias.model-selector-search-counter-render-patched",
+);
+
+const searchCounterByInput = new WeakMap<object, string>();
 
 type ModelSelectorItem = {
     provider: string;
     id: string;
     model: ModelLike;
+};
+
+type ListContainer = {
+    children: unknown[];
+};
+
+type SearchInput = {
+    [SEARCH_COUNTER_RENDER_PATCH_KEY]?: true;
+    render(width: number): string[];
 };
 
 type ModelSelectorPatchTarget = {
@@ -28,6 +44,9 @@ type ModelSelectorPatchTarget = {
     scopedModelItems: ModelSelectorItem[];
     activeModels: ModelSelectorItem[];
     filteredModels: ModelSelectorItem[];
+    listContainer?: ListContainer;
+    searchInput?: SearchInput;
+    selectedIndex: number;
     scope: string;
 };
 
@@ -53,7 +72,9 @@ type ScopedModelsSelectorPatchTarget = {
     updateList(this: ScopedModelsSelectorPatchTarget): void;
     filteredItems: ScopedModelsSelectorItem[];
     footerText?: ScopedModelsFooterText;
-    searchInput?: ScopedModelsSearchInput;
+    listContainer?: ListContainer;
+    maxVisible?: number;
+    searchInput?: ScopedModelsSearchInput & Partial<SearchInput>;
     selectedIndex?: number;
 };
 
@@ -101,6 +122,13 @@ function setModelSelectorDisplayProviders(
     target.filteredModels = activeModels;
 }
 
+function getModelDisplayId(model: ModelLike): string {
+    if (model.name === undefined || model.name.length === 0) {
+        return model.id;
+    }
+    return model.name;
+}
+
 function getModelSelectorSearchItems(
     items: ModelSelectorItem[],
     state: RuntimeState,
@@ -123,27 +151,214 @@ function getModelSelectorSearchItems(
     });
 }
 
+function getModelSelectorDisplayItems(items: ModelSelectorItem[]): ModelSelectorItem[] {
+    return items.map((item) => {
+        return {
+            ...item,
+            id: getModelDisplayId(item.model),
+        };
+    });
+}
+
+type ProviderRow = {
+    readonly modelText: string;
+    readonly providerText: string;
+};
+
+function textComponentValue(component: unknown): string | undefined {
+    if (typeof component !== "object" || component === null) {
+        return undefined;
+    }
+
+    const value = Reflect.get(component, "text");
+    if (typeof value === "string") {
+        return value;
+    }
+    return undefined;
+}
+
+function setTextComponentValue(component: unknown, text: string): void {
+    if (typeof component !== "object" || component === null) {
+        return;
+    }
+
+    const setText = Reflect.get(component, "setText");
+    if (typeof setText === "function") {
+        setText.call(component, text);
+    }
+}
+
+function stripAnsi(text: string): string {
+    return text.replace(ANSI_PATTERN, "");
+}
+
+function visibleRows<Item>(items: Item[], selectedIndex: number, maxVisible: number): Item[] {
+    const startIndex = Math.max(
+        0,
+        Math.min(selectedIndex - Math.floor(maxVisible / 2), items.length - maxVisible),
+    );
+    const endIndex = Math.min(startIndex + maxVisible, items.length);
+    return items.slice(startIndex, endIndex);
+}
+
+function removeModelNameDetail(container: ListContainer): void {
+    const last = container.children.at(-1);
+    const lastText = textComponentValue(last);
+    if (lastText === undefined || !lastText.includes("Model Name:")) {
+        return;
+    }
+
+    container.children.pop();
+    container.children.pop();
+}
+
+function takeScrollCounter(container: ListContainer): string | undefined {
+    const scrollIndex = container.children.findIndex((child) => {
+        const text = textComponentValue(child);
+        return text !== undefined && /\(\d+\/\d+\)/.test(text);
+    });
+    if (scrollIndex === -1) {
+        return undefined;
+    }
+
+    const text = textComponentValue(container.children[scrollIndex]);
+    container.children.splice(scrollIndex, 1);
+    return text;
+}
+
+function setSearchCounter(
+    input: Partial<SearchInput> | undefined,
+    counter: string | undefined,
+): void {
+    if (input === undefined || typeof input.render !== "function") {
+        return;
+    }
+
+    if (counter === undefined) {
+        searchCounterByInput.delete(input);
+    } else {
+        searchCounterByInput.set(input, counter.trim());
+    }
+
+    if (input[SEARCH_COUNTER_RENDER_PATCH_KEY] === true) {
+        return;
+    }
+
+    const originalRender = input.render;
+    input.render = function renderWithSearchCounter(this: SearchInput, width: number): string[] {
+        const lines = originalRender.call(this, width);
+        const counterText = searchCounterByInput.get(this);
+        const firstLine = lines[0];
+        if (counterText === undefined || firstLine === undefined) {
+            return lines;
+        }
+
+        const baseLine = firstLine.replace(/ +$/, "");
+        const gap = width - visibleWidth(baseLine) - visibleWidth(counterText);
+        if (gap < 1) {
+            return lines;
+        }
+
+        return [`${baseLine}${" ".repeat(gap)}${counterText}`, ...lines.slice(1)];
+    };
+    input[SEARCH_COUNTER_RENDER_PATCH_KEY] = true;
+}
+
+function formatProviderRows(
+    container: ListContainer,
+    rows: readonly ProviderRow[],
+): string | undefined {
+    if (rows.length === 0) {
+        const counter = takeScrollCounter(container);
+        removeModelNameDetail(container);
+        return counter;
+    }
+
+    const modelWidth = Math.max(...rows.map((row) => visibleWidth(row.modelText)));
+    rows.forEach((row, index) => {
+        const component = container.children[index];
+        const text = textComponentValue(component);
+        if (text === undefined) {
+            return;
+        }
+
+        const badge = `[${row.providerText}]`;
+        const badgeIndex = text.lastIndexOf(badge);
+        if (badgeIndex === -1) {
+            return;
+        }
+
+        const suffix = text.slice(badgeIndex + badge.length);
+        let checkmark = "";
+        if (stripAnsi(suffix).trim() === "✓") {
+            checkmark = suffix;
+        }
+        const padding = " ".repeat(
+            Math.max(0, modelWidth - visibleWidth(row.modelText) - visibleWidth(checkmark)) +
+                PROVIDER_GAP_EXTRA_WIDTH,
+        );
+        const modelPrefix = text.slice(0, badgeIndex).trimEnd();
+        const formatted = `${modelPrefix}${checkmark}${padding}${row.providerText}`;
+        setTextComponentValue(component, formatted);
+    });
+
+    const counter = takeScrollCounter(container);
+    removeModelNameDetail(container);
+    return counter;
+}
+
+function formatModelSelectorList(target: ModelSelectorPatchTarget): void {
+    const container = target.listContainer;
+    if (container === undefined) {
+        return;
+    }
+
+    const rows = visibleRows(target.filteredModels, target.selectedIndex, 10).map((item) => {
+        return {
+            modelText: item.id,
+            providerText: item.provider,
+        };
+    });
+    const counter = formatProviderRows(container, rows);
+    setSearchCounter(target.searchInput, counter);
+}
+
+function formatScopedModelsList(target: ScopedModelsSelectorPatchTarget): void {
+    const container = target.listContainer;
+    const selectedIndex = target.selectedIndex;
+    if (container === undefined || selectedIndex === undefined) {
+        return;
+    }
+
+    const maxVisible = target.maxVisible ?? 8;
+    const rows = visibleRows(target.filteredItems, selectedIndex, maxVisible).map((item) => {
+        return {
+            modelText: item.model.id,
+            providerText: item.model.provider,
+        };
+    });
+    const counter = formatProviderRows(container, rows);
+    setSearchCounter(target.searchInput, counter);
+}
+
 function getScopedDisplayItems(
     items: ScopedModelsSelectorItem[],
     state: RuntimeState,
 ): ScopedModelsSelectorItem[] {
     const loaded = state.loadConfig();
-    if (loaded.error !== undefined || loaded.providerAliases.length === 0) {
-        return items;
-    }
-
     return items.map((item) => {
+        const displayedModel: ModelLike = {
+            ...item.model,
+            id: getModelDisplayId(item.model),
+        };
         const alias = getProviderAlias(item.model.provider, loaded);
-        if (alias === undefined) {
-            return item;
+        if (loaded.error === undefined && alias !== undefined) {
+            displayedModel.provider = alias.name;
         }
 
         return {
             ...item,
-            model: {
-                ...item.model,
-                provider: alias.name,
-            },
+            model: displayedModel,
         };
     });
 }
@@ -172,6 +387,7 @@ export function installModelSelectorProviderPatch(
 
     const originalLoadModelsValue: unknown = Reflect.get(prototype, "loadModels");
     const originalFilterModelsValue: unknown = Reflect.get(prototype, "filterModels");
+    const originalUpdateListValue: unknown = Reflect.get(prototype, "updateList");
     if (typeof originalLoadModelsValue !== "function") {
         warnProviderDisplayPatchUnavailable(
             "model picker provider alias patch",
@@ -186,6 +402,13 @@ export function installModelSelectorProviderPatch(
         );
         return;
     }
+    if (typeof originalUpdateListValue !== "function") {
+        warnProviderDisplayPatchUnavailable(
+            "model picker provider alias patch",
+            "missing updateList",
+        );
+        return;
+    }
 
     // SAFETY: Runtime guards above verify ModelSelectorComponent exposes the
     // methods this patch wraps.
@@ -196,6 +419,7 @@ export function installModelSelectorProviderPatch(
         this: ModelSelectorPatchTarget,
         query: string,
     ) => void;
+    const originalUpdateList = originalUpdateListValue as (this: ModelSelectorPatchTarget) => void;
 
     prototype.loadModels = async function loadModelsWithProviderAliases(
         this: ModelSelectorPatchTarget,
@@ -219,6 +443,17 @@ export function installModelSelectorProviderPatch(
         const loaded = state.loadConfig();
         this.filteredModels = applyProviderDisplayNames(this.filteredModels, loaded);
         this.updateList();
+    };
+
+    prototype.updateList = function updateListWithModelNames(this: ModelSelectorPatchTarget): void {
+        const originalFilteredModels = this.filteredModels;
+        this.filteredModels = getModelSelectorDisplayItems(originalFilteredModels);
+        try {
+            originalUpdateList.call(this);
+            formatModelSelectorList(this);
+        } finally {
+            this.filteredModels = originalFilteredModels;
+        }
     };
 
     prototype[MODEL_SELECTOR_PROVIDER_PATCH_KEY] = true;
@@ -256,6 +491,7 @@ export function installScopedModelsProviderPatch(
         this.filteredItems = getScopedDisplayItems(originalFilteredItems, state);
         try {
             originalUpdateList.call(this);
+            formatScopedModelsList(this);
         } finally {
             this.filteredItems = originalFilteredItems;
         }
