@@ -7,6 +7,9 @@ lint:
 test:
     npm test
 
+check:
+    npm run check
+
 release:
     npm run release
 
