@@ -6,6 +6,7 @@ const MODEL_SELECTOR_HINT_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.model-selec
 
 const selectorInstancesSkippingNextSpacer = new WeakSet<object>();
 
+let compactModelSelector = true;
 let hideModelProviderHint = true;
 
 type ComponentLike = {
@@ -55,6 +56,13 @@ function isModelProviderHintText(component: ComponentLike): boolean {
 }
 
 /**
+ * Sets whether extra model picker blank spacer rows should be hidden.
+ */
+export function setCompactModelSelector(enabled: boolean): void {
+    compactModelSelector = enabled;
+}
+
+/**
  * Sets whether the configured-provider model picker hint should be hidden.
  */
 export function setHideModelProviderHint(enabled: boolean): void {
@@ -85,11 +93,6 @@ export function installModelSelectorHintPatch(
         this: ModelSelectorAddChildTarget,
         component: ComponentLike,
     ): void {
-        if (!hideModelProviderHint) {
-            originalAddChild.call(this, component);
-            return;
-        }
-
         if (selectorInstancesSkippingNextSpacer.has(this)) {
             selectorInstancesSkippingNextSpacer.delete(this);
             if (isSingleLineSpacer(component)) {
@@ -97,7 +100,11 @@ export function installModelSelectorHintPatch(
             }
         }
 
-        if (isModelProviderHintText(component)) {
+        if (compactModelSelector && isSingleLineSpacer(component)) {
+            return;
+        }
+
+        if (hideModelProviderHint && isModelProviderHintText(component)) {
             selectorInstancesSkippingNextSpacer.add(this);
             return;
         }

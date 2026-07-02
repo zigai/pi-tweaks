@@ -2,9 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import {
+    applyBashExecPromptSpacing,
+    setBashExecPromptSpacing,
+    type BashExecSpacingEditor,
+} from "../src/bash-exec-spacing.ts";
+import {
     installModelSelectorHintPatch,
+    setCompactModelSelector,
     setHideModelProviderHint,
 } from "../src/model-selector-hint.ts";
+import { installModelStatusPatch, setHideModelChangeStatus } from "../src/model-status.ts";
 import {
     installSlashCommandSourcePatch,
     setHideSlashCommandSourceTags,
@@ -28,6 +35,11 @@ type TestInteractiveMode = {
         description: string | undefined,
         sourceInfo: unknown,
     ): string | undefined;
+};
+
+type TestStatusMode = {
+    statuses: string[];
+    showStatus(message: string): void;
 };
 
 class TestText implements RenderedComponent {
@@ -62,6 +74,40 @@ class Spacer implements RenderedComponent {
     }
 }
 
+class TestEditor implements BashExecSpacingEditor {
+    text: string;
+    renderRequests = 0;
+    handledInput: string[] = [];
+
+    constructor(text = "") {
+        this.text = text;
+    }
+
+    getCursor(): { line: number; col: number } {
+        return { line: 0, col: this.text.length };
+    }
+
+    getText(): string {
+        return this.text;
+    }
+
+    handleInput(data: string): void {
+        this.handledInput.push(data);
+    }
+
+    insertTextAtCursor(text: string): void {
+        this.text += text;
+    }
+
+    requestRenderNow(): void {
+        this.renderRequests += 1;
+    }
+
+    setText(text: string): void {
+        this.text = text;
+    }
+}
+
 function createTestModelSelector(): TestModelSelector {
     return {
         addedComponents: [],
@@ -82,7 +128,48 @@ function createTestInteractiveMode(): TestInteractiveMode {
     };
 }
 
+function createTestStatusMode(): TestStatusMode {
+    return {
+        statuses: [],
+        showStatus(message: string) {
+            this.statuses.push(message);
+        },
+    };
+}
+
+test("bash exec prompt spacing inserts a space after empty bang", () => {
+    setBashExecPromptSpacing(true);
+    const editor = new TestEditor();
+
+    assert.equal(applyBashExecPromptSpacing(editor, "!"), true);
+
+    assert.equal(editor.text, "! ");
+    assert.equal(editor.renderRequests, 1);
+});
+
+test("bash exec prompt spacing preserves excluded bash prefix", () => {
+    setBashExecPromptSpacing(true);
+    const editor = new TestEditor("! ");
+
+    assert.equal(applyBashExecPromptSpacing(editor, "!"), true);
+
+    assert.equal(editor.text, "!! ");
+    assert.equal(editor.renderRequests, 1);
+});
+
+test("bash exec prompt spacing leaves normal input alone when disabled", () => {
+    setBashExecPromptSpacing(false);
+    const editor = new TestEditor();
+
+    assert.equal(applyBashExecPromptSpacing(editor, "!"), false);
+
+    assert.equal(editor.text, "");
+    assert.equal(editor.renderRequests, 0);
+    setBashExecPromptSpacing(true);
+});
+
 test("model selector hint patch removes provider hint and following spacer", () => {
+    setCompactModelSelector(false);
     setHideModelProviderHint(true);
     const modelSelector = createTestModelSelector();
     const before = new TestText("before");
@@ -101,6 +188,7 @@ test("model selector hint patch removes provider hint and following spacer", () 
 });
 
 test("model selector hint patch only skips an immediate spacer", () => {
+    setCompactModelSelector(false);
     setHideModelProviderHint(true);
     const modelSelector = createTestModelSelector();
     const hint = new TestText(MODEL_PROVIDER_HINT_TEXT);
@@ -117,6 +205,7 @@ test("model selector hint patch only skips an immediate spacer", () => {
 });
 
 test("model selector hint patch leaves hint visible when disabled", () => {
+    setCompactModelSelector(false);
     setHideModelProviderHint(false);
     const modelSelector = createTestModelSelector();
     const hint = new TestText(MODEL_PROVIDER_HINT_TEXT);
@@ -130,7 +219,25 @@ test("model selector hint patch leaves hint visible when disabled", () => {
     assert.deepEqual(modelSelector.addedComponents, [hint, spacer]);
 });
 
+test("model selector compact mode removes spacer rows independently", () => {
+    setCompactModelSelector(true);
+    setHideModelProviderHint(false);
+    const modelSelector = createTestModelSelector();
+    const before = new TestText("before");
+    const spacer = new Spacer();
+    const hint = new TestText(MODEL_PROVIDER_HINT_TEXT);
+
+    installModelSelectorHintPatch(modelSelector);
+
+    modelSelector.addChild(before);
+    modelSelector.addChild(spacer);
+    modelSelector.addChild(hint);
+
+    assert.deepEqual(modelSelector.addedComponents, [before, hint]);
+});
+
 test("model selector hint patch is idempotent", () => {
+    setCompactModelSelector(true);
     setHideModelProviderHint(true);
     const modelSelector = createTestModelSelector();
 
@@ -139,6 +246,40 @@ test("model selector hint patch is idempotent", () => {
     installModelSelectorHintPatch(modelSelector);
 
     assert.equal(Reflect.get(modelSelector, "addChild"), patchedAddChild);
+});
+
+test("model status patch removes model change status", () => {
+    setHideModelChangeStatus(true);
+    const statusMode = createTestStatusMode();
+
+    installModelStatusPatch(statusMode);
+
+    statusMode.showStatus("Model: deepseek-v4-flash");
+    statusMode.showStatus("Switched to GPT-5");
+
+    assert.deepEqual(statusMode.statuses, ["Switched to GPT-5"]);
+});
+
+test("model status patch leaves model change status visible when disabled", () => {
+    setHideModelChangeStatus(false);
+    const statusMode = createTestStatusMode();
+
+    installModelStatusPatch(statusMode);
+
+    statusMode.showStatus("Model: deepseek-v4-flash");
+
+    assert.deepEqual(statusMode.statuses, ["Model: deepseek-v4-flash"]);
+});
+
+test("model status patch is idempotent", () => {
+    setHideModelChangeStatus(true);
+    const statusMode = createTestStatusMode();
+
+    installModelStatusPatch(statusMode);
+    const patchedShowStatus: unknown = Reflect.get(statusMode, "showStatus");
+    installModelStatusPatch(statusMode);
+
+    assert.equal(Reflect.get(statusMode, "showStatus"), patchedShowStatus);
 });
 
 test("slash command source patch removes source tags", () => {

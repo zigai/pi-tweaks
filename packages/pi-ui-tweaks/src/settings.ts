@@ -5,8 +5,12 @@ import { join } from "node:path";
 const UI_TWEAKS_SETTINGS_KEY = "uiTweaks";
 
 export type UiTweaksConfig = {
+    readonly bashExecPromptSpacing: boolean;
+    readonly compactModelSelector: boolean;
+    readonly hideModelChangeStatus: boolean;
     readonly hideModelProviderHint: boolean;
     readonly hideSlashCommandSourceTags: boolean;
+    readonly neutralBorderColor: boolean;
 };
 
 export type LoadedUiTweaksConfig = {
@@ -20,14 +24,22 @@ export type UiTweaksSettingsSource = {
 };
 
 type UiTweaksSettings = {
-    readonly enabled?: boolean;
-    readonly hideModelProviderHint?: boolean;
-    readonly hideSlashCommandSourceTags?: boolean;
+    bashExecPromptSpacing?: boolean;
+    compactModelSelector?: boolean;
+    enabled?: boolean;
+    hideModelChangeStatus?: boolean;
+    hideModelProviderHint?: boolean;
+    hideSlashCommandSourceTags?: boolean;
+    neutralBorderColor?: boolean;
 };
 
 const DEFAULT_UI_TWEAKS_CONFIG: UiTweaksConfig = {
+    bashExecPromptSpacing: true,
+    compactModelSelector: true,
+    hideModelChangeStatus: true,
     hideModelProviderHint: true,
     hideSlashCommandSourceTags: true,
+    neutralBorderColor: true,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,11 +81,7 @@ function parseUiTweaksSettings(
     }
 
     const errors: string[] = [];
-    const parsed: {
-        enabled?: boolean;
-        hideModelProviderHint?: boolean;
-        hideSlashCommandSourceTags?: boolean;
-    } = {};
+    const parsed: UiTweaksSettings = {};
 
     const enabled = readOptionalBoolean(
         rawUiTweaks,
@@ -84,6 +92,39 @@ function parseUiTweaksSettings(
         errors.push(enabled.error);
     } else if (enabled.value !== undefined) {
         parsed.enabled = enabled.value;
+    }
+
+    const bashExecPromptSpacing = readOptionalBoolean(
+        rawUiTweaks,
+        "bashExecPromptSpacing",
+        `${label}.${UI_TWEAKS_SETTINGS_KEY}`,
+    );
+    if (bashExecPromptSpacing.error !== undefined) {
+        errors.push(bashExecPromptSpacing.error);
+    } else if (bashExecPromptSpacing.value !== undefined) {
+        parsed.bashExecPromptSpacing = bashExecPromptSpacing.value;
+    }
+
+    const compactModelSelector = readOptionalBoolean(
+        rawUiTweaks,
+        "compactModelSelector",
+        `${label}.${UI_TWEAKS_SETTINGS_KEY}`,
+    );
+    if (compactModelSelector.error !== undefined) {
+        errors.push(compactModelSelector.error);
+    } else if (compactModelSelector.value !== undefined) {
+        parsed.compactModelSelector = compactModelSelector.value;
+    }
+
+    const hideModelChangeStatus = readOptionalBoolean(
+        rawUiTweaks,
+        "hideModelChangeStatus",
+        `${label}.${UI_TWEAKS_SETTINGS_KEY}`,
+    );
+    if (hideModelChangeStatus.error !== undefined) {
+        errors.push(hideModelChangeStatus.error);
+    } else if (hideModelChangeStatus.value !== undefined) {
+        parsed.hideModelChangeStatus = hideModelChangeStatus.value;
     }
 
     const hideModelProviderHint = readOptionalBoolean(
@@ -108,23 +149,46 @@ function parseUiTweaksSettings(
         parsed.hideSlashCommandSourceTags = hideSlashCommandSourceTags.value;
     }
 
+    const neutralBorderColor = readOptionalBoolean(
+        rawUiTweaks,
+        "neutralBorderColor",
+        `${label}.${UI_TWEAKS_SETTINGS_KEY}`,
+    );
+    if (neutralBorderColor.error !== undefined) {
+        errors.push(neutralBorderColor.error);
+    } else if (neutralBorderColor.value !== undefined) {
+        parsed.neutralBorderColor = neutralBorderColor.value;
+    }
+
     return { settings: parsed, errors };
 }
 
 function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
     if (settings.enabled === false) {
         return {
+            bashExecPromptSpacing: false,
+            compactModelSelector: false,
+            hideModelChangeStatus: false,
             hideModelProviderHint: false,
             hideSlashCommandSourceTags: false,
+            neutralBorderColor: false,
         };
     }
 
     return {
+        bashExecPromptSpacing:
+            settings.bashExecPromptSpacing ?? DEFAULT_UI_TWEAKS_CONFIG.bashExecPromptSpacing,
+        compactModelSelector:
+            settings.compactModelSelector ?? DEFAULT_UI_TWEAKS_CONFIG.compactModelSelector,
+        hideModelChangeStatus:
+            settings.hideModelChangeStatus ?? DEFAULT_UI_TWEAKS_CONFIG.hideModelChangeStatus,
         hideModelProviderHint:
             settings.hideModelProviderHint ?? DEFAULT_UI_TWEAKS_CONFIG.hideModelProviderHint,
         hideSlashCommandSourceTags:
             settings.hideSlashCommandSourceTags ??
             DEFAULT_UI_TWEAKS_CONFIG.hideSlashCommandSourceTags,
+        neutralBorderColor:
+            settings.neutralBorderColor ?? DEFAULT_UI_TWEAKS_CONFIG.neutralBorderColor,
     };
 }
 

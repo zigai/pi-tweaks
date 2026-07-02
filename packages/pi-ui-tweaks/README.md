@@ -8,8 +8,12 @@ This Pi extension collects small configurable UI tweaks that are too tiny to des
 
 ## Tweaks
 
+- `bashExecPromptSpacing` inserts a space after `!` when starting bash exec mode from an empty prompt, so commands appear as `! code .`.
+- `compactModelSelector` removes extra blank spacer rows from the model picker.
+- `hideModelChangeStatus` hides redundant `Model: <id>` status lines after changing models.
 - `hideModelProviderHint` hides Pi's built-in `Only showing models from configured providers. Use /login to add providers.` model picker hint.
 - `hideSlashCommandSourceTags` hides source tags like `[u:npm:@plannotator/pi-extension]` from slash command autocomplete descriptions.
+- `neutralBorderColor` renders Pi border lines with the normal text color instead of the theme border color.
 
 ## Settings
 
@@ -18,8 +22,12 @@ Configure in `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`:
 ```json
 {
   "uiTweaks": {
+    "bashExecPromptSpacing": true,
+    "compactModelSelector": true,
+    "hideModelChangeStatus": true,
     "hideModelProviderHint": true,
-    "hideSlashCommandSourceTags": true
+    "hideSlashCommandSourceTags": true,
+    "neutralBorderColor": true
   }
 }
 ```
@@ -30,8 +38,12 @@ Defaults:
 {
   "uiTweaks": {
     "enabled": true,
+    "bashExecPromptSpacing": true,
+    "compactModelSelector": true,
+    "hideModelChangeStatus": true,
     "hideModelProviderHint": true,
-    "hideSlashCommandSourceTags": true
+    "hideSlashCommandSourceTags": true,
+    "neutralBorderColor": true
   }
 }
 ```
