@@ -87,6 +87,37 @@ test("createFooterComponent renders configured plain separator", () => {
     assert.doesNotMatch(plain, / \| /);
 });
 
+test("createFooterComponent prefers model display names over model ids", () => {
+    const ctx: FooterContext = {
+        cwd: "/workspace/pi-tweaks",
+        model: {
+            provider: "openai-codex",
+            id: "gpt-5.5",
+            name: "GPT-5.5",
+            contextWindow: 200_000,
+        },
+        getContextUsage() {
+            return {
+                tokens: 150_000,
+                percent: 75,
+                contextWindow: 200_000,
+            };
+        },
+    };
+    const component = createFooterComponent(
+        ctx,
+        footerData(null, new Map()),
+        () => "medium",
+        () => undefined,
+    );
+
+    const line = component.render(120)[0] ?? "";
+    const plain = stripAnsi(line);
+
+    assert.match(plain, /GPT-5\.5/);
+    assert.doesNotMatch(plain, /gpt-5\.5/);
+});
+
 test("createFooterComponent uses provider display names from the model registry", () => {
     const ctx: FooterContext = {
         cwd: "/workspace/pi-tweaks",

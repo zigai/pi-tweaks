@@ -254,7 +254,7 @@ function buildFooterItems(
     const pathText = collapseHome(ctx.cwd);
     const providerId = ctx.model?.provider ?? "no-provider";
     const providerLabel = getProviderDisplayName(ctx, providerId);
-    const modelLabel = ctx.model?.id ?? "no-model";
+    const modelLabel = ctx.model?.name ?? ctx.model?.id ?? "no-model";
     const usage = ctx.getContextUsage();
     const contextText = getContextText(usage, ctx.model?.contextWindow);
     const mcpText = getMcpText(ctx, footerData);

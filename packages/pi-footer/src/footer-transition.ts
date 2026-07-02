@@ -102,6 +102,9 @@ function cloneModel(ctx: ExtensionContext): FooterModel | undefined {
         id: model.id,
         contextWindow: model.contextWindow,
     };
+    if (model.name !== undefined) {
+        cloned.name = model.name;
+    }
     const providerDisplayName = resolveProviderDisplayName(ctx, model.provider);
     if (providerDisplayName !== undefined) {
         cloned.providerDisplayName = providerDisplayName;

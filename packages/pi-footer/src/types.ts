@@ -35,6 +35,7 @@ export type ContextUsage = ReturnType<ExtensionContext["getContextUsage"]>;
 export type FooterModel = {
     provider: string;
     id: string;
+    name?: string;
     contextWindow?: number;
     providerDisplayName?: string;
 };
