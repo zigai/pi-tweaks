@@ -1,39 +1,141 @@
 import { getKeybindings, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
-import { PATCH_KEY, PREVIEW_TOGGLE_KEY } from "./constants.ts";
+import {
+    PATCH_KEY,
+    PREVIEW_TOGGLE_KEY,
+    TREE_PREVIEW_ENABLED_KEY,
+    TREE_TIMESTAMP_MODE_KEY,
+} from "./constants.ts";
 import { loadTreeInternals } from "./internal-imports.ts";
 import { patchTreeHeaderText } from "./patch-tree-header.ts";
 import { calculatePreviewLayout, getPreviewText, padToWidth } from "./preview.ts";
 import {
     getConfiguredThemeName,
+    getPersistedMaxVisibleLines,
+    getPersistedMode,
+    getPersistedPreviewEnabled,
     getPersistedPreviewFullHeight,
+    isTreeTimestampMode,
     persistMode,
     persistPreviewEnabled,
 } from "./settings.ts";
 import { formatEntryTimestamp, cycleMode } from "./timestamps.ts";
-import {
-    applyConfiguredMaxVisibleLines,
-    getTreePreviewEnabled,
-    getTreeTimestampMode,
-    setTreePreviewEnabled,
-    setTreeTimestampMode,
-} from "./tree-state.ts";
-import type { TreeListInstance, TreeNode, TreeTimestampMode } from "./types.ts";
+import { setTreePreviewEnabled, setTreeTimestampMode } from "./tree-state.ts";
+import type {
+    ThemeModule,
+    TreeListInstance,
+    TreeNode,
+    TreeSelectorModule,
+    TreeTimestampMode,
+} from "./types.ts";
 
-export async function patchTreeSelector(): Promise<void> {
-    patchTreeHeaderText();
+const TREE_PATCH_STATE = Symbol.for("zigai.pi-tree.patch-state");
+
+type TreePatchState = {
+    getConfiguredThemeName: () => string | undefined;
+    getPersistedMode: () => TreeTimestampMode;
+    getPersistedPreviewEnabled: () => boolean;
+    getPersistedMaxVisibleLines: () => number | null;
+    getPersistedPreviewFullHeight: () => boolean;
+    persistMode: (mode: TreeTimestampMode) => void;
+    persistPreviewEnabled: (enabled: boolean) => void;
+};
+
+type TreePatchSettings = TreePatchState;
+
+type PatchTreeSelectorOptions = {
+    readonly loadTreeInternals?: () => Promise<[TreeSelectorModule, ThemeModule] | undefined>;
+    readonly patchTreeHeaderText?: () => void;
+    readonly settings?: TreePatchSettings;
+};
+
+function defaultTreePatchSettings(): TreePatchSettings {
+    return {
+        getConfiguredThemeName,
+        getPersistedMode,
+        getPersistedPreviewEnabled,
+        getPersistedMaxVisibleLines,
+        getPersistedPreviewFullHeight,
+        persistMode,
+        persistPreviewEnabled,
+    };
+}
+
+function setTreePatchState(settings: TreePatchSettings): TreePatchState {
+    const existing = Reflect.get(globalThis, TREE_PATCH_STATE);
+    if (typeof existing === "object" && existing !== null) {
+        Object.assign(existing, settings);
+        return existing as TreePatchState;
+    }
+
+    const patchState: TreePatchState = { ...settings };
+    Reflect.set(globalThis, TREE_PATCH_STATE, patchState);
+    return patchState;
+}
+
+function applyConfiguredMaxVisibleLinesFromState(
+    treeList: TreeListInstance,
+    patchState: TreePatchState,
+): void {
+    const configured = patchState.getPersistedMaxVisibleLines();
+    if (configured === null) {
+        return;
+    }
+    treeList.maxVisibleLines = configured;
+}
+
+function getTreeTimestampModeFromState(
+    treeList: TreeListInstance,
+    patchState: TreePatchState,
+): TreeTimestampMode {
+    const current = (treeList as TreeListInstance & { [TREE_TIMESTAMP_MODE_KEY]?: unknown })[
+        TREE_TIMESTAMP_MODE_KEY
+    ];
+
+    if (isTreeTimestampMode(current)) {
+        treeList.showLabelTimestamps = false;
+        return current;
+    }
+
+    const initialMode = patchState.getPersistedMode();
+    setTreeTimestampMode(treeList, initialMode);
+    return initialMode;
+}
+
+function getTreePreviewEnabledFromState(
+    treeList: TreeListInstance,
+    patchState: TreePatchState,
+): boolean {
+    const current = (treeList as TreeListInstance & { [TREE_PREVIEW_ENABLED_KEY]?: unknown })[
+        TREE_PREVIEW_ENABLED_KEY
+    ];
+
+    if (typeof current === "boolean") {
+        return current;
+    }
+
+    const initialEnabled = patchState.getPersistedPreviewEnabled();
+    setTreePreviewEnabled(treeList, initialEnabled);
+    return initialEnabled;
+}
+
+export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}): Promise<void> {
+    const patchState = setTreePatchState(options.settings ?? defaultTreePatchSettings());
+    const patchHeaderText = options.patchTreeHeaderText ?? patchTreeHeaderText;
+    patchHeaderText();
+
+    const loadInternals = options.loadTreeInternals ?? loadTreeInternals;
+    const internals = await loadInternals();
+    if (internals === undefined) return;
+
+    const [{ TreeSelectorComponent }, { initTheme, theme }] = internals;
+
+    initTheme(patchState.getConfiguredThemeName(), false);
 
     const globalState = globalThis as typeof globalThis & {
         [PATCH_KEY]?: boolean;
     };
     if (globalState[PATCH_KEY] === true) return;
-
-    const internals = await loadTreeInternals();
-    if (internals === undefined) return;
-
-    const [{ TreeSelectorComponent }, { initTheme, theme }] = internals;
-
-    initTheme(getConfiguredThemeName(), false);
 
     const selector = new TreeSelectorComponent(
         [],
@@ -53,7 +155,7 @@ export async function patchTreeSelector(): Promise<void> {
         selectorPrototype.getTreeList = function patchedGetTreeList(this: unknown) {
             const treeListInstance = originalGetTreeList.call(this);
             if (treeListInstance !== undefined) {
-                applyConfiguredMaxVisibleLines(treeListInstance);
+                applyConfiguredMaxVisibleLinesFromState(treeListInstance, patchState);
             }
             return treeListInstance;
         };
@@ -86,19 +188,19 @@ export async function patchTreeSelector(): Promise<void> {
         this: TreeListInstance,
         keyData: string,
     ) {
-        applyConfiguredMaxVisibleLines(this);
+        applyConfiguredMaxVisibleLinesFromState(this, patchState);
         const kb = getKeybindings();
         if (kb.matches(keyData, "app.tree.toggleLabelTimestamp") === true) {
-            const nextMode = cycleMode(getTreeTimestampMode(this));
+            const nextMode = cycleMode(getTreeTimestampModeFromState(this, patchState));
             setTreeTimestampMode(this, nextMode);
-            persistMode(nextMode);
+            patchState.persistMode(nextMode);
             return;
         }
 
         if (keyData === PREVIEW_TOGGLE_KEY) {
-            const nextEnabled = !getTreePreviewEnabled(this);
+            const nextEnabled = !getTreePreviewEnabledFromState(this, patchState);
             setTreePreviewEnabled(this, nextEnabled);
-            persistPreviewEnabled(nextEnabled);
+            patchState.persistPreviewEnabled(nextEnabled);
             return;
         }
 
@@ -108,7 +210,7 @@ export async function patchTreeSelector(): Promise<void> {
     treeListPrototype.getStatusLabels = function patchedGetStatusLabels(
         this: TreeListInstance,
     ): string {
-        const currentMode = getTreeTimestampMode(this);
+        const currentMode = getTreeTimestampModeFromState(this, patchState);
         const originalLabelTimestampFlag = this.showLabelTimestamps;
         this.showLabelTimestamps = false;
 
@@ -136,7 +238,7 @@ export async function patchTreeSelector(): Promise<void> {
             absolute: "Absolute",
         };
         let previewLabel = "Off";
-        if (getTreePreviewEnabled(this)) {
+        if (getTreePreviewEnabledFromState(this, patchState)) {
             previewLabel = "On";
         }
 
@@ -149,8 +251,8 @@ export async function patchTreeSelector(): Promise<void> {
             width: number,
         ): string[] {
             const layout = calculatePreviewLayout(width);
-            applyConfiguredMaxVisibleLines(this);
-            if (!getTreePreviewEnabled(this) || layout === null) {
+            applyConfiguredMaxVisibleLinesFromState(this, patchState);
+            if (!getTreePreviewEnabledFromState(this, patchState) || layout === null) {
                 return originalRender.call(this, width);
             }
 
@@ -176,7 +278,7 @@ export async function patchTreeSelector(): Promise<void> {
 
             const treeRowCount = Math.max(0, endIndex - startIndex);
             let rowCount = maxVisibleLines;
-            if (!getPersistedPreviewFullHeight()) {
+            if (!patchState.getPersistedPreviewFullHeight()) {
                 rowCount = Math.max(treeRowCount, Math.min(maxVisibleLines, previewLines.length));
             }
             for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
@@ -314,7 +416,7 @@ export async function patchTreeSelector(): Promise<void> {
             isSelected: boolean,
         ): string {
             const content = originalGetEntryDisplayText.call(this, node, isSelected);
-            const currentMode = getTreeTimestampMode(this);
+            const currentMode = getTreeTimestampModeFromState(this, patchState);
             if (currentMode === "off") return content;
 
             const formatted = formatEntryTimestamp(node?.entry?.timestamp, currentMode);
