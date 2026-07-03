@@ -16,40 +16,38 @@ Adds runtime timing details to Pi:
 pi install npm:@zigai/pi-run-timer
 ```
 
-## Rotating right-side messages
+## Configuration
 
-Configure `runTimer.rightMessages` in `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`:
+Configure global settings at `~/.pi/agent/pi-run-timer/config.json`.
+
+| Option                                 | Type       | Default  | Description                                                                                               |
+| -------------------------------------- | ---------- | -------- | --------------------------------------------------------------------------------------------------------- |
+| `rightMessages`                        | `object`   | disabled | Rotating right-side working-bar messages.                                                                 |
+| `rightMessages.enabled`                | `boolean`  | `false`  | Enables messages. If omitted, messages turn on when any are loaded.                                       |
+| `rightMessages.intervalMs`             | `integer`  | `10000`  | Time between message rotations.                                                                           |
+| `rightMessages.minGap`                 | `integer`  | `4`      | Minimum spacing between status text and right-side message.                                               |
+| `rightMessages.minScrollCycles`        | `integer`  | `1`      | Minimum full scroll passes before a long message rotates.                                                 |
+| `rightMessages.scrollColumnIntervalMs` | `integer`  | `120`    | Horizontal scroll speed for long messages.                                                                |
+| `rightMessages.dimmed`                 | `boolean`  | `true`   | Renders messages dimmed.                                                                                  |
+| `rightMessages.italic`                 | `boolean`  | `true`   | Renders messages italic.                                                                                  |
+| `rightMessages.messages`               | `string[]` | `[]`     | Inline messages.                                                                                          |
+| `rightMessages.messagesFile`           | `string`   | unset    | Text file with one message per non-empty, non-comment line. Relative paths use the config file directory. |
 
 ```json
 {
-  "runTimer": {
-    "rightMessages": {
-      "messagesFile": "run-timer-tips.txt"
-    }
+  "$schema": "./config.schema.json",
+  "rightMessages": {
+    "enabled": false,
+    "intervalMs": 10000,
+    "minGap": 4,
+    "minScrollCycles": 1,
+    "scrollColumnIntervalMs": 120,
+    "dimmed": true,
+    "italic": true,
+    "messages": []
   }
 }
 ```
-
-The file is UTF-8 text with one message per non-empty line. Lines starting with `#` are ignored. Relative global paths resolve from `~/.pi/agent`; relative project paths resolve from the project root.
-
-Inline messages and display options are also supported:
-
-```json
-{
-  "runTimer": {
-    "rightMessages": {
-      "intervalMs": 10000,
-      "minScrollCycles": 1,
-      "scrollColumnIntervalMs": 120,
-      "dimmed": true,
-      "italic": true,
-      "messages": ["Tip: use $skill mentions", "Tip: /tree shows branches"]
-    }
-  }
-}
-```
-
-If `enabled` is omitted, messages turn on when at least one message is loaded. Long messages slide horizontally before rotating.
 
 ## License
 

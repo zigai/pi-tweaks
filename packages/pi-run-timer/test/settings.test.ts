@@ -1,10 +1,58 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 
-import { resolveRunTimerConfig } from "../src/settings.ts";
+import { loadRunTimerConfig, resolveRunTimerConfig } from "../src/settings.ts";
+
+test("loadRunTimerConfig scaffolds missing global config and schema", async () => {
+    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const agentDir = mkdtempSync(join(tmpdir(), "pi-run-timer-agent-"));
+    const cwd = mkdtempSync(join(tmpdir(), "pi-run-timer-cwd-"));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    try {
+        const configPath = join(agentDir, "pi-run-timer", "config.json");
+        const schemaPath = join(agentDir, "pi-run-timer", "config.schema.json");
+        const loaded = loadRunTimerConfig(cwd, false);
+
+        assert.deepEqual(loaded.errors, []);
+        assert.equal(loaded.config.rightMessages.enabled, false);
+        assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
+            $schema: "./config.schema.json",
+            rightMessages: {
+                enabled: false,
+                intervalMs: 10000,
+                minGap: 4,
+                minScrollCycles: 1,
+                scrollColumnIntervalMs: 120,
+                dimmed: true,
+                italic: true,
+                messages: [],
+            },
+        });
+        assert.match(await readFile(schemaPath, "utf8"), /Pi run timer config/);
+
+        const customConfig = JSON.stringify({ rightMessages: { messages: ["hello"] } });
+        writeFileSync(configPath, customConfig, "utf8");
+        writeFileSync(schemaPath, "stale schema", "utf8");
+        const loadedAgain = loadRunTimerConfig(cwd, false);
+
+        assert.deepEqual(loadedAgain.config.rightMessages.messages, ["hello"]);
+        assert.equal(await readFile(configPath, "utf8"), customConfig);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi run timer config/);
+    } finally {
+        rmSync(agentDir, { recursive: true, force: true });
+        rmSync(cwd, { recursive: true, force: true });
+        if (originalAgentDir === undefined) {
+            delete process.env.PI_CODING_AGENT_DIR;
+        } else {
+            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+        }
+    }
+});
 
 test("run timer right messages default to disabled", () => {
     const loaded = resolveRunTimerConfig([]);
@@ -22,16 +70,14 @@ test("run timer right messages use inline configured messages", () => {
             label: "global",
             baseDir: ".",
             settings: {
-                runTimer: {
-                    rightMessages: {
-                        intervalMs: 5000,
-                        minGap: 8,
-                        minScrollCycles: 2,
-                        scrollColumnIntervalMs: 80,
-                        dimmed: false,
-                        italic: false,
-                        messages: ["Tip one", "", " Tip two "],
-                    },
+                rightMessages: {
+                    intervalMs: 5000,
+                    minGap: 8,
+                    minScrollCycles: 2,
+                    scrollColumnIntervalMs: 80,
+                    dimmed: false,
+                    italic: false,
+                    messages: ["Tip one", "", " Tip two "],
                 },
             },
         },
@@ -61,11 +107,9 @@ test("run timer right messages load messages from a text file", () => {
                 label: "global",
                 baseDir: directory,
                 settings: {
-                    runTimer: {
-                        rightMessages: {
-                            messages: ["Inline tip"],
-                            messagesFile: "tips.txt",
-                        },
+                    rightMessages: {
+                        messages: ["Inline tip"],
+                        messagesFile: "tips.txt",
                     },
                 },
             },
@@ -89,11 +133,9 @@ test("run timer right messages merge sources in precedence order", () => {
             label: "global",
             baseDir: ".",
             settings: {
-                runTimer: {
-                    rightMessages: {
-                        intervalMs: 5000,
-                        messages: ["global tip"],
-                    },
+                rightMessages: {
+                    intervalMs: 5000,
+                    messages: ["global tip"],
                 },
             },
         },
@@ -101,10 +143,8 @@ test("run timer right messages merge sources in precedence order", () => {
             label: "project",
             baseDir: ".",
             settings: {
-                runTimer: {
-                    rightMessages: {
-                        intervalMs: 12_000,
-                    },
+                rightMessages: {
+                    intervalMs: 12_000,
                 },
             },
         },
@@ -120,12 +160,10 @@ test("run timer right messages enabled false skips configured files", () => {
             label: "global",
             baseDir: ".",
             settings: {
-                runTimer: {
-                    rightMessages: {
-                        enabled: false,
-                        messages: ["hidden tip"],
-                        messagesFile: "missing.txt",
-                    },
+                rightMessages: {
+                    enabled: false,
+                    messages: ["hidden tip"],
+                    messagesFile: "missing.txt",
                 },
             },
         },
@@ -142,34 +180,45 @@ test("run timer right messages report invalid values", () => {
             label: "global",
             baseDir: ".",
             settings: {
-                runTimer: {
-                    rightMessages: {
-                        enabled: "yes",
-                        intervalMs: 0,
-                        minGap: -1,
-                        minScrollCycles: 0,
-                        scrollColumnIntervalMs: 0,
-                        dimmed: "sometimes",
-                        italic: "sure",
-                        messages: ["ok", 123],
-                        messagesFile: "",
-                    },
+                rightMessages: {
+                    enabled: "yes",
+                    intervalMs: 0,
+                    minGap: -1,
+                    minScrollCycles: 0,
+                    scrollColumnIntervalMs: 0,
+                    dimmed: "sometimes",
+                    italic: "sure",
+                    messages: ["ok", 123],
+                    messagesFile: "",
                 },
             },
         },
     ]);
 
-    assert.equal(loaded.config.rightMessages.enabled, true);
-    assert.deepEqual(loaded.config.rightMessages.messages, ["ok"]);
-    assert.deepEqual(loaded.errors, [
-        "global.runTimer.rightMessages.enabled must be a boolean.",
-        "global.runTimer.rightMessages.intervalMs must be a positive integer.",
-        "global.runTimer.rightMessages.minGap must be a non-negative integer.",
-        "global.runTimer.rightMessages.minScrollCycles must be a positive integer.",
-        "global.runTimer.rightMessages.scrollColumnIntervalMs must be a positive integer.",
-        "global.runTimer.rightMessages.dimmed must be a boolean.",
-        "global.runTimer.rightMessages.italic must be a boolean.",
-        "global.runTimer.rightMessages.messages[1] must be a string.",
-        "global.runTimer.rightMessages.messagesFile must be a non-empty string.",
+    assert.equal(loaded.config.rightMessages.enabled, false);
+    assert.deepEqual(loaded.config.rightMessages.messages, []);
+    assert.equal(loaded.errors.length, 1);
+    assert.match(loaded.errors[0] ?? "", /global is invalid:/);
+    assert.match(loaded.errors[0] ?? "", /rightMessages/);
+    assert.match(loaded.errors[0] ?? "", /messages/);
+});
+
+test("run timer right messages reject unknown config keys", () => {
+    const loaded = resolveRunTimerConfig([
+        {
+            label: "global",
+            baseDir: ".",
+            settings: {
+                rightMessages: {
+                    mesages: ["typo"],
+                },
+            },
+        },
     ]);
+
+    assert.equal(loaded.config.rightMessages.enabled, false);
+    assert.deepEqual(loaded.config.rightMessages.messages, []);
+    assert.equal(loaded.errors.length, 1);
+    assert.match(loaded.errors[0] ?? "", /global is invalid:/);
+    assert.match(loaded.errors[0] ?? "", /additional properties/);
 });

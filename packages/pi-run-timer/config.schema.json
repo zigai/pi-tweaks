@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-run-timer/config.schema.json",
+  "title": "Pi run timer config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "rightMessages": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "intervalMs": { "type": "integer", "minimum": 1, "default": 10000 },
+        "minGap": { "type": "integer", "minimum": 0, "default": 4 },
+        "minScrollCycles": { "type": "integer", "minimum": 1, "default": 1 },
+        "scrollColumnIntervalMs": { "type": "integer", "minimum": 1, "default": 120 },
+        "dimmed": { "type": "boolean", "default": true },
+        "italic": { "type": "boolean", "default": true },
+        "messages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "messagesFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional text file with one message per line, resolved relative to the config file base directory."
+        }
+      },
+      "default": {
+        "enabled": false,
+        "intervalMs": 10000,
+        "minGap": 4,
+        "minScrollCycles": 1,
+        "scrollColumnIntervalMs": 120,
+        "dimmed": true,
+        "italic": true,
+        "messages": []
+      }
+    }
+  }
+}
