@@ -12,33 +12,28 @@ Type `#` to fuzzy-search your project folder. The completion inserts `#project-n
 pi install npm:@zigai/pi-mention-project
 ```
 
-## Config
+## Configuration
 
-Add roots in `~/.pi/agent/settings.json` or `.pi/settings.json`:
+Configure global settings at `~/.pi/agent/pi-mention-project/config.json`.
 
-```json
-{
-  "mentionProjectRoots": ["~/Projects"]
-}
-```
-
-By default it lists only direct child folders that:
-
-- are Git repos (`.git` directory or worktree file)
-- do not start with `.`
-
-Optional settings:
+| Option              | Type                 | Default | Description                                                     |
+| ------------------- | -------------------- | ------- | --------------------------------------------------------------- |
+| `trigger`           | `string`             | `"#"`   | Single non-whitespace mention character. It cannot be `/`.      |
+| `roots`             | `string \| string[]` | `[]`    | Project search roots.                                           |
+| `gitReposOnly`      | `boolean`            | `true`  | Lists only folders that are Git repos.                          |
+| `includeDotFolders` | `boolean`            | `false` | Includes folders whose names start with `.`.                    |
+| `completionSuffix`  | `string`             | `" "`   | Text inserted after a selected mention. Use `""` for no suffix. |
 
 ```json
 {
-  "mentionProjectTrigger": "#",
-  "mentionProjectGitReposOnly": true,
-  "mentionProjectIncludeDotFolders": false,
-  "mentionProjectCompletionSuffix": " "
+  "$schema": "./config.schema.json",
+  "trigger": "#",
+  "roots": [],
+  "gitReposOnly": true,
+  "includeDotFolders": false,
+  "completionSuffix": " "
 }
 ```
-
-Completions insert a trailing space by default. Set `mentionProjectCompletionSuffix` to another string, or `""` to insert nothing after a selected mention.
 
 ## License
 

@@ -1,17 +1,14 @@
-import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import {
     autocompleteStartIndex,
     colorProjectMentions,
     isProjectMentionContext,
 } from "./rendering.ts";
-import type { EditorFactory, EditorLike, ProjectDirectory } from "./types.ts";
+import { applyEditorEnhancer } from "./editor-enhancer.ts";
+import type { EditorLike, ProjectDirectory } from "./types.ts";
 
-const MENTION_FACTORY_BASE = Symbol.for("zigai.pi-mention-project.editor-factory-base");
-
-type WrappedEditorFactory = EditorFactory & {
-    [MENTION_FACTORY_BASE]?: EditorFactory | undefined;
-};
+const MENTION_EDITOR_ENHANCER = Symbol.for("zigai.pi-mention-project.editor-enhancer");
 
 type ProjectSnapshot = () => ProjectDirectory[];
 
@@ -70,14 +67,7 @@ export function applyMentionProjectEditor(
 ): void {
     if (!ctx.hasUI) return;
 
-    const existing = ctx.ui.getEditorComponent() as WrappedEditorFactory | undefined;
-    const baseFactory = existing?.[MENTION_FACTORY_BASE] ?? existing;
-    const factory = ((tui, theme, keybindings) => {
-        const editor = (baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as unknown as EditorLike;
-        return enhanceEditor(editor, ctx, trigger, getProjects);
-    }) as WrappedEditorFactory;
-    factory[MENTION_FACTORY_BASE] = baseFactory;
-
-    ctx.ui.setEditorComponent(factory);
+    applyEditorEnhancer(ctx, MENTION_EDITOR_ENHANCER, (editor) =>
+        enhanceEditor(editor, ctx, trigger, getProjects),
+    );
 }

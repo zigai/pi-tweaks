@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-mention-project/config.schema.json",
+  "title": "Pi project mention config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "trigger": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1,
+      "pattern": "^[^/\\s]$",
+      "default": "#"
+    },
+    "roots": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "default": [],
+      "description": "Project search roots."
+    },
+    "gitReposOnly": { "type": "boolean", "default": true },
+    "includeDotFolders": { "type": "boolean", "default": false },
+    "completionSuffix": { "type": "string", "default": " " }
+  }
+}

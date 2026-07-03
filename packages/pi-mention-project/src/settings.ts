@@ -1,9 +1,11 @@
 import {
+    CONFIG_DIR_NAME,
     getAgentDir,
-    SettingsManager,
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type, type TSchema } from "typebox";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 import type { MentionProjectSettings } from "./types.ts";
@@ -13,16 +15,45 @@ export const DEFAULT_COMPLETION_SUFFIX = " ";
 export const INCLUDE_NON_GIT_FLAG = "mention-project-include-non-git";
 export const INCLUDE_DOT_FOLDERS_FLAG = "mention-project-include-dot-folders";
 
-const TRIGGER_SETTINGS_KEY = "mentionProjectTrigger";
-const ROOTS_SETTINGS_KEY = "mentionProjectRoots";
-const GIT_REPOS_ONLY_SETTINGS_KEY = "mentionProjectGitReposOnly";
-const INCLUDE_DOT_FOLDERS_SETTINGS_KEY = "mentionProjectIncludeDotFolders";
-const COMPLETION_SUFFIX_SETTINGS_KEY = "mentionProjectCompletionSuffix";
+const EXTENSION_ID = "pi-mention-project";
+const CONFIG_FILE = "config.json";
+const SCHEMA_FILE = "config.schema.json";
+const TRIGGER_SETTINGS_KEY = "trigger";
+const ROOTS_SETTINGS_KEY = "roots";
+const GIT_REPOS_ONLY_SETTINGS_KEY = "gitReposOnly";
+const INCLUDE_DOT_FOLDERS_SETTINGS_KEY = "includeDotFolders";
+const COMPLETION_SUFFIX_SETTINGS_KEY = "completionSuffix";
 
 const MentionTriggerSchema = Type.String({ minLength: 1, maxLength: 1, pattern: "^[^/\\s]$" });
-const ProjectRootsSchema = Type.Array(Type.String({ minLength: 1 }));
+const ProjectRootsSchema = Type.Union([
+    Type.String({ minLength: 1 }),
+    Type.Array(Type.String({ minLength: 1 })),
+]);
 const BooleanSchema = Type.Boolean();
 const CompletionSuffixSchema = Type.String();
+
+const MentionProjectConfigSchema = Type.Object(
+    {
+        $schema: Type.Optional(Type.String()),
+        [TRIGGER_SETTINGS_KEY]: Type.Optional(MentionTriggerSchema),
+        [ROOTS_SETTINGS_KEY]: Type.Optional(ProjectRootsSchema),
+        [GIT_REPOS_ONLY_SETTINGS_KEY]: Type.Optional(BooleanSchema),
+        [INCLUDE_DOT_FOLDERS_SETTINGS_KEY]: Type.Optional(BooleanSchema),
+        [COMPLETION_SUFFIX_SETTINGS_KEY]: Type.Optional(CompletionSuffixSchema),
+    },
+    { additionalProperties: false },
+);
+
+type ParsedMentionProjectConfig = Static<typeof MentionProjectConfigSchema>;
+
+const DEFAULT_MENTION_PROJECT_CONFIG_FILE = {
+    $schema: `./${SCHEMA_FILE}`,
+    [TRIGGER_SETTINGS_KEY]: DEFAULT_MENTION_TRIGGER,
+    [ROOTS_SETTINGS_KEY]: [],
+    [GIT_REPOS_ONLY_SETTINGS_KEY]: true,
+    [INCLUDE_DOT_FOLDERS_SETTINGS_KEY]: false,
+    [COMPLETION_SUFFIX_SETTINGS_KEY]: DEFAULT_COMPLETION_SUFFIX,
+};
 
 type ProjectTrustContext = ExtensionContext & {
     isProjectTrusted?: () => boolean;
@@ -51,14 +82,13 @@ function parseOptionalBoolean(schema: TSchema, value: unknown): boolean | undefi
 function parseOptionalRoots(value: unknown): string[] | undefined {
     if (value === undefined) return undefined;
 
-    if (typeof value === "string") {
-        const trimmed = value.trim();
+    if (!Value.Check(ProjectRootsSchema, value)) return undefined;
+    const parsed: unknown = Value.Parse(ProjectRootsSchema, value);
+    if (typeof parsed === "string") {
+        const trimmed = parsed.trim();
         if (trimmed.length === 0) return undefined;
         return [trimmed];
     }
-
-    if (!Value.Check(ProjectRootsSchema, value)) return undefined;
-    const parsed: unknown = Value.Parse(ProjectRootsSchema, value);
     if (!Array.isArray(parsed)) return undefined;
 
     const roots = parsed.filter((entry): entry is string => {
@@ -66,6 +96,90 @@ function parseOptionalRoots(value: unknown): string[] | undefined {
     });
     if (roots.length === 0 && parsed.length > 0) return undefined;
     return roots;
+}
+
+function getGlobalConfigPath(): string {
+    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
+}
+
+function getProjectConfigPath(cwd: string): string {
+    return join(cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
+}
+
+function getSchemaPath(configPath: string): string {
+    return join(dirname(configPath), SCHEMA_FILE);
+}
+
+function writeIfMissing(filePath: string, content: string): void {
+    try {
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
+    } catch (error: unknown) {
+        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
+        if (error instanceof Error) throw error;
+        throw new Error(String(error));
+    }
+}
+
+function refreshSchemaFile(filePath: string, content: string): void {
+    let temporaryPath: string | undefined;
+    try {
+        mkdirSync(dirname(filePath), { recursive: true });
+        try {
+            if (readFileSync(filePath, "utf8") === content) return;
+        } catch (error: unknown) {
+            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
+                throw error;
+            }
+        }
+
+        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
+        temporaryPath = nextTemporaryPath;
+        renameSync(temporaryPath, filePath);
+        temporaryPath = undefined;
+    } catch (error: unknown) {
+        if (temporaryPath !== undefined) {
+            try {
+                unlinkSync(temporaryPath);
+            } catch {
+                // Ignore cleanup failure while reporting the original scaffold failure.
+            }
+        }
+        if (error instanceof Error) throw error;
+        throw new Error(String(error));
+    }
+}
+
+function readBundledSchema(): string | undefined {
+    try {
+        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
+    } catch {
+        return undefined;
+    }
+}
+
+function scaffoldGlobalConfig(): void {
+    const globalConfigPath = getGlobalConfigPath();
+    const schema = readBundledSchema();
+    if (schema !== undefined) {
+        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
+    }
+    writeIfMissing(
+        globalConfigPath,
+        `${JSON.stringify(DEFAULT_MENTION_PROJECT_CONFIG_FILE, null, 2)}\n`,
+    );
+}
+
+function readConfigFile(configPath: string): ParsedMentionProjectConfig {
+    try {
+        const raw = readFileSync(configPath, "utf8");
+        const parsedJson: unknown = JSON.parse(raw);
+        if (!Value.Check(MentionProjectConfigSchema, parsedJson)) return {};
+        return Value.Parse(MentionProjectConfigSchema, parsedJson);
+    } catch {
+        return {};
+    }
 }
 
 function applyMentionProjectSettings(
@@ -105,6 +219,8 @@ function applyMentionProjectSettings(
 }
 
 export function configuredMentionProjectSettings(ctx: ExtensionContext): MentionProjectSettings {
+    scaffoldGlobalConfig();
+
     const loaded: MentionProjectSettings = {
         trigger: DEFAULT_MENTION_TRIGGER,
         roots: [],
@@ -113,11 +229,10 @@ export function configuredMentionProjectSettings(ctx: ExtensionContext): Mention
         completionSuffix: DEFAULT_COMPLETION_SUFFIX,
     };
 
-    const manager = SettingsManager.create(ctx.cwd, getAgentDir(), {
-        projectTrusted: isProjectTrusted(ctx),
-    });
-    applyMentionProjectSettings(manager.getGlobalSettings() as Record<string, unknown>, loaded);
-    applyMentionProjectSettings(manager.getProjectSettings() as Record<string, unknown>, loaded);
+    applyMentionProjectSettings(readConfigFile(getGlobalConfigPath()), loaded);
+    if (isProjectTrusted(ctx)) {
+        applyMentionProjectSettings(readConfigFile(getProjectConfigPath(ctx.cwd)), loaded);
+    }
     return loaded;
 }
 
