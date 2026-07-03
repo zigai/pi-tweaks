@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-ui-tweaks/config.schema.json",
+  "title": "Pi UI tweaks config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "enabled": { "type": "boolean", "default": true },
+    "autocompleteAboveInput": { "type": "boolean", "default": true },
+    "bashExecPromptSpacing": { "type": "boolean", "default": true },
+    "anchorInputToBottom": { "type": "boolean", "default": false },
+    "compactModelSelector": { "type": "boolean", "default": true },
+    "hideAutocompleteScrollInfo": { "type": "boolean", "default": true },
+    "hideModelChangeStatus": { "type": "boolean", "default": true },
+    "hideModelProviderHint": { "type": "boolean", "default": true },
+    "hideSlashCommandSourceTags": { "type": "boolean", "default": true },
+    "highlightSelectedModelProvider": { "type": "boolean", "default": true },
+    "inputPromptPrefix": { "type": "string", "minLength": 1, "default": "> " },
+    "neutralBorderColor": { "type": "boolean", "default": true },
+    "restoreContentAfterAutocompleteClose": { "type": "boolean", "default": true },
+    "selectedOptionPrefix": { "type": "string", "minLength": 1, "default": "→ " }
+  }
+}

@@ -1,17 +1,41 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { Input, SelectList } from "@earendil-works/pi-tui";
 
+import {
+    installAutocompletePositionPatch,
+    setAutocompleteAboveInput,
+    setRestoreContentAfterAutocompleteClose,
+} from "../src/autocomplete-position.ts";
+import {
+    installAutocompleteScrollInfoPatch,
+    setHideAutocompleteScrollInfo,
+} from "../src/autocomplete-scroll-info.ts";
 import {
     applyBashExecPromptSpacing,
     setBashExecPromptSpacing,
     type BashExecSpacingEditor,
 } from "../src/bash-exec-spacing.ts";
 import {
+    getInputPromptPrefix,
+    installInputPromptPrefixPatch,
+    setInputPromptPrefix,
+} from "../src/input-prompt-prefix.ts";
+import {
     installModelSelectorHintPatch,
     setCompactModelSelector,
     setHideModelProviderHint,
 } from "../src/model-selector-hint.ts";
+import {
+    installModelSelectorProviderBadgePatch,
+    setHighlightSelectedModelProvider,
+} from "../src/model-selector-provider-badge.ts";
 import { installModelStatusPatch, setHideModelChangeStatus } from "../src/model-status.ts";
+import {
+    getSelectedOptionPrefix,
+    installSelectedOptionPrefixSelectListPatch,
+    setSelectedOptionPrefix,
+} from "../src/selected-option-prefix.ts";
 import {
     installSlashCommandSourcePatch,
     setHideSlashCommandSourceTags,
@@ -42,6 +66,13 @@ type TestStatusMode = {
     showStatus(message: string): void;
 };
 
+type TestModelSelectorProviderBadge = {
+    filteredModels: Array<{ id: string; provider: string }>;
+    listContainer: { children: TestMutableText[] };
+    selectedIndex: number;
+    updateList(): void;
+};
+
 class TestText implements RenderedComponent {
     readonly text: string;
 
@@ -51,6 +82,26 @@ class TestText implements RenderedComponent {
 
     render(_width: number): string[] {
         return [];
+    }
+
+    invalidate(): void {
+        return;
+    }
+}
+
+class TestMutableText implements RenderedComponent {
+    text: string;
+
+    constructor(text: string) {
+        this.text = text;
+    }
+
+    setText(text: string): void {
+        this.text = text;
+    }
+
+    render(_width: number): string[] {
+        return [this.text];
     }
 
     invalidate(): void {
@@ -71,6 +122,31 @@ class Spacer implements RenderedComponent {
 
     invalidate(): void {
         return;
+    }
+}
+
+class TestAutocompleteList {
+    render(width: number): string[] {
+        return [`menu ${width}`, "choice"];
+    }
+}
+
+class TestAutocompleteEditor {
+    autocompleteState: unknown = "active";
+    autocompleteList: TestAutocompleteList | undefined = new TestAutocompleteList();
+    renderRequests: Array<boolean | undefined> = [];
+    paddingX = 1;
+    tui = {
+        requestRender: (force?: boolean): void => {
+            this.renderRequests.push(force);
+        },
+    };
+
+    render(_width: number): string[] {
+        if (this.autocompleteState === null) {
+            return ["top", "input"];
+        }
+        return ["top", "input", "menu 8", "choice"];
     }
 }
 
@@ -137,6 +213,142 @@ function createTestStatusMode(): TestStatusMode {
     };
 }
 
+function createTestModelSelectorProviderBadge(): TestModelSelectorProviderBadge {
+    const selectedModelId = "claude-sonnet-4";
+    const selectedProvider = "anthropic";
+    return {
+        filteredModels: [
+            { id: "gpt-5", provider: "openai" },
+            { id: selectedModelId, provider: selectedProvider },
+        ],
+        listContainer: { children: [] },
+        selectedIndex: 1,
+        updateList(): void {
+            this.listContainer.children = [
+                new TestMutableText(`  gpt-5 <muted>[openai]</muted>`),
+                new TestMutableText(
+                    `<accent>→ </accent><accent>${selectedModelId}</accent> <muted>[${selectedProvider}]</muted>`,
+                ),
+            ];
+        },
+    };
+}
+
+const autocompleteSpacerLine = "\x1b[0m \x1b[0m" + " ".repeat(9);
+
+const testTheme = {
+    fg(color: string, text: string): string {
+        return `<${color}>${text}</${color}>`;
+    },
+};
+
+test("autocomplete position patch moves active autocomplete rows above input", () => {
+    setAutocompleteAboveInput(true);
+    installAutocompletePositionPatch(TestAutocompleteEditor.prototype);
+    const editor = new TestAutocompleteEditor();
+
+    assert.deepEqual(editor.render(10), [
+        autocompleteSpacerLine,
+        "menu 8",
+        "choice",
+        "top",
+        "input",
+    ]);
+});
+
+test("autocomplete position patch leaves render order unchanged when disabled", () => {
+    setAutocompleteAboveInput(false);
+    installAutocompletePositionPatch(TestAutocompleteEditor.prototype);
+    const editor = new TestAutocompleteEditor();
+
+    assert.deepEqual(editor.render(10), ["top", "input", "menu 8", "choice"]);
+    setAutocompleteAboveInput(true);
+});
+
+test("autocomplete position patch requests redraw after above input autocomplete closes", () => {
+    setAutocompleteAboveInput(true);
+    setRestoreContentAfterAutocompleteClose(true);
+    installAutocompletePositionPatch(TestAutocompleteEditor.prototype);
+    const editor = new TestAutocompleteEditor();
+
+    assert.deepEqual(editor.render(10), [
+        autocompleteSpacerLine,
+        "menu 8",
+        "choice",
+        "top",
+        "input",
+    ]);
+    editor.autocompleteState = null;
+
+    assert.deepEqual(editor.render(10), ["top", "input"]);
+    assert.deepEqual(editor.renderRequests, [undefined]);
+});
+
+test("autocomplete position patch can leave close redraw disabled", () => {
+    setAutocompleteAboveInput(true);
+    setRestoreContentAfterAutocompleteClose(false);
+    installAutocompletePositionPatch(TestAutocompleteEditor.prototype);
+    const editor = new TestAutocompleteEditor();
+
+    assert.deepEqual(editor.render(10), [
+        autocompleteSpacerLine,
+        "menu 8",
+        "choice",
+        "top",
+        "input",
+    ]);
+    editor.autocompleteState = null;
+
+    assert.deepEqual(editor.render(10), ["top", "input"]);
+    assert.deepEqual(editor.renderRequests, []);
+    setRestoreContentAfterAutocompleteClose(true);
+});
+
+test("autocomplete scroll info patch hides count footer by default", () => {
+    setHideAutocompleteScrollInfo(true);
+    installAutocompleteScrollInfoPatch();
+    const list = new SelectList(
+        [
+            { value: "settings", label: "settings" },
+            { value: "model", label: "model" },
+            { value: "export", label: "export" },
+        ],
+        2,
+        {
+            selectedPrefix: (text) => text,
+            selectedText: (text) => text,
+            description: (text) => text,
+            scrollInfo: (text) => `count:${text}`,
+            noMatch: (text) => text,
+        },
+    );
+
+    assert.deepEqual(list.render(80), ["→ settings", "  model"]);
+});
+
+test("autocomplete scroll info patch can leave count footer visible", () => {
+    setHideAutocompleteScrollInfo(false);
+    installAutocompleteScrollInfoPatch();
+    const list = new SelectList(
+        [
+            { value: "settings", label: "settings" },
+            { value: "model", label: "model" },
+            { value: "export", label: "export" },
+        ],
+        2,
+        {
+            selectedPrefix: (text) => text,
+            selectedText: (text) => text,
+            description: (text) => text,
+            scrollInfo: (text) => `count:${text}`,
+            noMatch: (text) => text,
+        },
+    );
+
+    assert.deepEqual(list.render(80), ["→ settings", "  model", "count:  (1/3)"]);
+    setHideAutocompleteScrollInfo(true);
+});
+
 test("bash exec prompt spacing inserts a space after empty bang", () => {
     setBashExecPromptSpacing(true);
     const editor = new TestEditor();
@@ -166,6 +378,38 @@ test("bash exec prompt spacing leaves normal input alone when disabled", () => {
     assert.equal(editor.text, "");
     assert.equal(editor.renderRequests, 0);
     setBashExecPromptSpacing(true);
+});
+
+test("input prompt prefix patch changes single-line input marker", () => {
+    installInputPromptPrefixPatch();
+    setInputPromptPrefix("❯");
+    const input = new Input();
+
+    const line = input.render(10)[0] ?? "";
+
+    assert.equal(getInputPromptPrefix(), "❯ ");
+    assert.equal(line.startsWith("❯ \u001b[7m"), true);
+    setInputPromptPrefix("> ");
+});
+
+test("selected option prefix patch changes generic select list marker", () => {
+    installSelectedOptionPrefixSelectListPatch();
+    setSelectedOptionPrefix("▌");
+    const list = new SelectList(
+        [{ value: "settings", label: "settings", description: "Open settings menu" }],
+        5,
+        {
+            selectedPrefix: (text) => text,
+            selectedText: (text) => text,
+            description: (text) => text,
+            scrollInfo: (text) => text,
+            noMatch: (text) => text,
+        },
+    );
+
+    assert.equal(getSelectedOptionPrefix(), "▌ ");
+    assert.equal(list.render(80)[0], "▌ settings                        Open settings menu");
+    setSelectedOptionPrefix("→ ");
 });
 
 test("model selector hint patch removes provider hint and following spacer", () => {
@@ -246,6 +490,58 @@ test("model selector hint patch is idempotent", () => {
     installModelSelectorHintPatch(modelSelector);
 
     assert.equal(Reflect.get(modelSelector, "addChild"), patchedAddChild);
+});
+
+test("model selector provider badge patch highlights selected provider", async () => {
+    setHighlightSelectedModelProvider(true);
+    const modelSelector = createTestModelSelectorProviderBadge();
+
+    await installModelSelectorProviderBadgePatch(modelSelector, testTheme);
+    modelSelector.updateList();
+
+    assert.deepEqual(
+        modelSelector.listContainer.children.map((child) => child.text),
+        [
+            "  gpt-5 <muted>[openai]</muted>",
+            "<accent>→ </accent><accent>claude-sonnet-4</accent> <accent>[anthropic]</accent>",
+        ],
+    );
+});
+
+test("model selector provider badge patch leaves selected provider muted when disabled", async () => {
+    setHighlightSelectedModelProvider(false);
+    const modelSelector = createTestModelSelectorProviderBadge();
+
+    await installModelSelectorProviderBadgePatch(modelSelector, testTheme);
+    modelSelector.updateList();
+
+    assert.deepEqual(
+        modelSelector.listContainer.children.map((child) => child.text),
+        [
+            "  gpt-5 <muted>[openai]</muted>",
+            "<accent>→ </accent><accent>claude-sonnet-4</accent> <muted>[anthropic]</muted>",
+        ],
+    );
+    setHighlightSelectedModelProvider(true);
+});
+
+test("model selector provider badge patch installs before Pi theme initialization", async () => {
+    const modelSelector = createTestModelSelectorProviderBadge();
+    const originalUpdateList = Reflect.get(modelSelector, "updateList");
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...messages: unknown[]): void => {
+        warnings.push(messages);
+    };
+
+    try {
+        await installModelSelectorProviderBadgePatch(modelSelector);
+    } finally {
+        console.warn = originalWarn;
+    }
+
+    assert.equal(warnings.length, 0);
+    assert.notEqual(Reflect.get(modelSelector, "updateList"), originalUpdateList);
 });
 
 test("model status patch removes model change status", () => {
