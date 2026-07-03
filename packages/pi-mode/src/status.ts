@@ -3,11 +3,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { shouldShowThinkingLevelStatus } from "./settings.ts";
 
 const STATUS_PATCH_MARKER = Symbol.for("zigai.pi-mode.thinking-status-patch");
+const STATUS_PATCH_STATE = Symbol.for("zigai.pi-mode.thinking-status-state");
 const THINKING_LEVEL_STATUS_PREFIX = "Thinking level: ";
 
 type InteractiveModePrototype = {
     showStatus(message: string): void;
     [STATUS_PATCH_MARKER]?: true;
+};
+
+type StatusPatchState = {
+    shouldShowThinkingLevelStatus: () => boolean;
 };
 
 type InteractiveModeClass = {
@@ -20,8 +25,29 @@ type InteractiveModeModule = {
 
 type ShowStatus = (this: InteractiveModePrototype, message: string) => void;
 
+type ThinkingLevelStatusPatchOptions = {
+    readonly loadInteractiveModeModule?: () => Promise<InteractiveModeModule | undefined>;
+    readonly shouldShowThinkingLevelStatus?: () => boolean;
+};
+
 function isShowStatus(value: unknown): value is ShowStatus {
     return typeof value === "function";
+}
+
+function getStatusPatchState(): StatusPatchState {
+    const existing = Reflect.get(globalThis, STATUS_PATCH_STATE);
+    if (typeof existing === "object" && existing !== null) {
+        const reader = Reflect.get(existing, "shouldShowThinkingLevelStatus");
+        if (typeof reader === "function") {
+            return existing as StatusPatchState;
+        }
+    }
+
+    const patchState: StatusPatchState = {
+        shouldShowThinkingLevelStatus: () => true,
+    };
+    Reflect.set(globalThis, STATUS_PATCH_STATE, patchState);
+    return patchState;
 }
 
 function warnStatusPatchUnavailable(error?: unknown): void {
@@ -50,8 +76,15 @@ async function loadInteractiveModeModule(): Promise<InteractiveModeModule | unde
     }
 }
 
-export async function applyThinkingLevelStatusPatch(): Promise<void> {
-    const module = await loadInteractiveModeModule();
+export async function applyThinkingLevelStatusPatch(
+    options: ThinkingLevelStatusPatchOptions = {},
+): Promise<void> {
+    const patchState = getStatusPatchState();
+    patchState.shouldShowThinkingLevelStatus =
+        options.shouldShowThinkingLevelStatus ?? shouldShowThinkingLevelStatus;
+
+    const loadModule = options.loadInteractiveModeModule ?? loadInteractiveModeModule;
+    const module = await loadModule();
     const prototype = module?.InteractiveMode?.prototype;
     if (prototype === undefined) return;
     if (prototype[STATUS_PATCH_MARKER] === true) return;
@@ -73,7 +106,7 @@ export async function applyThinkingLevelStatusPatch(): Promise<void> {
     ): void {
         if (
             message.startsWith(THINKING_LEVEL_STATUS_PREFIX) &&
-            shouldShowThinkingLevelStatus() === false
+            patchState.shouldShowThinkingLevelStatus() === false
         ) {
             return;
         }
