@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-footer/config.schema.json",
+  "title": "Pi footer config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "separator": {
+      "type": "string",
+      "default": "|",
+      "description": "Visible separator placed between footer status segments. Whitespace-only values are ignored at runtime."
+    }
+  }
+}

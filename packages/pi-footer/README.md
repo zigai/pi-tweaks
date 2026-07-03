@@ -25,17 +25,18 @@ pi install npm:@zigai/pi-footer
 
 ## Configuration
 
-Add `footer.separator` to `~/.pi/agent/settings.json` or a trusted project `.pi/settings.json`:
+Configure global settings at `~/.pi/agent/pi-footer/config.json`.
+
+| Option      | Type     | Default | Description                                                                                  |
+| ----------- | -------- | ------- | -------------------------------------------------------------------------------------------- |
+| `separator` | `string` | `"\|"`  | Visible separator placed between footer status segments. Whitespace-only values are ignored. |
 
 ```json
 {
-  "footer": {
-    "separator": "·"
-  }
+  "$schema": "./config.schema.json",
+  "separator": "|"
 }
 ```
-
-The default separator is `|`.
 
 ## License
 
