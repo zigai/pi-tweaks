@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeEach, test } from "vitest";
@@ -76,6 +76,37 @@ test("configuredMentionProjectSettings uses defaults and scaffolds global config
         assert.equal(await readFile(globalConfigPath, "utf8"), customConfig);
         assert.match(await readFile(globalSchemaPath, "utf8"), /Pi project mention config/);
     } finally {
+        await rm(cwd, { recursive: true, force: true });
+    }
+});
+
+test("configuredMentionProjectSettings caches config while file mtimes are unchanged", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
+    try {
+        await writeJson(globalConfigPath, {
+            trigger: "@",
+            roots: ["~/Projects"],
+        });
+
+        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+            trigger: "@",
+            roots: ["~/Projects"],
+            gitReposOnly: true,
+            includeDotFolders: false,
+            completionSuffix: " ",
+        });
+
+        await chmod(globalConfigPath, 0);
+
+        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+            trigger: "@",
+            roots: ["~/Projects"],
+            gitReposOnly: true,
+            includeDotFolders: false,
+            completionSuffix: " ",
+        });
+    } finally {
+        await chmod(globalConfigPath, 0o600).catch(() => undefined);
         await rm(cwd, { recursive: true, force: true });
     }
 });

@@ -3,7 +3,7 @@ import {
     getAgentDir,
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -42,6 +42,24 @@ const DEFAULT_MENTION_SKILL_CONFIG_FILE = {
     [COMPLETION_SUFFIX_SETTINGS_KEY]: DEFAULT_COMPLETION_SUFFIX,
 };
 
+type FileSignature = string | null;
+
+type GlobalConfigScaffold = {
+    configSignature: FileSignature;
+    schemaSignature: FileSignature;
+};
+
+type CachedMentionSkillSettings = {
+    cwd: string;
+    projectTrusted: boolean;
+    globalConfigSignature: FileSignature;
+    projectConfigSignature: FileSignature;
+    settings: MentionSkillSettings;
+};
+
+let globalConfigScaffold: GlobalConfigScaffold | undefined;
+let cachedMentionSkillSettings: CachedMentionSkillSettings | undefined;
+
 type ProjectTrustContext = ExtensionContext & {
     isProjectTrusted?: () => boolean;
 };
@@ -76,6 +94,28 @@ function getProjectConfigPath(cwd: string): string {
 
 function getSchemaPath(configPath: string): string {
     return join(dirname(configPath), SCHEMA_FILE);
+}
+
+function getFileSignature(filePath: string | undefined): FileSignature {
+    if (filePath === undefined) return null;
+    try {
+        const stats = statSync(filePath, { bigint: true });
+        return `${stats.mtimeNs.toString()}:${stats.size.toString()}`;
+    } catch {
+        return null;
+    }
+}
+
+function getGlobalConfigScaffold(): GlobalConfigScaffold {
+    const globalConfigPath = getGlobalConfigPath();
+    return {
+        configSignature: getFileSignature(globalConfigPath),
+        schemaSignature: getFileSignature(getSchemaPath(globalConfigPath)),
+    };
+}
+
+function cloneMentionSkillSettings(settings: MentionSkillSettings): MentionSkillSettings {
+    return { ...settings };
 }
 
 function writeIfMissing(filePath: string, content: string): void {
@@ -139,6 +179,21 @@ function scaffoldGlobalConfig(): void {
     );
 }
 
+function ensureGlobalConfigScaffolded(): void {
+    const current = getGlobalConfigScaffold();
+    if (
+        globalConfigScaffold?.configSignature === current.configSignature &&
+        globalConfigScaffold.schemaSignature === current.schemaSignature &&
+        current.configSignature !== null &&
+        current.schemaSignature !== null
+    ) {
+        return;
+    }
+
+    scaffoldGlobalConfig();
+    globalConfigScaffold = getGlobalConfigScaffold();
+}
+
 function readConfigFile(configPath: string): ParsedMentionSkillConfig {
     try {
         const raw = readFileSync(configPath, "utf8");
@@ -177,7 +232,25 @@ function applyMentionSkillSettings(
 }
 
 export function configuredMentionSkillSettings(ctx: ExtensionContext): MentionSkillSettings {
-    scaffoldGlobalConfig();
+    ensureGlobalConfigScaffolded();
+
+    const projectTrusted = isProjectTrusted(ctx);
+    const globalConfigPath = getGlobalConfigPath();
+    let projectConfigPath: string | undefined;
+    if (projectTrusted) {
+        projectConfigPath = getProjectConfigPath(ctx.cwd);
+    }
+    const globalConfigSignature = getFileSignature(globalConfigPath);
+    const projectConfigSignature = getFileSignature(projectConfigPath);
+
+    if (
+        cachedMentionSkillSettings?.cwd === ctx.cwd &&
+        cachedMentionSkillSettings.projectTrusted === projectTrusted &&
+        cachedMentionSkillSettings.globalConfigSignature === globalConfigSignature &&
+        cachedMentionSkillSettings.projectConfigSignature === projectConfigSignature
+    ) {
+        return cloneMentionSkillSettings(cachedMentionSkillSettings.settings);
+    }
 
     const loaded: MentionSkillSettings = {
         trigger: DEFAULT_MENTION_TRIGGER,
@@ -185,9 +258,17 @@ export function configuredMentionSkillSettings(ctx: ExtensionContext): MentionSk
         completionSuffix: DEFAULT_COMPLETION_SUFFIX,
     };
 
-    applyMentionSkillSettings(readConfigFile(getGlobalConfigPath()), loaded);
-    if (isProjectTrusted(ctx)) {
-        applyMentionSkillSettings(readConfigFile(getProjectConfigPath(ctx.cwd)), loaded);
+    applyMentionSkillSettings(readConfigFile(globalConfigPath), loaded);
+    if (projectConfigPath !== undefined) {
+        applyMentionSkillSettings(readConfigFile(projectConfigPath), loaded);
     }
+
+    cachedMentionSkillSettings = {
+        cwd: ctx.cwd,
+        projectTrusted,
+        globalConfigSignature,
+        projectConfigSignature,
+        settings: cloneMentionSkillSettings(loaded),
+    };
     return loaded;
 }
