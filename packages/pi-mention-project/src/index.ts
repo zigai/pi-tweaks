@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { createProjectMentionProvider } from "./autocomplete.ts";
 import { applyMentionProjectEditor } from "./editor.ts";
@@ -10,13 +10,62 @@ import {
     INCLUDE_DOT_FOLDERS_FLAG,
     INCLUDE_NON_GIT_FLAG,
 } from "./settings.ts";
-import type { MentionProjectSettings } from "./types.ts";
+import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
 
 function mentionProjectSettings(pi: ExtensionAPI, ctx: ExtensionContext): MentionProjectSettings {
     return applyMentionProjectCliFlags(configuredMentionProjectSettings(ctx), {
         includeNonGit: pi.getFlag(INCLUDE_NON_GIT_FLAG),
         includeDotFolders: pi.getFlag(INCLUDE_DOT_FOLDERS_FLAG),
     });
+}
+
+type ProjectDirectoryLoader = (
+    settings: MentionProjectSettings,
+    cwd: string,
+) => Promise<ProjectDirectory[]>;
+
+type ProjectMentionContextResult = {
+    messages: ContextEvent["messages"];
+};
+
+type ProjectMentionContextHandler = (
+    event: ContextEvent,
+    ctx: ExtensionContext,
+) => Promise<ProjectMentionContextResult | undefined>;
+
+type ContextMessage = ContextEvent["messages"][number];
+type UserContextMessage = Extract<ContextMessage, { role: "user" }>;
+type UserContentBlock = Exclude<UserContextMessage["content"], string>[number];
+
+function contentBlockContainsTrigger(block: UserContentBlock, trigger: string): boolean {
+    return block.type === "text" && block.text.includes(trigger);
+}
+
+function contextContainsTrigger(messages: ContextEvent["messages"], trigger: string): boolean {
+    return messages.some((message) => {
+        if (message.role !== "user") return false;
+        if (typeof message.content === "string") return message.content.includes(trigger);
+        return message.content.some((block) => contentBlockContainsTrigger(block, trigger));
+    });
+}
+
+export function createProjectMentionContextHandler(
+    pi: ExtensionAPI,
+    loadProjects: ProjectDirectoryLoader = listProjectDirectories,
+): ProjectMentionContextHandler {
+    return async (event, ctx) => {
+        const settings = mentionProjectSettings(pi, ctx);
+        if (!contextContainsTrigger(event.messages, settings.trigger)) return undefined;
+
+        const projects = await loadProjects(settings, ctx.cwd);
+        const messages = expandProjectMentionsInMessages(
+            event.messages,
+            projects,
+            settings.trigger,
+        );
+        if (messages === event.messages) return undefined;
+        return { messages };
+    };
 }
 
 export default function (pi: ExtensionAPI): void {
@@ -57,15 +106,5 @@ export default function (pi: ExtensionAPI): void {
         return { action: "transform", text: expanded, images: event.images };
     });
 
-    pi.on("context", async (event, ctx) => {
-        const settings = mentionProjectSettings(pi, ctx);
-        const projects = await listProjectDirectories(settings, ctx.cwd);
-        const messages = expandProjectMentionsInMessages(
-            event.messages,
-            projects,
-            settings.trigger,
-        );
-        if (messages === event.messages) return;
-        return { messages };
-    });
+    pi.on("context", createProjectMentionContextHandler(pi));
 }
