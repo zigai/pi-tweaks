@@ -7,12 +7,36 @@ import { skillName, stripFrontmatter } from "./skill-commands.ts";
 import type { SkillCommand, SkillExpansion } from "./types.ts";
 import { escapeRegExp } from "./util.ts";
 
+export type SkillExpansionLoader = (command: SkillCommand) => Promise<SkillExpansion>;
+
+type CachedSkillExpansion = {
+    mtimeMs: number;
+    expansion: SkillExpansion;
+};
+
 async function loadSkillExpansion(command: SkillCommand): Promise<SkillExpansion> {
     const content = await fs.readFile(command.sourceInfo.path, "utf8");
     const body = stripFrontmatter(content).trim();
     const baseDir = command.sourceInfo.baseDir ?? path.dirname(command.sourceInfo.path);
     const name = skillName(command);
     return { name, location: command.sourceInfo.path, body, baseDir };
+}
+
+export function createCachedSkillExpansionLoader(): SkillExpansionLoader {
+    const cache = new Map<string, CachedSkillExpansion>();
+
+    return async (command) => {
+        const filePath = command.sourceInfo.path;
+        const stats = await fs.stat(filePath);
+        const cached = cache.get(filePath);
+        if (cached?.mtimeMs === stats.mtimeMs) {
+            return cached.expansion;
+        }
+
+        const expansion = await loadSkillExpansion(command);
+        cache.set(filePath, { mtimeMs: stats.mtimeMs, expansion });
+        return expansion;
+    };
 }
 
 function formatSkillBlock(expansion: SkillExpansion): string {
@@ -54,6 +78,7 @@ export async function expandSkillMentions(
     text: string,
     skills: SkillCommand[],
     trigger: string,
+    loadExpansion: SkillExpansionLoader = loadSkillExpansion,
 ): Promise<string> {
     const byName = new Map(skills.map((skill) => [skillName(skill), skill]));
     const names = new Set<string>();
@@ -71,7 +96,7 @@ export async function expandSkillMentions(
         [...names].map(async (name) => {
             const skill = byName.get(name);
             if (skill === undefined) return undefined;
-            return loadSkillExpansion(skill);
+            return loadExpansion(skill);
         }),
     );
     const loaded = expansions.filter((expansion): expansion is SkillExpansion => {
@@ -99,14 +124,30 @@ function shouldExpandContextText(text: string, trigger: string): boolean {
     return !text.trimStart().startsWith("<skill ");
 }
 
+export function contextContainsSkillMentionTrigger(
+    messages: ContextEvent["messages"],
+    trigger: string,
+): boolean {
+    return messages.some((message) => {
+        if (message.role !== "user") return false;
+        if (typeof message.content === "string") {
+            return shouldExpandContextText(message.content, trigger);
+        }
+        return message.content.some((block) => {
+            return isUserTextContentBlock(block) && shouldExpandContextText(block.text, trigger);
+        });
+    });
+}
+
 async function expandSkillMentionsInUserMessage(
     message: UserContextMessage,
     skills: SkillCommand[],
     trigger: string,
+    loadExpansion: SkillExpansionLoader,
 ): Promise<UserContextMessage> {
     if (typeof message.content === "string") {
         if (!shouldExpandContextText(message.content, trigger)) return message;
-        const expanded = await expandSkillMentions(message.content, skills, trigger);
+        const expanded = await expandSkillMentions(message.content, skills, trigger, loadExpansion);
         if (expanded === message.content) return message;
         return { ...message, content: expanded };
     }
@@ -119,7 +160,7 @@ async function expandSkillMentionsInUserMessage(
             continue;
         }
 
-        const expanded = await expandSkillMentions(block.text, skills, trigger);
+        const expanded = await expandSkillMentions(block.text, skills, trigger, loadExpansion);
         if (expanded === block.text) {
             content.push(block);
             continue;
@@ -137,6 +178,7 @@ export async function expandSkillMentionsInMessages(
     messages: ContextEvent["messages"],
     skills: SkillCommand[],
     trigger: string,
+    loadExpansion: SkillExpansionLoader = loadSkillExpansion,
 ): Promise<ContextEvent["messages"]> {
     let changed = false;
     const expandedMessages: ContextEvent["messages"] = [];
@@ -147,7 +189,12 @@ export async function expandSkillMentionsInMessages(
             continue;
         }
 
-        const expanded = await expandSkillMentionsInUserMessage(message, skills, trigger);
+        const expanded = await expandSkillMentionsInUserMessage(
+            message,
+            skills,
+            trigger,
+            loadExpansion,
+        );
         if (expanded !== message) changed = true;
         expandedMessages.push(expanded);
     }

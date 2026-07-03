@@ -65,6 +65,45 @@ function isContextExpansionResult(value: unknown): value is ContextExpansionResu
     return messages === undefined || Array.isArray(messages);
 }
 
+test("mention skill skips command enumeration when provider context has no trigger", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-index-cwd-"));
+    const registeredHandlers = new Map<string, RegisteredHandler[]>();
+    let getCommandsCount = 0;
+
+    try {
+        const pi = {
+            on(event: string, handler: RegisteredHandler) {
+                const handlers = registeredHandlers.get(event) ?? [];
+                handlers.push(handler);
+                registeredHandlers.set(event, handlers);
+            },
+            getCommands() {
+                getCommandsCount += 1;
+                return [];
+            },
+        } as unknown as ExtensionAPI;
+
+        mentionSkillExtension(pi);
+        const contextHandler = registeredHandlers.get("context")?.[0];
+        assert.notEqual(contextHandler, undefined);
+        if (contextHandler === undefined) assert.fail("expected context handler");
+
+        const messages: ContextEvent["messages"] = [
+            {
+                role: "user",
+                content: [{ type: "text", text: "Please use a suitable skill" }],
+                timestamp: 1,
+            },
+        ];
+        const result = await contextHandler({ type: "context", messages }, context(cwd));
+
+        assert.equal(result, undefined);
+        assert.equal(getCommandsCount, 0);
+    } finally {
+        await rm(cwd, { recursive: true, force: true });
+    }
+});
+
 test("mention skill expands provider context without registering an input rewrite", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-index-cwd-"));
     const skillPath = path.join(cwd, "python.md");

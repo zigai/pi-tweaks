@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
-import { expandSkillMentions, expandSkillMentionsInMessages } from "../src/expand-mentions.ts";
+import {
+    createCachedSkillExpansionLoader,
+    expandSkillMentions,
+    expandSkillMentionsInMessages,
+} from "../src/expand-mentions.ts";
 import { stripFrontmatter } from "../src/skill-commands.ts";
 import type { SkillCommand } from "../src/types.ts";
 
@@ -70,6 +74,39 @@ test("expandSkillMentions combines multiple skills and supports regex-special tr
         assert.match(expanded, /## two\n\nReferences are relative to /);
         assert.match(expanded, /Second body/);
         assert.match(expanded, /one and two\?$/);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("cached skill expansion reuses content until the skill file mtime changes", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-cache-"));
+    try {
+        const filePath = path.join(dir, "python.md");
+        const skill = skillCommand("python", filePath);
+        const loadExpansion = createCachedSkillExpansionLoader();
+        await writeFile(filePath, "First body\n", "utf8");
+        const cachedMtime = new Date("2026-01-01T00:00:00.000Z");
+        await utimes(filePath, cachedMtime, cachedMtime);
+        const firstStats = await stat(filePath);
+
+        const first = await expandSkillMentions("Use $python", [skill], "$", loadExpansion);
+        assert.match(first, /First body/);
+
+        await writeFile(filePath, "Second body\n", "utf8");
+        await utimes(filePath, firstStats.atime, firstStats.mtime);
+        const cached = await expandSkillMentions("Use $python", [skill], "$", loadExpansion);
+        assert.match(cached, /First body/);
+        assert.doesNotMatch(cached, /Second body/);
+
+        await writeFile(filePath, "Third body\n", "utf8");
+        await utimes(
+            filePath,
+            new Date(firstStats.atimeMs + 5_000),
+            new Date(firstStats.mtimeMs + 5_000),
+        );
+        const refreshed = await expandSkillMentions("Use $python", [skill], "$", loadExpansion);
+        assert.match(refreshed, /Third body/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
