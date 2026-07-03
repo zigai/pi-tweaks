@@ -12,27 +12,20 @@ This Pi extension filters visible models.
 pi install npm:@zigai/pi-model-filter
 ```
 
-Example `~/.pi/agent/model-filters.json`:
+## Configuration
+
+Configure global settings at `~/.pi/agent/pi-model-filter/config.json`.
+
+| Option    | Type     | Default | Description                                                                                              |
+| --------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `include` | `Rule[]` | `[]`    | Allowlist rules. When any include rule matches a provider, only matching models from that provider show. |
+| `exclude` | `Rule[]` | `[]`    | Blocklist rules. Exclude rules apply after include rules, so exclude always wins.                        |
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-model-filter/model-filters.schema.json",
-  "include": [
-    {
-      "provider": "openai-codex",
-      "models": ["gpt-5.3*", "gpt-5.4*", "gpt-5.5*"]
-    }
-  ],
-  "exclude": [
-    {
-      "provider": "openrouter",
-      "models": ["openai/gpt-oss-20b:free", "qwen/*", "*:free"]
-    },
-    {
-      "provider": "*",
-      "models": ["*-preview", "*-experimental"]
-    }
-  ]
+  "$schema": "./config.schema.json",
+  "include": [],
+  "exclude": []
 }
 ```
 
@@ -55,7 +48,7 @@ Pi has a built-in `/scoped-models` command. It shows an interactive checklist th
 | -------------------- | ------------------------------------ | --------------------------------------------------------------------- |
 | How you configure it | Interactive checklist                | JSON config file with glob patterns                                   |
 | What it affects      | `Ctrl+P` model cycling only          | `/model`, `Ctrl+L`, `Ctrl+P` cycling, and `modelRegistry.*()` lookups |
-| Persistence          | Optional (save with `Ctrl+S`)        | Always loaded from `~/.pi/agent/model-filters.json`                   |
+| Persistence          | Optional (save with `Ctrl+S`)        | Always loaded from JSON config                                        |
 | Use case             | Quickly narrow the active cycle list | Permanently hide noisy/unwanted models everywhere                     |
 
 ## Behavior
