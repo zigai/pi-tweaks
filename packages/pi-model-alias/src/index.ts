@@ -32,13 +32,13 @@ function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
     state.projectTrusted = projectTrusted;
 }
 
-export default function modelAliasExtension(pi: ExtensionAPI) {
+export default async function modelAliasExtension(pi: ExtensionAPI): Promise<void> {
     const state: RuntimeState = {
         loadConfig: () => safeReadConfig(state),
     };
 
     installRegistryPatch(ModelRegistry.prototype as PatchedModelRegistry, state);
-    installProviderAliasUiPatches(state);
+    await installProviderAliasUiPatches(state);
 
     pi.on("session_start", async (_event, ctx) => {
         setConfigContext(state, ctx);

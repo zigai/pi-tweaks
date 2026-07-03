@@ -632,7 +632,17 @@ async function installScopedModelsProviderPatchFromPi(state: RuntimeState): Prom
     }
 }
 
-export function installProviderAliasUiPatches(state: RuntimeState): void {
-    installModelSelectorProviderPatch(state);
-    void installScopedModelsProviderPatchFromPi(state);
+type ProviderAliasUiPatchOptions = {
+    readonly modelSelectorPrototype?: ModelSelectorPatchTarget;
+    readonly installScopedModelsProviderPatchFromPi?: (state: RuntimeState) => Promise<void>;
+};
+
+export async function installProviderAliasUiPatches(
+    state: RuntimeState,
+    options: ProviderAliasUiPatchOptions = {},
+): Promise<void> {
+    installModelSelectorProviderPatch(state, options.modelSelectorPrototype);
+    const installScopedPatch =
+        options.installScopedModelsProviderPatchFromPi ?? installScopedModelsProviderPatchFromPi;
+    await installScopedPatch(state);
 }
