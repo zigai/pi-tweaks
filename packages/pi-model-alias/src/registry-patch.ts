@@ -1,6 +1,4 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
-import { CONFIG_FILE } from "./config.ts";
 import {
     aliasModels,
     applyAlias,
@@ -45,8 +43,13 @@ export function loadConfigForRegistry(
     return {
         ...loaded,
         aliases: [],
-        error: `Failed to load ${CONFIG_FILE}: ${collision}`,
+        error: `Failed to load ${loaded.path}: ${collision}`,
     };
+}
+
+function requireRegistryRuntime(runtime: RuntimeState | undefined): RuntimeState {
+    if (runtime !== undefined) return runtime;
+    throw new Error("Pi model alias runtime is not initialized.");
 }
 
 export function reportConfigError(
@@ -101,20 +104,20 @@ export function installRegistryPatch(registry: PatchedModelRegistry, state: Runt
 
     registry.getAll = function getAll(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_ALL_KEY]?.call(this) ?? [];
-        const runtime = this[RUNTIME_KEY] ?? registry[RUNTIME_KEY];
-        return aliasModels(models, loadConfigForRegistry(runtime!, this));
+        const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
+        return aliasModels(models, loadConfigForRegistry(runtime, this));
     };
 
     registry.getAvailable = function getAvailable(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_AVAILABLE_KEY]?.call(this) ?? [];
-        const runtime = this[RUNTIME_KEY] ?? registry[RUNTIME_KEY];
-        return aliasModels(models, loadConfigForRegistry(runtime!, this));
+        const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
+        return aliasModels(models, loadConfigForRegistry(runtime, this));
     };
 
     registry.find = function find(this: PatchedModelRegistry, provider: string, modelId: string) {
         const finder = this[ORIGINAL_FIND_KEY] ?? registry[ORIGINAL_FIND_KEY];
-        const runtime = this[RUNTIME_KEY] ?? registry[RUNTIME_KEY];
-        const loaded = loadConfigForRegistry(runtime!, this);
+        const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
+        const loaded = loadConfigForRegistry(runtime, this);
         const alias = getAliasForLookup(provider, modelId, loaded);
         if (alias !== undefined) {
             const target = finder?.call(this, provider, alias.model);
@@ -143,8 +146,8 @@ export function installRegistryPatch(registry: PatchedModelRegistry, state: Runt
             this[ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY] ??
             registry[ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY];
         const fallbackName = originalGetProviderDisplayName?.call(this, provider) ?? provider;
-        const runtime = this[RUNTIME_KEY] ?? registry[RUNTIME_KEY];
-        const loaded = loadConfigForRegistry(runtime!, this);
+        const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
+        const loaded = loadConfigForRegistry(runtime, this);
         return getProviderDisplayName(provider, fallbackName, loaded);
     };
 }

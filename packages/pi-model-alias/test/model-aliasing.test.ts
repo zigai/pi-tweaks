@@ -27,12 +27,14 @@ function loadedConfig(
     aliases: AliasConfig[],
     error?: string,
     providerAliases: ProviderAliasConfig[] = [],
+    stableProviderColumn = true,
 ): LoadedConfig {
     const loaded: LoadedConfig = {
         path: "model-aliases.json",
         mtimeMs: 1,
         aliases,
         providerAliases,
+        stableProviderColumn,
     };
     if (error !== undefined) {
         loaded.error = error;
@@ -233,6 +235,77 @@ test("model selector provider patch aliases display providers only", async () =>
         "  Claude Opus  anthropic",
     ]);
     assert.equal(prototype.searchInput.render(20)[0], ">              (1/2)");
+});
+
+test("model selector provider patch can align providers to all filtered model names", () => {
+    const shortModel: ModelLike = { provider: "p", id: "short", name: "Short" };
+    const longModel: ModelLike = {
+        provider: "p",
+        id: "long",
+        name: "Extremely Long Model Name",
+    };
+    const modelItems = [
+        { provider: "p", id: "short", model: shortModel },
+        ...Array.from({ length: 9 }, (_unused, index) => {
+            return {
+                provider: "p",
+                id: `medium-${index}`,
+                model: { provider: "p", id: `medium-${index}`, name: `Medium ${index}` },
+            };
+        }),
+        { provider: "p", id: "long", model: longModel },
+    ];
+
+    function createPrototype() {
+        return {
+            allModels: modelItems,
+            scopedModelItems: [],
+            activeModels: modelItems,
+            filteredModels: modelItems,
+            listContainer: { children: [] as unknown[] },
+            selectedIndex: 0,
+            scope: "all",
+            async loadModels(): Promise<void> {
+                return;
+            },
+            filterModels(_query: string): void {
+                return;
+            },
+            updateList(): void {
+                const visibleItems = this.filteredModels.slice(0, 10);
+                this.listContainer.children = visibleItems.map((item, index) => {
+                    let prefix = "  ";
+                    if (index === this.selectedIndex) {
+                        prefix = "→ ";
+                    }
+                    return textComponent(`${prefix}${item.id} [${item.provider}]`);
+                });
+            },
+        };
+    }
+
+    const stableState: RuntimeState = {
+        loadConfig: () => loadedConfig([], undefined, [], true),
+    };
+    const stablePrototype = createPrototype();
+    installModelSelectorProviderPatch(stableState, stablePrototype);
+    stablePrototype.updateList();
+
+    const visibleState: RuntimeState = {
+        loadConfig: () => loadedConfig([], undefined, [], false),
+    };
+    const visiblePrototype = createPrototype();
+    installModelSelectorProviderPatch(visibleState, visiblePrototype);
+    visiblePrototype.updateList();
+
+    assert.equal(
+        textValues(stablePrototype.listContainer.children)[0],
+        `→ Short${" ".repeat(22)}p`,
+    );
+    assert.equal(
+        textValues(visiblePrototype.listContainer.children)[0],
+        `→ Short${" ".repeat(5)}p`,
+    );
 });
 
 test("scoped models provider patch aliases rendered and searched providers only", () => {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-model-alias/model-aliases.schema.json",
-  "title": "Pi model and provider aliases",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-model-alias/config.schema.json",
+  "title": "Pi model and provider alias config",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -18,32 +18,23 @@
         "required": ["provider", "model", "alias"],
         "properties": {
           "provider": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "#/$defs/nonBlankString",
             "description": "Provider id for the model to alias."
           },
           "model": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "#/$defs/nonBlankString",
             "description": "Original provider model id sent to the API."
           },
           "alias": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "#/$defs/nonBlankString",
             "description": "Model id shown to Pi and accepted by model lookup."
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "#/$defs/nonBlankString",
             "description": "Optional display name. Defaults to the alias id."
           }
         }
       }
-    },
-    "stableProviderColumn": {
-      "type": "boolean",
-      "default": true,
-      "description": "Align provider names in model selector lists using the longest filtered model name instead of only the currently visible rows."
     },
     "providerAliases": {
       "type": "array",
@@ -55,17 +46,26 @@
         "required": ["provider", "name"],
         "properties": {
           "provider": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "#/$defs/nonBlankString",
             "description": "Real Pi provider id to display under another name."
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "#/$defs/nonBlankString",
             "description": "Display name shown for the provider in Pi UI."
           }
         }
       }
+    },
+    "stableProviderColumn": {
+      "type": "boolean",
+      "default": true,
+      "description": "Align provider names in model selector lists using the longest filtered model name instead of only the currently visible rows."
+    }
+  },
+  "$defs": {
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
     }
   }
 }

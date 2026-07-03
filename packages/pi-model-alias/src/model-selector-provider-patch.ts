@@ -267,6 +267,7 @@ function setSearchCounter(
 function formatProviderRows(
     container: ListContainer,
     rows: readonly ProviderRow[],
+    widthRows: readonly ProviderRow[] = rows,
 ): string | undefined {
     if (rows.length === 0) {
         const counter = takeScrollCounter(container);
@@ -274,7 +275,10 @@ function formatProviderRows(
         return counter;
     }
 
-    const modelWidth = Math.max(...rows.map((row) => visibleWidth(row.modelText)));
+    let modelWidth = Math.max(...rows.map((row) => visibleWidth(row.modelText)));
+    if (widthRows.length > 0) {
+        modelWidth = Math.max(...widthRows.map((row) => visibleWidth(row.modelText)));
+    }
     rows.forEach((row, index) => {
         const component = container.children[index];
         const text = textComponentValue(component);
@@ -307,37 +311,60 @@ function formatProviderRows(
     return counter;
 }
 
-function formatModelSelectorList(target: ModelSelectorPatchTarget): void {
-    const container = target.listContainer;
-    if (container === undefined) {
-        return;
-    }
-
-    const rows = visibleRows(target.filteredModels, target.selectedIndex, 10).map((item) => {
+function getProviderRows(items: readonly ModelSelectorItem[]): ProviderRow[] {
+    return items.map((item) => {
         return {
             modelText: item.id,
             providerText: item.provider,
         };
     });
-    const counter = formatProviderRows(container, rows);
+}
+
+function formatModelSelectorList(target: ModelSelectorPatchTarget, state: RuntimeState): void {
+    const container = target.listContainer;
+    if (container === undefined) {
+        return;
+    }
+
+    const loaded = state.loadConfig();
+    const rows = getProviderRows(visibleRows(target.filteredModels, target.selectedIndex, 10));
+    let widthRows = rows;
+    if (loaded.stableProviderColumn) {
+        widthRows = getProviderRows(target.filteredModels);
+    }
+    const counter = formatProviderRows(container, rows, widthRows);
     setSearchCounter(target.searchInput, counter);
 }
 
-function formatScopedModelsList(target: ScopedModelsSelectorPatchTarget): void {
+function getScopedProviderRows(items: readonly ScopedModelsSelectorItem[]): ProviderRow[] {
+    return items.map((item) => {
+        return {
+            modelText: item.model.id,
+            providerText: item.model.provider,
+        };
+    });
+}
+
+function formatScopedModelsList(
+    target: ScopedModelsSelectorPatchTarget,
+    state: RuntimeState,
+): void {
     const container = target.listContainer;
     const selectedIndex = target.selectedIndex;
     if (container === undefined || selectedIndex === undefined) {
         return;
     }
 
+    const loaded = state.loadConfig();
     const maxVisible = target.maxVisible ?? 8;
-    const rows = visibleRows(target.filteredItems, selectedIndex, maxVisible).map((item) => {
-        return {
-            modelText: item.model.id,
-            providerText: item.model.provider,
-        };
-    });
-    const counter = formatProviderRows(container, rows);
+    const rows = getScopedProviderRows(
+        visibleRows(target.filteredItems, selectedIndex, maxVisible),
+    );
+    let widthRows = rows;
+    if (loaded.stableProviderColumn) {
+        widthRows = getScopedProviderRows(target.filteredItems);
+    }
+    const counter = formatProviderRows(container, rows, widthRows);
     setSearchCounter(target.searchInput, counter);
 }
 
@@ -450,7 +477,7 @@ export function installModelSelectorProviderPatch(
         this.filteredModels = getModelSelectorDisplayItems(originalFilteredModels);
         try {
             originalUpdateList.call(this);
-            formatModelSelectorList(this);
+            formatModelSelectorList(this, state);
         } finally {
             this.filteredModels = originalFilteredModels;
         }
@@ -491,7 +518,7 @@ export function installScopedModelsProviderPatch(
         this.filteredItems = getScopedDisplayItems(originalFilteredItems, state);
         try {
             originalUpdateList.call(this);
-            formatScopedModelsList(this);
+            formatScopedModelsList(this, state);
         } finally {
             this.filteredItems = originalFilteredItems;
         }

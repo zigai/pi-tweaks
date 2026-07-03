@@ -16,41 +16,22 @@ pi install npm:@zigai/pi-model-alias
 
 ## Configuration
 
-Create `~/.pi/agent/model-aliases.json` and add one object for each alias you want:
+Configure global settings at `~/.pi/agent/pi-model-alias/config.json`.
+
+| Option                 | Type              | Default | Description                                                                                        |
+| ---------------------- | ----------------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `aliases`              | `ModelAlias[]`    | `[]`    | Model aliases to expose in Pi model selection and rewrite before provider requests.                |
+| `providerAliases`      | `ProviderAlias[]` | `[]`    | Provider display names to show in Pi UI while preserving the real provider id.                     |
+| `stableProviderColumn` | `boolean`         | `true`  | Align provider names using the longest filtered model name instead of only currently visible rows. |
 
 ```json
 {
-  "$schema": "./model-aliases.schema.json",
-  "aliases": [
-    {
-      "provider": "fireworks",
-      "model": "accounts/fireworks/routers/kimi-k2p6-turbo",
-      "alias": "kimi-k2.6-turbo",
-      "name": "kimi-k2.6-turbo"
-    }
-  ],
-  "providerAliases": [
-    {
-      "provider": "fireworks",
-      "name": "Fireworks Work"
-    }
-  ]
+  "$schema": "./config.schema.json",
+  "aliases": [],
+  "providerAliases": [],
+  "stableProviderColumn": true
 }
 ```
-
-Model alias fields:
-
-- `provider`: the Pi provider ID that owns the original model.
-- `model`: the provider's real model ID.
-- `alias`: the short model ID you want to type or select in Pi.
-- `name`: the display name shown in model lists. This can match `alias`.
-
-Provider alias fields:
-
-- `provider`: the real Pi provider ID.
-- `name`: the visual provider name shown in provider selectors and model picker badges.
-
-After configuration, the extension copies the original model configuration, adds model aliases to Pi's model list, resolves lookups for model aliases, rewrites outgoing provider payloads back to the original `model` value, and applies provider aliases only at display seams.
 
 ## License
 

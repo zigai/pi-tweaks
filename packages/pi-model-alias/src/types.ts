@@ -19,6 +19,7 @@ export type ProviderAliasConfig = {
 export type ModelAliasesConfig = {
     aliases?: AliasConfig[];
     providerAliases?: ProviderAliasConfig[];
+    stableProviderColumn?: boolean;
 };
 
 export type LoadedConfig = {
@@ -26,11 +27,14 @@ export type LoadedConfig = {
     mtimeMs: number;
     aliases: AliasConfig[];
     providerAliases: ProviderAliasConfig[];
+    stableProviderColumn: boolean;
     error?: string;
 };
 
 export type RuntimeState = {
     configCache?: LoadedConfig;
+    configCwd?: string;
+    projectTrusted?: boolean;
     reportedErrorKey?: string;
     loadConfig: () => LoadedConfig;
 };
