@@ -1,10 +1,10 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 
+import { getUiTweaksPatchState } from "./patch-state.ts";
+
 const SLASH_COMMAND_SOURCE_PATCH_KEY = Symbol.for(
     "zigai.pi-ui-tweaks.slash-command-source-patched",
 );
-
-let hideSlashCommandSourceTags = true;
 
 type PrefixAutocompleteDescription = (
     description: string | undefined,
@@ -31,7 +31,7 @@ function warnSlashCommandSourcePatchUnavailable(reason?: string): void {
  * Sets whether slash command autocomplete descriptions should hide source tags.
  */
 export function setHideSlashCommandSourceTags(enabled: boolean): void {
-    hideSlashCommandSourceTags = enabled;
+    getUiTweaksPatchState().hideSlashCommandSourceTags = enabled;
 }
 
 /**
@@ -59,7 +59,7 @@ export function installSlashCommandSourcePatch(
         description: string | undefined,
         sourceInfo: unknown,
     ): string | undefined {
-        if (hideSlashCommandSourceTags) {
+        if (getUiTweaksPatchState().hideSlashCommandSourceTags) {
             return description;
         }
 

@@ -1,9 +1,9 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const THEME_FG_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.neutral-border-color-patched");
+import { getUiTweaksPatchState } from "./patch-state.ts";
 
-let neutralBorderColor = true;
+const THEME_FG_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.neutral-border-color-patched");
 
 type ThemePrototype = {
     [THEME_FG_PATCH_KEY]?: true;
@@ -46,7 +46,7 @@ async function resolvePiDistDir(): Promise<string> {
  * Sets whether theme border colors should render as normal text color.
  */
 export function setNeutralBorderColor(enabled: boolean): void {
-    neutralBorderColor = enabled;
+    getUiTweaksPatchState().neutralBorderColor = enabled;
 }
 
 /**
@@ -77,7 +77,10 @@ export async function installNeutralBorderColorPatch(): Promise<void> {
             color: string,
             text: string,
         ): string {
-            if (neutralBorderColor && (color === "border" || color === "borderMuted")) {
+            if (
+                getUiTweaksPatchState().neutralBorderColor &&
+                (color === "border" || color === "borderMuted")
+            ) {
                 return originalFg.call(this, "text", text);
             }
             return originalFg.call(this, color, text);

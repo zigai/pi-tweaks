@@ -1,12 +1,11 @@
 import { Editor } from "@earendil-works/pi-tui";
 
+import { getUiTweaksPatchState } from "./patch-state.ts";
+
 const AUTOCOMPLETE_POSITION_PATCHED = Symbol.for(
     "zigai.pi-ui-tweaks.autocomplete-position-patched",
 );
 const AUTOCOMPLETE_RENDERED_ABOVE = Symbol.for("zigai.pi-ui-tweaks.autocomplete-rendered-above");
-
-let autocompleteAboveInput = true;
-let restoreContentAfterAutocompleteClose = true;
 
 function blankSpacerLine(width: number): string {
     const visibleSpacer = "\x1b[0m \x1b[0m";
@@ -57,14 +56,14 @@ function getAutocompleteLineCount(target: AutocompletePositionPatchTarget, width
  * Sets whether editor autocomplete rows should render above the input box.
  */
 export function setAutocompleteAboveInput(enabled: boolean): void {
-    autocompleteAboveInput = enabled;
+    getUiTweaksPatchState().autocompleteAboveInput = enabled;
 }
 
 /**
  * Sets whether closing above-input autocomplete should force a clean redraw.
  */
 export function setRestoreContentAfterAutocompleteClose(enabled: boolean): void {
-    restoreContentAfterAutocompleteClose = enabled;
+    getUiTweaksPatchState().restoreContentAfterAutocompleteClose = enabled;
 }
 
 /**
@@ -87,7 +86,8 @@ export function installAutocompletePositionPatch(
         width: number,
     ): string[] {
         const result = originalRender.call(this, width);
-        if (!autocompleteAboveInput) {
+        const patchState = getUiTweaksPatchState();
+        if (!patchState.autocompleteAboveInput) {
             this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
             return result;
         }
@@ -96,7 +96,7 @@ export function installAutocompletePositionPatch(
         if (autocompleteLineCount === 0 || autocompleteLineCount >= result.length) {
             if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
                 this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
-                if (restoreContentAfterAutocompleteClose) {
+                if (patchState.restoreContentAfterAutocompleteClose) {
                     this.tui?.requestRender();
                 }
             }

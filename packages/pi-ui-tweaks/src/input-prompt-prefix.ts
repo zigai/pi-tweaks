@@ -1,10 +1,9 @@
 import { CURSOR_MARKER, Input, sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
 
-const DEFAULT_INPUT_PROMPT_PREFIX = "> ";
+import { DEFAULT_INPUT_PROMPT_PREFIX, getUiTweaksPatchState } from "./patch-state.ts";
+
 const INPUT_PROMPT_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.input-prompt-prefix-patched");
 const graphemeSegmenter = new Intl.Segmenter();
-
-let inputPromptPrefix = DEFAULT_INPUT_PROMPT_PREFIX;
 
 type InputRenderTarget = {
     [INPUT_PROMPT_PATCH_KEY]?: true;
@@ -66,11 +65,11 @@ function isInputRenderTarget(value: unknown): value is InputRenderTarget {
  * Sets the prefix used by Pi single-line input boxes.
  */
 export function setInputPromptPrefix(prefix: string): void {
-    inputPromptPrefix = normalizeInputPromptPrefix(prefix);
+    getUiTweaksPatchState().inputPromptPrefix = normalizeInputPromptPrefix(prefix);
 }
 
 export function getInputPromptPrefix(): string {
-    return inputPromptPrefix;
+    return getUiTweaksPatchState().inputPromptPrefix;
 }
 
 /**
@@ -102,7 +101,7 @@ export function installInputPromptPrefixPatch(prototype: unknown = Input.prototy
             return originalRender.call(this, width);
         }
 
-        const prompt = inputPromptPrefix;
+        const prompt = getUiTweaksPatchState().inputPromptPrefix;
         const promptWidth = visibleWidth(prompt);
         const availableWidth = width - promptWidth;
         if (availableWidth <= 0) {

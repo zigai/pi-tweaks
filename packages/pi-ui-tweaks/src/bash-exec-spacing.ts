@@ -1,10 +1,10 @@
 import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { getUiTweaksPatchState } from "./patch-state.ts";
+
 const BASH_EXEC_SPACING_FACTORY_BASE = Symbol.for(
     "zigai.pi-ui-tweaks.bash-exec-spacing-editor-factory-base",
 );
-
-let bashExecPromptSpacing = true;
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
@@ -32,11 +32,11 @@ function requestEditorRender(editor: BashExecSpacingEditor): void {
  * Sets whether `!` typed at an empty prompt expands to `! ` for bash mode.
  */
 export function setBashExecPromptSpacing(enabled: boolean): void {
-    bashExecPromptSpacing = enabled;
+    getUiTweaksPatchState().bashExecPromptSpacing = enabled;
 }
 
 export function applyBashExecPromptSpacing(editor: BashExecSpacingEditor, data: string): boolean {
-    if (!bashExecPromptSpacing) {
+    if (!getUiTweaksPatchState().bashExecPromptSpacing) {
         return false;
     }
     if (data !== "!") {

@@ -1,13 +1,12 @@
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 
+import { getUiTweaksPatchState } from "./patch-state.ts";
+
 const MODEL_PROVIDER_HINT_TEXT =
     "Only showing models from configured providers. Use /login to add providers.";
 const MODEL_SELECTOR_HINT_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.model-selector-hint-patched");
 
 const selectorInstancesSkippingNextSpacer = new WeakSet<object>();
-
-let compactModelSelector = true;
-let hideModelProviderHint = true;
 
 type ComponentLike = {
     render(width: number): string[];
@@ -59,14 +58,14 @@ function isModelProviderHintText(component: ComponentLike): boolean {
  * Sets whether extra model picker blank spacer rows should be hidden.
  */
 export function setCompactModelSelector(enabled: boolean): void {
-    compactModelSelector = enabled;
+    getUiTweaksPatchState().compactModelSelector = enabled;
 }
 
 /**
  * Sets whether the configured-provider model picker hint should be hidden.
  */
 export function setHideModelProviderHint(enabled: boolean): void {
-    hideModelProviderHint = enabled;
+    getUiTweaksPatchState().hideModelProviderHint = enabled;
 }
 
 /**
@@ -100,11 +99,12 @@ export function installModelSelectorHintPatch(
             }
         }
 
-        if (compactModelSelector && isSingleLineSpacer(component)) {
+        const patchState = getUiTweaksPatchState();
+        if (patchState.compactModelSelector && isSingleLineSpacer(component)) {
             return;
         }
 
-        if (hideModelProviderHint && isModelProviderHintText(component)) {
+        if (patchState.hideModelProviderHint && isModelProviderHintText(component)) {
             selectorInstancesSkippingNextSpacer.add(this);
             return;
         }

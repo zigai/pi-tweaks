@@ -1,8 +1,8 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 
-const MODEL_STATUS_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.model-status-patched");
+import { getUiTweaksPatchState } from "./patch-state.ts";
 
-let hideModelChangeStatus = true;
+const MODEL_STATUS_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.model-status-patched");
 
 type ShowStatus = (this: InteractiveModeStatusTarget, message: string) => void;
 
@@ -30,7 +30,7 @@ function isModelChangeStatus(message: string): boolean {
  * Sets whether redundant model-change status lines should be hidden.
  */
 export function setHideModelChangeStatus(enabled: boolean): void {
-    hideModelChangeStatus = enabled;
+    getUiTweaksPatchState().hideModelChangeStatus = enabled;
 }
 
 /**
@@ -57,7 +57,7 @@ export function installModelStatusPatch(
         this: InteractiveModeStatusTarget,
         message: string,
     ): void {
-        if (hideModelChangeStatus && isModelChangeStatus(message)) {
+        if (getUiTweaksPatchState().hideModelChangeStatus && isModelChangeStatus(message)) {
             return;
         }
 

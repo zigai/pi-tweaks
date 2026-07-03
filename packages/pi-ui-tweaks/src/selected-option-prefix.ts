@@ -2,15 +2,14 @@ import { SelectList, truncateToWidth, visibleWidth, type SelectItem } from "@ear
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const DEFAULT_SELECTED_OPTION_PREFIX = "→ ";
+import { DEFAULT_SELECTED_OPTION_PREFIX, getUiTweaksPatchState } from "./patch-state.ts";
+
 const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
 const SELECT_LIST_PATCH_KEY = Symbol.for(
     "zigai.pi-ui-tweaks.selected-option-prefix-select-list-patched",
 );
 const THEME_FG_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.selected-option-prefix-theme-fg-patched");
-
-let selectedOptionPrefix = DEFAULT_SELECTED_OPTION_PREFIX;
 
 type SelectListRenderTarget = {
     [SELECT_LIST_PATCH_KEY]?: true;
@@ -59,7 +58,7 @@ function normalizeSelectedOptionPrefix(prefix: string): string {
 }
 
 function getUnselectedOptionPrefix(): string {
-    return " ".repeat(Math.max(1, visibleWidth(selectedOptionPrefix)));
+    return " ".repeat(Math.max(1, visibleWidth(getUiTweaksPatchState().selectedOptionPrefix)));
 }
 
 function warnSelectedOptionPrefixPatchUnavailable(error?: unknown): void {
@@ -98,11 +97,11 @@ async function resolvePiDistDir(): Promise<string> {
  * Sets the prefix used for selected rows in Pi selector UIs.
  */
 export function setSelectedOptionPrefix(prefix: string): void {
-    selectedOptionPrefix = normalizeSelectedOptionPrefix(prefix);
+    getUiTweaksPatchState().selectedOptionPrefix = normalizeSelectedOptionPrefix(prefix);
 }
 
 export function getSelectedOptionPrefix(): string {
-    return selectedOptionPrefix;
+    return getUiTweaksPatchState().selectedOptionPrefix;
 }
 
 /**
@@ -129,7 +128,7 @@ export function installSelectedOptionPrefixSelectListPatch(
     ): string {
         let prefix: string;
         if (isSelected) {
-            prefix = selectedOptionPrefix;
+            prefix = getUiTweaksPatchState().selectedOptionPrefix;
         } else {
             prefix = getUnselectedOptionPrefix();
         }
@@ -204,7 +203,7 @@ export async function installSelectedOptionPrefixThemePatch(): Promise<void> {
             text: string,
         ): string {
             if (color === "accent" && text === DEFAULT_SELECTED_OPTION_PREFIX) {
-                return originalFg.call(this, color, selectedOptionPrefix);
+                return originalFg.call(this, color, getUiTweaksPatchState().selectedOptionPrefix);
             }
             return originalFg.call(this, color, text);
         };

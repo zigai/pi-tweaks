@@ -1,11 +1,11 @@
 import { TUI, type Component } from "@earendil-works/pi-tui";
 
+import { getUiTweaksPatchState } from "./patch-state.ts";
+
 const ANCHOR_INPUT_TO_BOTTOM_PATCHED = Symbol.for(
     "zigai.pi-ui-tweaks.anchor-input-to-bottom-patched",
 );
 const BOTTOM_CHROME_PRECEDING_SIBLINGS = 2;
-
-let anchorInputToBottom = false;
 
 type ComponentContainer = Component & {
     children: Component[];
@@ -161,7 +161,7 @@ function anchorInputToBottomLines(
     lines: readonly string[],
     width: number,
 ): string[] {
-    if (!anchorInputToBottom) return [...lines];
+    if (!getUiTweaksPatchState().anchorInputToBottom) return [...lines];
 
     const compacted = compactBottomChromeSpacing(tui, lines, width);
     if (compacted === undefined) return [...lines];
@@ -182,7 +182,7 @@ function anchorInputToBottomLines(
  * Sets whether short Pi screens should add blank rows above the input/footer chrome.
  */
 export function setAnchorInputToBottom(enabled: boolean): void {
-    anchorInputToBottom = enabled;
+    getUiTweaksPatchState().anchorInputToBottom = enabled;
 }
 
 /**

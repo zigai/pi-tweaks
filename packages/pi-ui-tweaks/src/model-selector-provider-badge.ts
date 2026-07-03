@@ -2,11 +2,11 @@ import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { getUiTweaksPatchState } from "./patch-state.ts";
+
 const MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY = Symbol.for(
     "zigai.pi-ui-tweaks.model-selector-provider-badge-patched",
 );
-
-let highlightSelectedModelProvider = true;
 
 type ModelItemLike = {
     readonly id: string;
@@ -86,7 +86,7 @@ function highlightSelectedProviderBadge(
     target: ModelSelectorProviderBadgeTarget,
     theme: ThemeInstance,
 ): void {
-    if (!highlightSelectedModelProvider) return;
+    if (!getUiTweaksPatchState().highlightSelectedModelProvider) return;
 
     const selectedModel = getSelectedModelItem(target);
     if (selectedModel === undefined) return;
@@ -121,7 +121,7 @@ async function loadThemeModule(): Promise<ThemeModule> {
  * Sets whether the selected model row should accent its provider badge.
  */
 export function setHighlightSelectedModelProvider(enabled: boolean): void {
-    highlightSelectedModelProvider = enabled;
+    getUiTweaksPatchState().highlightSelectedModelProvider = enabled;
 }
 
 /**

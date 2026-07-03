@@ -1,10 +1,10 @@
 import { SelectList } from "@earendil-works/pi-tui";
 
+import { getUiTweaksPatchState } from "./patch-state.ts";
+
 const AUTOCOMPLETE_SCROLL_INFO_PATCHED = Symbol.for(
     "zigai.pi-ui-tweaks.autocomplete-scroll-info-patched",
 );
-
-let hideAutocompleteScrollInfo = true;
 
 type SelectListScrollInfoTarget = {
     [AUTOCOMPLETE_SCROLL_INFO_PATCHED]?: true;
@@ -43,7 +43,7 @@ function shouldRenderScrollInfo(target: SelectListScrollInfoTarget): boolean {
  * Sets whether autocomplete menus should hide their scroll/count footer.
  */
 export function setHideAutocompleteScrollInfo(enabled: boolean): void {
-    hideAutocompleteScrollInfo = enabled;
+    getUiTweaksPatchState().hideAutocompleteScrollInfo = enabled;
 }
 
 /**
@@ -66,7 +66,7 @@ export function installAutocompleteScrollInfoPatch(
         width: number,
     ): string[] {
         const lines = originalRender.call(this, width);
-        if (!hideAutocompleteScrollInfo) return lines;
+        if (!getUiTweaksPatchState().hideAutocompleteScrollInfo) return lines;
         if (!shouldRenderScrollInfo(this)) return lines;
         return lines.slice(0, -1);
     };
