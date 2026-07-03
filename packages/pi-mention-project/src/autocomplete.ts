@@ -11,7 +11,7 @@ import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
 
 const MAX_SUGGESTIONS = 20;
 
-type ProjectLoader = () => Promise<ProjectDirectory[]>;
+type ProjectLoader = (options?: { readonly signal?: AbortSignal }) => Promise<ProjectDirectory[]>;
 
 function completionSuffixFor(afterCursor: string, completionSuffix: string): string {
     if (completionSuffix.length === 0) {
@@ -101,7 +101,11 @@ export function createProjectMentionProvider(
                 return current.getSuggestions(lines, cursorLine, cursorCol, options);
             }
 
-            const projects = await loadProjects();
+            if (options.signal.aborted) {
+                return current.getSuggestions(lines, cursorLine, cursorCol, options);
+            }
+
+            const projects = await loadProjects({ signal: options.signal });
             if (options.signal.aborted || projects.length === 0) {
                 return current.getSuggestions(lines, cursorLine, cursorCol, options);
             }

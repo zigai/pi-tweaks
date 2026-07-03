@@ -6,10 +6,14 @@ import path from "node:path";
 import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
 import { compareProjectNames } from "./util.ts";
 
+export type ProjectDirectoryLoadOptions = {
+    readonly signal?: AbortSignal;
+};
+
 export type ProjectDirectorySource = {
     getCachedProjects(): ProjectDirectory[];
-    getProjects(): Promise<ProjectDirectory[]>;
-    refresh(): Promise<ProjectDirectory[]>;
+    getProjects(options?: ProjectDirectoryLoadOptions): Promise<ProjectDirectory[]>;
+    refresh(options?: ProjectDirectoryLoadOptions): Promise<ProjectDirectory[]>;
 };
 
 function expandHome(root: string): string {
@@ -40,21 +44,36 @@ function uniqueResolvedRoots(roots: string[], cwd: string): string[] {
     return resolved;
 }
 
-async function directoryEntryIsDirectory(root: string, entry: Dirent): Promise<boolean> {
+function isAborted(options?: ProjectDirectoryLoadOptions): boolean {
+    return options?.signal?.aborted === true;
+}
+
+async function directoryEntryIsDirectory(
+    root: string,
+    entry: Dirent,
+    options?: ProjectDirectoryLoadOptions,
+): Promise<boolean> {
+    if (isAborted(options)) return false;
     if (entry.isDirectory()) return true;
     if (!entry.isSymbolicLink()) return false;
 
     try {
         const stats = await fs.stat(path.join(root, entry.name));
+        if (isAborted(options)) return false;
         return stats.isDirectory();
     } catch {
         return false;
     }
 }
 
-async function isGitRepository(projectPath: string): Promise<boolean> {
+async function isGitRepository(
+    projectPath: string,
+    options?: ProjectDirectoryLoadOptions,
+): Promise<boolean> {
+    if (isAborted(options)) return false;
     try {
         const stats = await fs.stat(path.join(projectPath, ".git"));
+        if (isAborted(options)) return false;
         return stats.isDirectory() || stats.isFile();
     } catch {
         return false;
@@ -65,27 +84,34 @@ async function directoryEntryMatchesSettings(
     root: string,
     entry: Dirent,
     settings: MentionProjectSettings,
+    options?: ProjectDirectoryLoadOptions,
 ): Promise<boolean> {
+    if (isAborted(options)) return false;
     if (!settings.includeDotFolders && entry.name.startsWith(".")) return false;
-    if (!(await directoryEntryIsDirectory(root, entry))) return false;
+    if (!(await directoryEntryIsDirectory(root, entry, options))) return false;
     if (!settings.gitReposOnly) return true;
-    return isGitRepository(path.join(root, entry.name));
+    return isGitRepository(path.join(root, entry.name), options);
 }
 
 async function listRootProjectDirectories(
     root: string,
     settings: MentionProjectSettings,
+    options?: ProjectDirectoryLoadOptions,
 ): Promise<ProjectDirectory[]> {
+    if (isAborted(options)) return [];
+
     let entries: Dirent[];
     try {
         entries = await fs.readdir(root, { withFileTypes: true });
     } catch {
         return [];
     }
+    if (isAborted(options)) return [];
 
     const projects: ProjectDirectory[] = [];
     for (const entry of entries) {
-        if (!(await directoryEntryMatchesSettings(root, entry, settings))) continue;
+        if (isAborted(options)) break;
+        if (!(await directoryEntryMatchesSettings(root, entry, settings, options))) continue;
         const projectPath = path.join(root, entry.name);
         projects.push({ name: entry.name, path: projectPath, root });
     }
@@ -110,10 +136,14 @@ export function uniqueProjectsByName(projects: ProjectDirectory[]): ProjectDirec
 export async function listProjectDirectories(
     settings: MentionProjectSettings,
     cwd: string,
+    options?: ProjectDirectoryLoadOptions,
 ): Promise<ProjectDirectory[]> {
+    if (isAborted(options)) return [];
+
     const projects: ProjectDirectory[] = [];
     for (const root of uniqueResolvedRoots(settings.roots, cwd)) {
-        projects.push(...(await listRootProjectDirectories(root, settings)));
+        if (isAborted(options)) break;
+        projects.push(...(await listRootProjectDirectories(root, settings, options)));
     }
     return uniqueProjectsByName(projects);
 }
@@ -127,11 +157,13 @@ export function createProjectDirectorySource(
     let lastRefreshMs: number | undefined;
     let refreshInFlight: Promise<ProjectDirectory[]> | undefined;
 
-    const refresh = (): Promise<ProjectDirectory[]> => {
+    const refresh = (options?: ProjectDirectoryLoadOptions): Promise<ProjectDirectory[]> => {
+        if (isAborted(options)) return Promise.resolve([...cachedProjects]);
         if (refreshInFlight !== undefined) return refreshInFlight;
 
-        refreshInFlight = listProjectDirectories(settings, cwd)
+        refreshInFlight = listProjectDirectories(settings, cwd, options)
             .then((projects) => {
+                if (isAborted(options)) return [...cachedProjects];
                 cachedProjects = projects;
                 lastRefreshMs = Date.now();
                 return [...cachedProjects];
@@ -146,11 +178,12 @@ export function createProjectDirectorySource(
         getCachedProjects() {
             return [...cachedProjects];
         },
-        getProjects() {
+        getProjects(options?: ProjectDirectoryLoadOptions) {
+            if (isAborted(options)) return Promise.resolve([...cachedProjects]);
             if (lastRefreshMs !== undefined && Date.now() - lastRefreshMs < ttlMs) {
                 return Promise.resolve([...cachedProjects]);
             }
-            return refresh();
+            return refresh(options);
         },
         refresh,
     };

@@ -60,6 +60,46 @@ test("createProjectMentionProvider suggests projects after the configured trigge
     );
 });
 
+test("createProjectMentionProvider skips project loading when completion is aborted", async () => {
+    let loadCount = 0;
+    const provider = createProjectMentionProvider(
+        fallbackProvider([{ value: "help", label: "/help" }]),
+        settings(["/tmp/projects"]),
+        async () => {
+            loadCount += 1;
+            return [project("pi-tweaks")];
+        },
+    );
+    const controller = new AbortController();
+    controller.abort();
+
+    const suggestions = await provider.getSuggestions(["Use #twe"], 0, "Use #twe".length, {
+        signal: controller.signal,
+    });
+
+    assert.equal(loadCount, 0);
+    assert.deepEqual(suggestions, { prefix: "/", items: [{ value: "help", label: "/help" }] });
+});
+
+test("createProjectMentionProvider passes autocomplete cancellation to project loading", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    const provider = createProjectMentionProvider(
+        fallbackProvider([]),
+        settings(["/tmp/projects"]),
+        async (options) => {
+            receivedSignal = options?.signal;
+            return [];
+        },
+    );
+
+    await provider.getSuggestions(["Use #twe"], 0, "Use #twe".length, {
+        signal: controller.signal,
+    });
+
+    assert.equal(receivedSignal, controller.signal);
+});
+
 test("createProjectMentionProvider falls back outside project mention context", async () => {
     const provider = createProjectMentionProvider(
         fallbackProvider([{ value: "help", label: "/help" }]),

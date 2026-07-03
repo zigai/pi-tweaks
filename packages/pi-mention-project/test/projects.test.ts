@@ -120,6 +120,26 @@ test("listProjectDirectories includes symlinks to git directories", async () => 
     }
 });
 
+test("listProjectDirectories returns no projects when already aborted", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-aborted-"));
+    try {
+        const root = path.join(dir, "root");
+        const alpha = path.join(root, "alpha");
+        await mkdir(alpha, { recursive: true });
+        await markGitRepo(alpha);
+        const controller = new AbortController();
+        controller.abort();
+
+        const projects = await listProjectDirectories(settings([root]), dir, {
+            signal: controller.signal,
+        });
+
+        assert.deepEqual(projects, []);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
 test("createProjectDirectorySource serves warm cache until refresh or ttl expiry", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-cache-"));
     try {
@@ -149,6 +169,37 @@ test("createProjectDirectorySource serves warm cache until refresh or ttl expiry
         assert.deepEqual(
             refreshedProjects.map((project) => project.name),
             ["alpha", "beta"],
+        );
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("createProjectDirectorySource serves cached projects when a request is aborted", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-aborted-cache-"));
+    try {
+        const root = path.join(dir, "root");
+        const alpha = path.join(root, "alpha");
+        const beta = path.join(root, "beta");
+        await mkdir(alpha, { recursive: true });
+        await markGitRepo(alpha);
+
+        const projectSource = createProjectDirectorySource(settings([root]), dir, 0);
+        const initialProjects = await projectSource.refresh();
+        assert.deepEqual(
+            initialProjects.map((project) => project.name),
+            ["alpha"],
+        );
+
+        await mkdir(beta, { recursive: true });
+        await markGitRepo(beta);
+        const controller = new AbortController();
+        controller.abort();
+
+        const abortedProjects = await projectSource.getProjects({ signal: controller.signal });
+        assert.deepEqual(
+            abortedProjects.map((project) => project.name),
+            ["alpha"],
         );
     } finally {
         await rm(dir, { recursive: true, force: true });

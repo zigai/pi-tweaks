@@ -88,7 +88,9 @@ export default function (pi: ExtensionAPI): void {
 
         applyMentionProjectEditor(ctx, settings.trigger, () => projectSource.getCachedProjects());
         ctx.ui.addAutocompleteProvider((current) =>
-            createProjectMentionProvider(current, settings, () => projectSource.getProjects()),
+            createProjectMentionProvider(current, settings, (options) =>
+                projectSource.getProjects(options),
+            ),
         );
     });
 
