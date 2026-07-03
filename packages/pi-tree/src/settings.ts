@@ -1,4 +1,5 @@
 import {
+    CONFIG_DIR_NAME,
     getAgentDir,
     SettingsManager,
     type ExtensionContext,
@@ -29,16 +30,35 @@ import {
 } from "./constants.ts";
 import type { TreeTimestampMode } from "./types.ts";
 
-const SettingsObjectSchema = Type.Object({});
 const TreeTimestampModeSchema = Type.Union([
     Type.Literal("off"),
     Type.Literal("relative"),
     Type.Literal("absolute"),
 ]);
 const TreePreviewEnabledSchema = Type.Boolean();
-const TreeMaxVisibleLinesSchema = Type.Number();
+const TreeMaxVisibleLinesSchema = Type.Number({ minimum: MIN_VISIBLE_LINES });
 const TreePreviewFullHeightSchema = Type.Boolean();
 const ThemeNameSchema = Type.String();
+const SettingsObjectSchema = Type.Object(
+    {
+        $schema: Type.Optional(Type.String()),
+        [SETTINGS_KEY]: Type.Optional(TreeTimestampModeSchema),
+        [PREVIEW_SETTINGS_KEY]: Type.Optional(TreePreviewEnabledSchema),
+        [MAX_VISIBLE_LINES_SETTINGS_KEY]: Type.Optional(TreeMaxVisibleLinesSchema),
+        [PREVIEW_FULL_HEIGHT_SETTINGS_KEY]: Type.Optional(TreePreviewFullHeightSchema),
+    },
+    { additionalProperties: false },
+);
+const EXTENSION_ID = "pi-tree";
+const CONFIG_FILE = "config.json";
+const SCHEMA_FILE = "config.schema.json";
+
+const DEFAULT_TREE_CONFIG_FILE = {
+    $schema: `./${SCHEMA_FILE}`,
+    [SETTINGS_KEY]: DEFAULT_MODE,
+    [PREVIEW_SETTINGS_KEY]: false,
+    [PREVIEW_FULL_HEIGHT_SETTINGS_KEY]: true,
+};
 
 type SettingsReadContext = {
     cwd: string;
@@ -89,7 +109,75 @@ export function isTreeTimestampMode(value: unknown): value is TreeTimestampMode 
 }
 
 function getSettingsPath(): string {
-    return join(getAgentDir(), "settings.json");
+    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
+}
+
+function getSchemaPath(configPath: string): string {
+    return join(dirname(configPath), SCHEMA_FILE);
+}
+
+function writeIfMissing(filePath: string, content: string): void {
+    try {
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
+    } catch (error: unknown) {
+        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
+        if (error instanceof Error) throw error;
+        throw new Error(String(error));
+    }
+}
+
+function refreshSchemaFile(filePath: string, content: string): void {
+    let temporaryPath: string | undefined;
+    try {
+        mkdirSync(dirname(filePath), { recursive: true });
+        try {
+            if (readFileSync(filePath, "utf8") === content) return;
+        } catch (error: unknown) {
+            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
+                throw error;
+            }
+        }
+
+        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
+        temporaryPath = nextTemporaryPath;
+        renameSync(temporaryPath, filePath);
+        temporaryPath = undefined;
+    } catch (error: unknown) {
+        if (temporaryPath !== undefined) {
+            try {
+                unlinkSync(temporaryPath);
+            } catch {
+                // Ignore cleanup failure while reporting the original scaffold failure.
+            }
+        }
+        if (error instanceof Error) throw error;
+        throw new Error(String(error));
+    }
+}
+
+function readBundledSchema(): string | undefined {
+    try {
+        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
+    } catch {
+        return undefined;
+    }
+}
+
+function scaffoldGlobalConfig(): void {
+    const globalConfigPath = getSettingsPath();
+    const schema = readBundledSchema();
+    if (schema !== undefined) {
+        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
+    }
+    writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_TREE_CONFIG_FILE, null, 2)}\n`);
+}
+
+function getProjectSettingsPath(): string | undefined {
+    const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
+    if (!context.projectTrusted) return undefined;
+    return join(context.cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -156,10 +244,41 @@ function parseSettingsObject(value: unknown, settingsPath: string): Record<strin
             `${settingsPath} must contain a JSON object: ${messages.join("; ")}${suffix}`,
         );
     }
-    return { ...(Value.Parse(SettingsObjectSchema, value) as Record<string, unknown>) };
+    return Object.fromEntries(Object.entries(Value.Parse(SettingsObjectSchema, value)));
+}
+
+function readSettingsObject(
+    settingsPath: string,
+    options?: { throwOnInvalid?: boolean },
+): Record<string, unknown> {
+    if (settingsPath === getSettingsPath()) {
+        scaffoldGlobalConfig();
+    }
+
+    try {
+        const raw = readFileSync(settingsPath, "utf8");
+        const parsedJson: unknown = JSON.parse(raw);
+        return parseSettingsObject(parsedJson, settingsPath);
+    } catch (error: unknown) {
+        if (getErrorCode(error) === "ENOENT") return {};
+        if (options?.throwOnInvalid === true) throwError(error);
+        // Ignore malformed config files while reading and fall back to defaults.
+    }
+
+    return {};
 }
 
 function readMergedSettingsObject(): Record<string, unknown> {
+    const settings = readSettingsObject(getSettingsPath());
+    const projectSettingsPath = getProjectSettingsPath();
+    if (projectSettingsPath === undefined) return settings;
+    return {
+        ...settings,
+        ...readSettingsObject(projectSettingsPath),
+    };
+}
+
+function readMergedPiSettingsObject(): Record<string, unknown> {
     const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
     const manager = SettingsManager.create(context.cwd, getAgentDir(), {
         projectTrusted: context.projectTrusted,
@@ -257,24 +376,11 @@ function atomicWriteUtf8Sync(filePath: string, content: string): void {
     }
 }
 
-function readSettingsObject(options?: { throwOnInvalid?: boolean }): Record<string, unknown> {
-    const settingsPath = getSettingsPath();
-    try {
-        const raw = readFileSync(settingsPath, "utf8");
-        return parseSettingsObject(JSON.parse(raw), settingsPath);
-    } catch (error: unknown) {
-        if (getErrorCode(error) === "ENOENT") return {};
-        if (options?.throwOnInvalid === true) throwError(error);
-        // Ignore malformed settings files while reading and fall back to defaults.
-    }
-
-    return {};
-}
-
 function updateSettingsObject(update: (settings: Record<string, unknown>) => void): void {
+    scaffoldGlobalConfig();
     const settingsPath = getSettingsPath();
     withSettingsLock(settingsPath, () => {
-        const settings = readSettingsObject({ throwOnInvalid: true });
+        const settings = readSettingsObject(settingsPath, { throwOnInvalid: true });
         update(settings);
         atomicWriteUtf8Sync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
     });
@@ -331,7 +437,7 @@ export function getPersistedPreviewFullHeight(): boolean {
 export function getConfiguredThemeName(): string | undefined {
     if (cachedThemeNameLoaded) return cachedThemeName;
 
-    const settings = readMergedSettingsObject();
+    const settings = readMergedPiSettingsObject();
     cachedThemeName = parseOptionalString(ThemeNameSchema, settings.theme);
     cachedThemeNameLoaded = true;
     return cachedThemeName;

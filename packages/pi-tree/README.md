@@ -21,7 +21,7 @@ pi install npm:@zigai/pi-tree
 - Uses Pi's configured tree label-timestamp keybinding, commonly `Shift+T`, to cycle timestamp modes.
 - Adds an optional selected-entry preview pane on the right side of `/tree` when the terminal is wide enough.
 - Toggles the preview pane with `Shift+P`.
-- Reads timestamp and preview choices from global or trusted project Pi settings.
+- Reads timestamp and preview choices from config.
 - Can make `/tree` taller with `treeMaxVisibleLines`.
 - Can keep the preview pane at full height or shrink it to fit preview content.
 
@@ -29,25 +29,23 @@ pi install npm:@zigai/pi-tree
 
 ## Configuration
 
-Configuration is stored in Pi settings: globally in `~/.pi/agent/settings.json`, or per trusted project in `.pi/settings.json`.
+Configure global settings at `~/.pi/agent/pi-tree/config.json`.
+
+| Option                  | Type                                | Default      | Description                                                                                |
+| ----------------------- | ----------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
+| `treeTimestampMode`     | `"off" \| "relative" \| "absolute"` | `"relative"` | Initial timestamp mode.                                                                    |
+| `treeSelectedPreview`   | `boolean`                           | `false`      | Opens `/tree` with the preview pane enabled.                                               |
+| `treeMaxVisibleLines`   | `number`                            | unset        | Maximum number of tree rows to show. Omit to use Pi's native height; minimum value is `5`. |
+| `treePreviewFullHeight` | `boolean`                           | `true`       | Keeps the preview pane at full height instead of shrinking it to selected preview content. |
 
 ```json
 {
+  "$schema": "./config.schema.json",
   "treeTimestampMode": "relative",
   "treeSelectedPreview": false,
-  "treeMaxVisibleLines": 24,
   "treePreviewFullHeight": true
 }
 ```
-
-Settings:
-
-- `treeTimestampMode`: one of `off`, `relative`, or `absolute`. Defaults to `relative`.
-- `treeSelectedPreview`: set to `true` to open `/tree` with the preview pane enabled. Defaults to `false`.
-- `treeMaxVisibleLines`: optional maximum number of tree rows to show. When unset, Pi's native height is used. Values are clamped to at least `5`.
-- `treePreviewFullHeight`: set to `false` if the preview pane may shrink to the selected preview content, but never below the visible tree rows. Defaults to `true`.
-
-You can also change the first two settings from inside `/tree`: use Pi's configured tree time keybinding, commonly `Shift+T`, to cycle timestamp modes, and `Shift+P` to toggle the preview pane. Interactive changes are written to global settings.
 
 ## Development
 
