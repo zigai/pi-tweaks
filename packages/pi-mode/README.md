@@ -20,11 +20,32 @@ pi install npm:@zigai/pi-mode
 - Can show the current mode in the prompt editor border when enabled.
 - Colors the prompt editor border from the active mode, with an opt-in setting for thinking-derived border colors.
 
-Modes can store a provider, model, thinking level, and optional color. Project-local modes live in `.pi/modes.json` when present; otherwise global modes live in `~/.pi/agent/modes.json`.
+Modes can store a provider, model, thinking level, and optional color. By default, Pi Mode hides Pi's transient `Thinking level: …` status message because the active thinking level is already visible in the footer.
 
-By default, Pi Mode does not print the mode name in the editor border. To opt in, toggle `Show mode name` from `/mode` → `Configure modes…`, or set `"modeShowName": true` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`. The `/mode` toggle writes to global settings.
+## Configuration
 
-By default, Pi Mode uses the normal editor border color when the active mode does not define an explicit `color`. To opt in to thinking-derived border colors, toggle `Thinking border colors` from `/mode` → `Configure modes…`, or set `"modeUseThinkingBorderColors": true` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`. Explicit per-mode `color` values still apply.
+Configure global settings at `~/.pi/agent/pi-mode/config.json`.
+
+| Option                        | Type      | Default     | Description                                                                |
+| ----------------------------- | --------- | ----------- | -------------------------------------------------------------------------- |
+| `version`                     | `number`  | `1`         | Config format version.                                                     |
+| `currentMode`                 | `string`  | `"default"` | Mode selected at startup.                                                  |
+| `modeShowName`                | `boolean` | `false`     | Shows the current mode name in the prompt editor border.                   |
+| `modeUseThinkingBorderColors` | `boolean` | `false`     | Uses thinking-derived border colors when a mode has no explicit color.     |
+| `modeShowThinkingLevelStatus` | `boolean` | `false`     | Shows Pi's transient thinking-level status message.                        |
+| `modes`                       | `object`  | `{}`        | Named modes with optional `provider`, `modelId`, `thinkingLevel`, `color`. |
+
+```json
+{
+  "$schema": "./config.schema.json",
+  "version": 1,
+  "currentMode": "default",
+  "modeShowName": false,
+  "modeUseThinkingBorderColors": false,
+  "modeShowThinkingLevelStatus": false,
+  "modes": {}
+}
+```
 
 ## License
 

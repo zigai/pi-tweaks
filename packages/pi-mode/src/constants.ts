@@ -9,6 +9,8 @@ export const MODE_UI_SHOW_NAME_ON = "Show mode name: on";
 export const MODE_UI_SHOW_NAME_OFF = "Show mode name: off";
 export const MODE_UI_THINKING_COLORS_ON = "Thinking border colors: on";
 export const MODE_UI_THINKING_COLORS_OFF = "Thinking border colors: off";
+export const MODE_UI_THINKING_STATUS_ON = "Thinking level status: on";
+export const MODE_UI_THINKING_STATUS_OFF = "Thinking level status: off";
 export const MODE_UI_BACK = "Back";
 
 export const ALL_THINKING_LEVELS: ThinkingLevel[] = [

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-import { atomicWriteUtf8, withFileLock } from "../src/storage.ts";
+import { setShowModeName } from "../src/settings.ts";
+import { atomicWriteUtf8, scaffoldGlobalModesConfig, withFileLock } from "../src/storage.ts";
 
 async function exists(filePath: string): Promise<boolean> {
     try {
@@ -14,6 +15,76 @@ async function exists(filePath: string): Promise<boolean> {
         return false;
     }
 }
+
+test("scaffoldGlobalModesConfig creates missing global config and schema", async () => {
+    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mode-agent-"));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    try {
+        const configPath = path.join(agentDir, "pi-mode", "config.json");
+        const schemaPath = path.join(agentDir, "pi-mode", "config.schema.json");
+        await scaffoldGlobalModesConfig();
+
+        assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
+            $schema: "./config.schema.json",
+            version: 1,
+            currentMode: "default",
+            modeShowName: false,
+            modeUseThinkingBorderColors: false,
+            modeShowThinkingLevelStatus: false,
+            modes: {},
+        });
+        assert.match(await readFile(schemaPath, "utf8"), /Pi mode config/);
+
+        await writeFile(configPath, "{ not json", "utf8");
+        await writeFile(schemaPath, "stale schema", "utf8");
+        await scaffoldGlobalModesConfig();
+
+        assert.equal(await readFile(configPath, "utf8"), "{ not json");
+        assert.match(await readFile(schemaPath, "utf8"), /Pi mode config/);
+    } finally {
+        await rm(agentDir, { recursive: true, force: true });
+        if (originalAgentDir === undefined) {
+            delete process.env.PI_CODING_AGENT_DIR;
+        } else {
+            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+        }
+    }
+});
+
+test("mode config writes reject unknown config keys", async () => {
+    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mode-agent-"));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    try {
+        const configPath = path.join(agentDir, "pi-mode", "config.json");
+        await scaffoldGlobalModesConfig();
+        const invalidConfig = JSON.stringify({
+            version: 1,
+            currentMode: "default",
+            modes: {
+                default: {
+                    provider: "openai",
+                    modelId: "gpt-5",
+                    extra: "typo",
+                },
+            },
+        });
+        await writeFile(configPath, invalidConfig, "utf8");
+
+        assert.throws(() => setShowModeName(true), /additional properties/);
+        assert.equal(await readFile(configPath, "utf8"), invalidConfig);
+    } finally {
+        await rm(agentDir, { recursive: true, force: true });
+        if (originalAgentDir === undefined) {
+            delete process.env.PI_CODING_AGENT_DIR;
+        } else {
+            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+        }
+    }
+});
 
 test("atomicWriteUtf8 creates parent directories and replaces existing content", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mode-storage-"));

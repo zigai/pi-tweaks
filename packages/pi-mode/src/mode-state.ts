@@ -20,6 +20,8 @@ import {
     MODE_UI_SHOW_NAME_ON,
     MODE_UI_THINKING_COLORS_OFF,
     MODE_UI_THINKING_COLORS_ON,
+    MODE_UI_THINKING_STATUS_OFF,
+    MODE_UI_THINKING_STATUS_ON,
     THINKING_UNSET_LABEL,
 } from "./constants.ts";
 import {
@@ -28,12 +30,15 @@ import {
     getGlobalModesPath,
     getMtimeMs,
     getProjectModesPath,
+    scaffoldGlobalModesConfig,
     withFileLock,
 } from "./storage.ts";
 import {
     setShowModeName,
+    setShowThinkingLevelStatus,
     setUseThinkingBorderColors,
     shouldShowModeName,
+    shouldShowThinkingLevelStatus,
     shouldUseThinkingBorderColors,
 } from "./settings.ts";
 import type { ModeRuntime, ModesFile, ModesPatch, ModeSpec, ModeSpecPatch } from "./types.ts";
@@ -43,19 +48,29 @@ type ScopedModelItem = {
     thinkingLevel?: string;
 };
 
-const ModeSpecJsonSchema = Type.Object({
-    provider: Type.Optional(Type.String()),
-    modelId: Type.Optional(Type.String()),
-    thinkingLevel: Type.Optional(Type.Unknown()),
-    color: Type.Optional(Type.String()),
-});
+const ModeSpecJsonSchema = Type.Object(
+    {
+        provider: Type.Optional(Type.String()),
+        modelId: Type.Optional(Type.String()),
+        thinkingLevel: Type.Optional(Type.Unknown()),
+        color: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+);
 
-const ModesFileJsonSchema = Type.Object({
-    $schema: Type.Optional(Type.String()),
-    version: Type.Optional(Type.Number()),
-    currentMode: Type.Optional(Type.String()),
-    modes: Type.Optional(Type.Record(Type.String(), ModeSpecJsonSchema)),
-});
+const ModesFileJsonSchema = Type.Object(
+    {
+        $schema: Type.Optional(Type.String()),
+        version: Type.Optional(Type.Number()),
+        currentMode: Type.Optional(Type.String()),
+        modeShowName: Type.Optional(Type.Boolean()),
+        modeUseThinkingBorderColors: Type.Optional(Type.Boolean()),
+        modeShowThinkingLevelStatus: Type.Optional(Type.Boolean()),
+        modes: Type.Optional(Type.Record(Type.String(), ModeSpecJsonSchema)),
+    },
+    { additionalProperties: false },
+);
+const ConfigObjectSchema = ModesFileJsonSchema;
 
 type ModeSpecJson = Static<typeof ModeSpecJsonSchema>;
 type ModesFileJson = Static<typeof ModesFileJsonSchema>;
@@ -69,7 +84,11 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSchema(schema: TSchema, value: unknown, label: string): unknown {
+function parseSchema<Schema extends TSchema>(
+    schema: Schema,
+    value: unknown,
+    label: string,
+): Static<Schema> {
     const errors = [...Value.Errors(schema, value)];
     if (errors.length > 0) {
         const messages = errors
@@ -82,15 +101,39 @@ function parseSchema(schema: TSchema, value: unknown, label: string): unknown {
         throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
     }
     const parsed: unknown = Value.Parse(schema, value);
-    return parsed;
+    // SAFETY: Value.Errors returned no schema violations, so Value.Parse returns
+    // the TypeBox static type represented by the same schema.
+    // oxlint-disable-next-line typescript/no-unsafe-return -- SAFETY: TypeBox exposes parsed schema output through a conditional static type that oxlint treats as any here.
+    return parsed as Static<Schema>;
 }
 
 function parseModesFileJson(value: unknown): ModesFileJson {
-    return parseSchema(ModesFileJsonSchema, value, "modes.json") as ModesFileJson;
+    return parseSchema(ModesFileJsonSchema, value, "pi-mode config.json");
+}
+
+function parseConfigObject(value: unknown, filePath: string): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(parseSchema(ConfigObjectSchema, value, filePath)));
+}
+
+function cloneModeSpec(spec: ModeSpec): ModeSpec {
+    const cloned: ModeSpec = {};
+    if (spec.provider !== undefined) cloned.provider = spec.provider;
+    if (spec.modelId !== undefined) cloned.modelId = spec.modelId;
+    if (spec.thinkingLevel !== undefined) cloned.thinkingLevel = spec.thinkingLevel;
+    if (spec.color !== undefined) cloned.color = spec.color;
+    return cloned;
 }
 
 function cloneModesFile(file: ModesFile): ModesFile {
-    return JSON.parse(JSON.stringify(file)) as ModesFile;
+    const modes: Record<string, ModeSpec> = {};
+    for (const [name, spec] of Object.entries(file.modes)) {
+        modes[name] = cloneModeSpec(spec);
+    }
+    return {
+        version: file.version,
+        currentMode: file.currentMode,
+        modes,
+    };
 }
 
 function modeSpec(modes: Record<string, ModeSpec>, name: string): ModeSpec | undefined {
@@ -256,7 +299,10 @@ function ensureDefaultModeEntries(file: ModesFile, ctx: ExtensionContext, pi: Ex
     for (const name of DEFAULT_MODE_ORDER) {
         if (modeSpec(file.modes, name) === undefined) {
             const defaults = createDefaultModes(ctx, pi);
-            file.modes[name] = defaults.modes[name]!;
+            const defaultSpec = modeSpec(defaults.modes, name);
+            if (defaultSpec !== undefined) {
+                file.modes[name] = cloneModeSpec(defaultSpec);
+            }
         }
     }
 
@@ -286,9 +332,14 @@ async function loadModesFile(
     pi: ExtensionAPI,
     options?: { throwOnInvalid?: boolean },
 ): Promise<ModesFile> {
+    if (filePath === getGlobalModesPath()) {
+        await scaffoldGlobalModesConfig();
+    }
+
     try {
         const raw = await fs.readFile(filePath, "utf8");
-        const parsed = parseModesFileJson(JSON.parse(raw));
+        const parsedJson: unknown = JSON.parse(raw);
+        const parsed = parseModesFileJson(parsedJson);
         const currentMode = parsed.currentMode ?? "default";
         const modesRaw = parsed.modes ?? {};
 
@@ -311,8 +362,23 @@ async function loadModesFile(
     }
 }
 
+async function readConfigObject(filePath: string): Promise<Record<string, unknown>> {
+    try {
+        const raw = await fs.readFile(filePath, "utf8");
+        const parsedJson: unknown = JSON.parse(raw);
+        return parseConfigObject(parsedJson, filePath);
+    } catch (error: unknown) {
+        if (getLoadErrorCode(error) === "ENOENT") return {};
+        throwLoadError(filePath, error);
+    }
+}
+
 async function saveModesFile(filePath: string, data: ModesFile): Promise<void> {
-    await atomicWriteUtf8(filePath, JSON.stringify(data, null, 2) + "\n");
+    const config = await readConfigObject(filePath);
+    config.version = data.version;
+    config.currentMode = data.currentMode;
+    config.modes = data.modes;
+    await atomicWriteUtf8(filePath, JSON.stringify(config, null, 2) + "\n");
 }
 
 function orderedModeNames(modes: Record<string, ModeSpec>): string[] {
@@ -323,9 +389,19 @@ function formatModeLabel(mode: string): string {
     return mode;
 }
 
-async function resolveModesPath(cwd: string): Promise<string> {
-    const projectPath = getProjectModesPath(cwd);
-    if (await fileExists(projectPath)) return projectPath;
+type ProjectTrustContext = ExtensionContext & {
+    isProjectTrusted?: () => boolean;
+};
+
+function isProjectTrusted(ctx: ExtensionContext): boolean {
+    return (ctx as ProjectTrustContext).isProjectTrusted?.() ?? true;
+}
+
+async function resolveModesPath(ctx: ExtensionContext): Promise<string> {
+    if (isProjectTrusted(ctx)) {
+        const projectPath = getProjectModesPath(ctx.cwd);
+        if (await fileExists(projectPath)) return projectPath;
+    }
     return getGlobalModesPath();
 }
 
@@ -434,7 +510,7 @@ export function getModeBorderColor(
 }
 
 async function ensureRuntime(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
-    const filePath = await resolveModesPath(ctx.cwd);
+    const filePath = await resolveModesPath(ctx);
 
     const mtimeMs = await getMtimeMs(filePath);
     const filePathChanged = runtime.filePath !== filePath;
@@ -871,11 +947,16 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
         if (shouldUseThinkingBorderColors()) {
             thinkingColorsChoice = MODE_UI_THINKING_COLORS_ON;
         }
+        let thinkingStatusChoice = MODE_UI_THINKING_STATUS_OFF;
+        if (shouldShowThinkingLevelStatus()) {
+            thinkingStatusChoice = MODE_UI_THINKING_STATUS_ON;
+        }
         const choice = await ctx.ui.select("Configure modes", [
             ...names,
             MODE_UI_ADD,
             showModeNameChoice,
             thinkingColorsChoice,
+            thinkingStatusChoice,
             MODE_UI_BACK,
         ]);
         if (choice === undefined || choice.length === 0 || choice === MODE_UI_BACK) return;
@@ -922,6 +1003,25 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
                 displayState = "enabled";
             }
             ctx.ui.notify(`Thinking border colors ${displayState}`, "info");
+            continue;
+        }
+
+        if (choice === MODE_UI_THINKING_STATUS_ON || choice === MODE_UI_THINKING_STATUS_OFF) {
+            const next = !shouldShowThinkingLevelStatus();
+            try {
+                setShowThinkingLevelStatus(next);
+            } catch (error: unknown) {
+                ctx.ui.notify(
+                    `Thinking level status was not saved: ${errorMessage(error)}`,
+                    "error",
+                );
+                continue;
+            }
+            let displayState = "disabled";
+            if (next) {
+                displayState = "enabled";
+            }
+            ctx.ui.notify(`Thinking level status ${displayState}`, "info");
             continue;
         }
 
@@ -992,8 +1092,11 @@ export async function cycleMode(
     if (runtime.currentMode === CUSTOM_MODE_NAME) {
         baseMode = runtime.lastRealMode;
     }
+    const fallbackMode = names[0];
+    if (fallbackMode === undefined) return;
+
     const index = Math.max(0, names.indexOf(baseMode));
-    const next = names[(index + direction + names.length) % names.length] ?? names[0]!;
+    const next = names[(index + direction + names.length) % names.length] ?? fallbackMode;
     await applyMode(pi, ctx, next);
 }
 

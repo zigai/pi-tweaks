@@ -1,6 +1,6 @@
 import {
+    CONFIG_DIR_NAME,
     getAgentDir,
-    SettingsManager,
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -20,15 +20,50 @@ import { Value } from "typebox/value";
 
 export const SHOW_MODE_NAME_SETTINGS_KEY = "modeShowName";
 export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
+export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelStatus";
 
 const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
 const STALE_SETTINGS_LOCK_MS = 30_000;
-const SettingsObjectSchema = Type.Object({});
+const EXTENSION_ID = "pi-mode";
+const CONFIG_FILE = "config.json";
+const SCHEMA_FILE = "config.schema.json";
+const ModeSpecJsonSchema = Type.Object(
+    {
+        provider: Type.Optional(Type.String()),
+        modelId: Type.Optional(Type.String()),
+        thinkingLevel: Type.Optional(Type.Unknown()),
+        color: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+);
+
+const SettingsObjectSchema = Type.Object(
+    {
+        $schema: Type.Optional(Type.String()),
+        version: Type.Optional(Type.Number()),
+        currentMode: Type.Optional(Type.String()),
+        [SHOW_MODE_NAME_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
+        [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
+        [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
+        modes: Type.Optional(Type.Record(Type.String(), ModeSpecJsonSchema)),
+    },
+    { additionalProperties: false },
+);
 const BooleanSettingSchema = Type.Boolean();
 
 type SettingsReadContext = {
     cwd: string;
     projectTrusted: boolean;
+};
+
+const DEFAULT_MODE_CONFIG_FILE = {
+    $schema: `./${SCHEMA_FILE}`,
+    version: 1,
+    currentMode: "default",
+    [SHOW_MODE_NAME_SETTINGS_KEY]: false,
+    [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: false,
+    [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: false,
+    modes: {},
 };
 
 let settingsReadContext: SettingsReadContext | undefined;
@@ -37,6 +72,7 @@ let cachedSettings:
           mtimeKey: string;
           showModeName: boolean;
           useThinkingBorderColors: boolean;
+          showThinkingLevelStatus: boolean;
       }
     | undefined;
 
@@ -63,14 +99,76 @@ export function setSettingsContext(ctx: ExtensionContext): void {
 }
 
 function getSettingsPath(): string {
-    return join(getAgentDir(), "settings.json");
+    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
+}
+
+function getSchemaPath(configPath: string): string {
+    return join(dirname(configPath), SCHEMA_FILE);
+}
+
+function writeIfMissing(filePath: string, content: string): void {
+    try {
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
+    } catch (error: unknown) {
+        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
+        if (error instanceof Error) throw error;
+        throw new Error(String(error));
+    }
+}
+
+function refreshSchemaFile(filePath: string, content: string): void {
+    let temporaryPath: string | undefined;
+    try {
+        mkdirSync(dirname(filePath), { recursive: true });
+        try {
+            if (readFileSync(filePath, "utf8") === content) return;
+        } catch (error: unknown) {
+            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
+                throw error;
+            }
+        }
+
+        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
+        temporaryPath = nextTemporaryPath;
+        renameSync(temporaryPath, filePath);
+        temporaryPath = undefined;
+    } catch (error: unknown) {
+        if (temporaryPath !== undefined) {
+            try {
+                unlinkSync(temporaryPath);
+            } catch {
+                // Ignore cleanup failure while reporting the original scaffold failure.
+            }
+        }
+        if (error instanceof Error) throw error;
+        throw new Error(String(error));
+    }
+}
+
+function readBundledSchema(): string | undefined {
+    try {
+        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
+    } catch {
+        return undefined;
+    }
+}
+
+function scaffoldGlobalConfig(): void {
+    const globalConfigPath = getSettingsPath();
+    const schema = readBundledSchema();
+    if (schema !== undefined) {
+        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
+    }
+    writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_MODE_CONFIG_FILE, null, 2)}\n`);
 }
 
 function getProjectSettingsPath(): string | undefined {
     if (settingsReadContext === undefined || !settingsReadContext.projectTrusted) {
         return undefined;
     }
-    return join(settingsReadContext.cwd, ".pi", "settings.json");
+    return join(settingsReadContext.cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -222,27 +320,35 @@ function parseSettingsObject(value: unknown, settingsPath: string): Record<strin
             `${settingsPath} must contain a JSON object: ${messages.join("; ")}${suffix}`,
         );
     }
-    return { ...(Value.Parse(SettingsObjectSchema, value) as Record<string, unknown>) };
+    return Object.fromEntries(Object.entries(Value.Parse(SettingsObjectSchema, value)));
 }
 
-function readSettingsObject(options?: { throwOnInvalid?: boolean }): Record<string, unknown> {
-    const settingsPath = getSettingsPath();
+function readSettingsObject(
+    settingsPath: string,
+    options?: { throwOnInvalid?: boolean },
+): Record<string, unknown> {
+    if (settingsPath === getSettingsPath()) {
+        scaffoldGlobalConfig();
+    }
+
     try {
         const raw = readFileSync(settingsPath, "utf8");
-        return parseSettingsObject(JSON.parse(raw), settingsPath);
+        const parsedJson: unknown = JSON.parse(raw);
+        return parseSettingsObject(parsedJson, settingsPath);
     } catch (error: unknown) {
         if (getErrorCode(error) === "ENOENT") return {};
         if (options?.throwOnInvalid === true) throwError(error);
-        // Ignore malformed settings files while reading and fall back to defaults.
+        // Ignore malformed config files while reading and fall back to defaults.
     }
 
     return {};
 }
 
 function updateSettingsObject(update: (settings: Record<string, unknown>) => void): void {
+    scaffoldGlobalConfig();
     const settingsPath = getSettingsPath();
     withSettingsLock(settingsPath, () => {
-        const settings = readSettingsObject({ throwOnInvalid: true });
+        const settings = readSettingsObject(settingsPath, { throwOnInvalid: true });
         update(settings);
         atomicWriteUtf8Sync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
     });
@@ -261,39 +367,55 @@ function applyBooleanSetting(
 function readModeSettings(): {
     showModeName: boolean;
     useThinkingBorderColors: boolean;
+    showThinkingLevelStatus: boolean;
 } {
     const mtimeKey = getSettingsMtimeKey();
     if (cachedSettings?.mtimeKey === mtimeKey) {
         return cachedSettings;
     }
 
-    const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
-    const manager = SettingsManager.create(context.cwd, getAgentDir(), {
-        projectTrusted: context.projectTrusted,
-    });
     let showModeName = false;
     let useThinkingBorderColors = false;
+    let showThinkingLevelStatus = false;
 
-    const globalSettings = manager.getGlobalSettings() as Record<string, unknown>;
+    const globalSettings = readSettingsObject(getSettingsPath());
     showModeName = applyBooleanSetting(globalSettings, SHOW_MODE_NAME_SETTINGS_KEY, showModeName);
     useThinkingBorderColors = applyBooleanSetting(
         globalSettings,
         USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
         useThinkingBorderColors,
     );
-
-    const projectSettings = manager.getProjectSettings() as Record<string, unknown>;
-    showModeName = applyBooleanSetting(projectSettings, SHOW_MODE_NAME_SETTINGS_KEY, showModeName);
-    useThinkingBorderColors = applyBooleanSetting(
-        projectSettings,
-        USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
-        useThinkingBorderColors,
+    showThinkingLevelStatus = applyBooleanSetting(
+        globalSettings,
+        SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY,
+        showThinkingLevelStatus,
     );
+
+    const projectSettingsPath = getProjectSettingsPath();
+    if (projectSettingsPath !== undefined) {
+        const projectSettings = readSettingsObject(projectSettingsPath);
+        showModeName = applyBooleanSetting(
+            projectSettings,
+            SHOW_MODE_NAME_SETTINGS_KEY,
+            showModeName,
+        );
+        useThinkingBorderColors = applyBooleanSetting(
+            projectSettings,
+            USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
+            useThinkingBorderColors,
+        );
+        showThinkingLevelStatus = applyBooleanSetting(
+            projectSettings,
+            SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY,
+            showThinkingLevelStatus,
+        );
+    }
 
     cachedSettings = {
         mtimeKey,
         showModeName,
         useThinkingBorderColors,
+        showThinkingLevelStatus,
     };
     return cachedSettings;
 }
@@ -304,6 +426,10 @@ export function shouldShowModeName(): boolean {
 
 export function shouldUseThinkingBorderColors(): boolean {
     return readModeSettings().useThinkingBorderColors;
+}
+
+export function shouldShowThinkingLevelStatus(): boolean {
+    return readModeSettings().showThinkingLevelStatus;
 }
 
 export function setShowModeName(show: boolean): void {
@@ -317,6 +443,14 @@ export function setShowModeName(show: boolean): void {
 export function setUseThinkingBorderColors(useThinkingBorderColors: boolean): void {
     updateSettingsObject((settings) => {
         settings[USE_THINKING_BORDER_COLORS_SETTINGS_KEY] = useThinkingBorderColors;
+    });
+
+    cachedSettings = undefined;
+}
+
+export function setShowThinkingLevelStatus(showThinkingLevelStatus: boolean): void {
+    updateSettingsObject((settings) => {
+        settings[SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY] = showThinkingLevelStatus;
     });
 
     cachedSettings = undefined;

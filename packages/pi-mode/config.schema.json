@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-mode/config.schema.json",
+  "title": "Pi mode config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "number", "default": 1 },
+    "currentMode": { "type": "string", "default": "default" },
+    "modeShowName": { "type": "boolean", "default": false },
+    "modeUseThinkingBorderColors": { "type": "boolean", "default": false },
+    "modeShowThinkingLevelStatus": { "type": "boolean", "default": false },
+    "modes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": { "type": "string" },
+          "modelId": { "type": "string" },
+          "thinkingLevel": {},
+          "color": { "type": "string" }
+        }
+      },
+      "default": {}
+    }
+  }
+}

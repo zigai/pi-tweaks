@@ -23,7 +23,8 @@
   },
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "*.json"
   ],
   "type": "module",
   "publishConfig": {

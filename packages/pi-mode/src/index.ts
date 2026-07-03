@@ -8,8 +8,11 @@ import {
     selectModeUI,
 } from "./mode-state.ts";
 import { setSettingsContext } from "./settings.ts";
+import { applyThinkingLevelStatusPatch } from "./status.ts";
 
 export default function (pi: ExtensionAPI) {
+    void applyThinkingLevelStatusPatch();
+
     pi.registerCommand("mode", {
         description: "Select prompt mode",
         handler: async (args, ctx) => {
