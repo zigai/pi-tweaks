@@ -32,6 +32,7 @@ type ChildLineRange = {
 type ChildLineRangesFrame = {
     width: number;
     depth: number;
+    recording: boolean;
     ranges?: ChildLineRange[];
 };
 
@@ -100,7 +101,7 @@ function enterChildLineRangesFrame(tui: PatchableTuiInstance, width: number): ()
         };
     }
 
-    const frame: ChildLineRangesFrame = { width, depth: 1 };
+    const frame: ChildLineRangesFrame = { width, depth: 1, recording: false };
     tui[CHILD_LINE_RANGES_FRAME_KEY] = frame;
     return () => {
         frame.depth -= 1;
@@ -110,20 +111,47 @@ function enterChildLineRangesFrame(tui: PatchableTuiInstance, width: number): ()
     };
 }
 
-function computeChildLineRanges(children: readonly Component[], width: number): ChildLineRange[] {
-    const ranges: ChildLineRange[] = [];
-    let start = 0;
-
-    for (let index = 0; index < children.length; index += 1) {
-        const child = children[index];
-        if (child === undefined) continue;
-
-        const lineCount = child.render(width).length;
-        ranges.push({ index, start, end: start + lineCount });
-        start += lineCount;
+function renderWithChildLineRanges(
+    tui: PatchableTuiInstance,
+    width: number,
+    render: PatchableTuiRender,
+): string[] {
+    const frame = tui[CHILD_LINE_RANGES_FRAME_KEY];
+    if (frame?.width !== width || frame.recording) {
+        return render.call(tui, width);
     }
 
-    return ranges;
+    const originals: Array<{ child: Component; render: Component["render"] }> = [];
+    const ranges: ChildLineRange[] = [];
+    let start = 0;
+    frame.recording = true;
+    frame.ranges = ranges;
+
+    for (let index = 0; index < tui.children.length; index += 1) {
+        const child = tui.children[index];
+        if (child === undefined) continue;
+
+        const originalRenderValue: unknown = Reflect.get(child, "render");
+        if (typeof originalRenderValue !== "function") continue;
+
+        const originalRender = originalRenderValue as Component["render"];
+        originals.push({ child, render: originalRender });
+        child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
+            const lines = originalRender.call(this, childWidth);
+            ranges.push({ index, start, end: start + lines.length });
+            start += lines.length;
+            return lines;
+        };
+    }
+
+    try {
+        return render.call(tui, width);
+    } finally {
+        for (const original of originals) {
+            original.child.render = original.render;
+        }
+        frame.recording = false;
+    }
 }
 
 function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
@@ -132,11 +160,7 @@ function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLine
         return frame.ranges;
     }
 
-    const ranges = computeChildLineRanges(tui.children, width);
-    if (frame?.width === width) {
-        frame.ranges = ranges;
-    }
-    return ranges;
+    return [];
 }
 
 function getRangeForChild(
@@ -249,7 +273,7 @@ export function installAnchorInputToBottomPatch(
     ): string[] {
         const leaveFrame = enterChildLineRangesFrame(this, width);
         try {
-            const lines = originalRender.call(this, width);
+            const lines = renderWithChildLineRanges(this, width, originalRender);
             return anchorInputToBottomLines(this, lines, width);
         } finally {
             leaveFrame();

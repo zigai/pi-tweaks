@@ -153,7 +153,7 @@ class TestFooter implements Component {
     invalidate(): void {}
 }
 
-test("footer and anchor patches share child line ranges for one render frame", () => {
+test("footer and anchor patches record child line ranges during one render frame", () => {
     installFooterShrinkPaddingPatch();
     installAnchorInputToBottomPatch();
     setAnchorInputToBottom(true);
@@ -178,11 +178,11 @@ test("footer and anchor patches share child line ranges for one render frame", (
 
         tui.render(30);
 
-        assert.equal(message.renderCount, 2);
-        assert.equal(status.renderCount, 2);
-        assert.equal(spacer.renderCount, 2);
-        assert.equal(editorContainer.renderCount, 2);
-        assert.equal(footer.renderCount, 2);
+        assert.equal(message.renderCount, 1);
+        assert.equal(status.renderCount, 1);
+        assert.equal(spacer.renderCount, 1);
+        assert.equal(editorContainer.renderCount, 1);
+        assert.equal(footer.renderCount, 1);
     } finally {
         setAnchorInputToBottom(false);
     }

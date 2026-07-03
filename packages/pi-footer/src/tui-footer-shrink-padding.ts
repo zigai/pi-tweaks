@@ -43,6 +43,7 @@ type ChildLineRange = {
 type ChildLineRangesFrame = {
     width: number;
     depth: number;
+    recording: boolean;
     ranges?: ChildLineRange[];
 };
 
@@ -179,7 +180,7 @@ function enterChildLineRangesFrame(tui: PatchableTuiInstance, width: number): ()
         };
     }
 
-    const frame: ChildLineRangesFrame = { width, depth: 1 };
+    const frame: ChildLineRangesFrame = { width, depth: 1, recording: false };
     tui[CHILD_LINE_RANGES_FRAME_KEY] = frame;
     return () => {
         frame.depth -= 1;
@@ -189,20 +190,47 @@ function enterChildLineRangesFrame(tui: PatchableTuiInstance, width: number): ()
     };
 }
 
-function computeChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
+function renderWithChildLineRanges(
+    tui: PatchableTuiInstance,
+    width: number,
+    render: (this: PatchableTuiInstance, width: number) => string[],
+): string[] {
+    const frame = tui[CHILD_LINE_RANGES_FRAME_KEY];
+    if (frame?.width !== width || frame.recording) {
+        return render.call(tui, width);
+    }
+
+    const originals: Array<{ child: Component; render: Component["render"] }> = [];
     const ranges: ChildLineRange[] = [];
     let start = 0;
+    frame.recording = true;
+    frame.ranges = ranges;
 
     for (let index = 0; index < tui.children.length; index += 1) {
         const child = tui.children[index];
         if (child === undefined) continue;
 
-        const lineCount = child.render(width).length;
-        ranges.push({ index, start, end: start + lineCount });
-        start += lineCount;
+        const originalRenderValue: unknown = Reflect.get(child, "render");
+        if (typeof originalRenderValue !== "function") continue;
+
+        const originalRender = originalRenderValue as Component["render"];
+        originals.push({ child, render: originalRender });
+        child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
+            const lines = originalRender.call(this, childWidth);
+            ranges.push({ index, start, end: start + lines.length });
+            start += lines.length;
+            return lines;
+        };
     }
 
-    return ranges;
+    try {
+        return render.call(tui, width);
+    } finally {
+        for (const original of originals) {
+            original.child.render = original.render;
+        }
+        frame.recording = false;
+    }
 }
 
 function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
@@ -211,11 +239,7 @@ function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLine
         return frame.ranges;
     }
 
-    const ranges = computeChildLineRanges(tui, width);
-    if (frame?.width === width) {
-        frame.ranges = ranges;
-    }
-    return ranges;
+    return [];
 }
 
 function getAnchoredTailLength(
@@ -362,7 +386,8 @@ export function installFooterShrinkPaddingPatch(): void {
     ): string[] {
         const leaveFrame = enterChildLineRangesFrame(this, width);
         try {
-            const lines = compactBottomChromeSpacing(this, originalRender.call(this, width), width);
+            const renderedLines = renderWithChildLineRanges(this, width, originalRender);
+            const lines = compactBottomChromeSpacing(this, renderedLines, width);
             if (!shouldPadShrink(this, lines.lines)) return lines.lines;
             return padAtVisibleBoundary(
                 this,
