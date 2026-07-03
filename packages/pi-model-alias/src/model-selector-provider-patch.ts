@@ -9,8 +9,14 @@ import type { LoadedConfig, ModelLike, RuntimeState } from "./types.ts";
 const MODEL_SELECTOR_PROVIDER_PATCH_KEY = Symbol.for(
     "zigai.pi-model-alias.model-selector-provider-patched",
 );
+const MODEL_SELECTOR_PROVIDER_STATE_KEY = Symbol.for(
+    "zigai.pi-model-alias.model-selector-provider-state",
+);
 const SCOPED_MODELS_PROVIDER_PATCH_KEY = Symbol.for(
     "zigai.pi-model-alias.scoped-models-provider-patched",
+);
+const SCOPED_MODELS_PROVIDER_STATE_KEY = Symbol.for(
+    "zigai.pi-model-alias.scoped-models-provider-state",
 );
 const PROVIDER_GAP_EXTRA_WIDTH = 2;
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
@@ -35,8 +41,13 @@ type SearchInput = {
     render(width: number): string[];
 };
 
+type RuntimeStateHolder = {
+    state: RuntimeState;
+};
+
 type ModelSelectorPatchTarget = {
     [MODEL_SELECTOR_PROVIDER_PATCH_KEY]?: true;
+    [MODEL_SELECTOR_PROVIDER_STATE_KEY]?: RuntimeStateHolder;
     loadModels(this: ModelSelectorPatchTarget): Promise<unknown>;
     filterModels(this: ModelSelectorPatchTarget, query: string): void;
     updateList(this: ModelSelectorPatchTarget): void;
@@ -66,6 +77,7 @@ type ScopedModelsFooterText = {
 
 type ScopedModelsSelectorPatchTarget = {
     [SCOPED_MODELS_PROVIDER_PATCH_KEY]?: true;
+    [SCOPED_MODELS_PROVIDER_STATE_KEY]?: RuntimeStateHolder;
     buildItems?(this: ScopedModelsSelectorPatchTarget): ScopedModelsSelectorItem[];
     getFooterText?(this: ScopedModelsSelectorPatchTarget): string;
     refresh?(this: ScopedModelsSelectorPatchTarget): void;
@@ -104,6 +116,36 @@ function isScopedModelsSelectorPatchTarget(
         return false;
     }
     return typeof Reflect.get(value, "updateList") === "function";
+}
+
+function setModelSelectorPatchState(
+    target: ModelSelectorPatchTarget,
+    state: RuntimeState,
+): RuntimeStateHolder {
+    const existingState = target[MODEL_SELECTOR_PROVIDER_STATE_KEY];
+    if (existingState !== undefined) {
+        existingState.state = state;
+        return existingState;
+    }
+
+    const patchState: RuntimeStateHolder = { state };
+    target[MODEL_SELECTOR_PROVIDER_STATE_KEY] = patchState;
+    return patchState;
+}
+
+function setScopedModelsPatchState(
+    target: ScopedModelsSelectorPatchTarget,
+    state: RuntimeState,
+): RuntimeStateHolder {
+    const existingState = target[SCOPED_MODELS_PROVIDER_STATE_KEY];
+    if (existingState !== undefined) {
+        existingState.state = state;
+        return existingState;
+    }
+
+    const patchState: RuntimeStateHolder = { state };
+    target[SCOPED_MODELS_PROVIDER_STATE_KEY] = patchState;
+    return patchState;
 }
 
 function setModelSelectorDisplayProviders(
@@ -408,6 +450,7 @@ export function installModelSelectorProviderPatch(
     state: RuntimeState,
     prototype: ModelSelectorPatchTarget = ModelSelectorComponent.prototype as unknown as ModelSelectorPatchTarget,
 ): void {
+    const patchState = setModelSelectorPatchState(prototype, state);
     if (prototype[MODEL_SELECTOR_PROVIDER_PATCH_KEY] === true) {
         return;
     }
@@ -452,7 +495,7 @@ export function installModelSelectorProviderPatch(
         this: ModelSelectorPatchTarget,
     ): Promise<unknown> {
         const result = await originalLoadModels.call(this);
-        setModelSelectorDisplayProviders(this, state);
+        setModelSelectorDisplayProviders(this, patchState.state);
         return result;
     };
 
@@ -461,13 +504,13 @@ export function installModelSelectorProviderPatch(
         query: string,
     ): void {
         const originalActiveModels = this.activeModels;
-        this.activeModels = getModelSelectorSearchItems(originalActiveModels, state);
+        this.activeModels = getModelSelectorSearchItems(originalActiveModels, patchState.state);
         try {
             originalFilterModels.call(this, query);
         } finally {
             this.activeModels = originalActiveModels;
         }
-        const loaded = state.loadConfig();
+        const loaded = patchState.state.loadConfig();
         this.filteredModels = applyProviderDisplayNames(this.filteredModels, loaded);
         this.updateList();
     };
@@ -477,7 +520,7 @@ export function installModelSelectorProviderPatch(
         this.filteredModels = getModelSelectorDisplayItems(originalFilteredModels);
         try {
             originalUpdateList.call(this);
-            formatModelSelectorList(this, state);
+            formatModelSelectorList(this, patchState.state);
         } finally {
             this.filteredModels = originalFilteredModels;
         }
@@ -490,6 +533,7 @@ export function installScopedModelsProviderPatch(
     state: RuntimeState,
     prototype: ScopedModelsSelectorPatchTarget,
 ): void {
+    const patchState = setScopedModelsPatchState(prototype, state);
     if (prototype[SCOPED_MODELS_PROVIDER_PATCH_KEY] === true) {
         return;
     }
@@ -515,10 +559,10 @@ export function installScopedModelsProviderPatch(
         this: ScopedModelsSelectorPatchTarget,
     ): void {
         const originalFilteredItems = this.filteredItems;
-        this.filteredItems = getScopedDisplayItems(originalFilteredItems, state);
+        this.filteredItems = getScopedDisplayItems(originalFilteredItems, patchState.state);
         try {
             originalUpdateList.call(this);
-            formatScopedModelsList(this, state);
+            formatScopedModelsList(this, patchState.state);
         } finally {
             this.filteredItems = originalFilteredItems;
         }
@@ -539,7 +583,7 @@ export function installScopedModelsProviderPatch(
             this: ScopedModelsSelectorPatchTarget,
         ): void {
             const query = this.searchInput?.getValue();
-            const loaded = state.loadConfig();
+            const loaded = patchState.state.loadConfig();
             if (query === undefined || query.length === 0 || loaded.error !== undefined) {
                 originalRefresh.call(this);
                 return;
