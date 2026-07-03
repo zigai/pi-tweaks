@@ -86,7 +86,7 @@ test("safeReadConfig falls back for missing and malformed config files", async (
     await writeFile(schemaPath, "stale schema", "utf8");
     state.configCache = undefined;
     modelFilter.safeReadConfig(state);
-    assert.match(await readFile(schemaPath, "utf8"), /Pi model filter config/);
+    assert.equal(await readFile(schemaPath, "utf8"), "stale schema");
 
     await writeFile(configPath, "{ not json", "utf8");
     state.configCache = undefined;
@@ -99,7 +99,30 @@ test("safeReadConfig falls back for missing and malformed config files", async (
     state.configCache = undefined;
     modelFilter.safeReadConfig(state);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
-    assert.match(await readFile(schemaPath, "utf8"), /Pi model filter config/);
+    assert.equal(await readFile(schemaPath, "utf8"), "stale schema");
+});
+
+test("safeReadConfig skips global scaffolding after the first load for a config path", async () => {
+    await writeFile(
+        configPath,
+        JSON.stringify({
+            include: [],
+            exclude: [],
+        }),
+        "utf8",
+    );
+    const state: RuntimeState = {
+        loadConfig() {
+            return modelFilter.safeReadConfig(state);
+        },
+    };
+    const loaded = modelFilter.safeReadConfig(state);
+
+    await writeFile(schemaPath, "stale after scaffold", "utf8");
+    const loadedAgain = modelFilter.safeReadConfig(state);
+
+    assert.equal(loadedAgain, loaded);
+    assert.equal(await readFile(schemaPath, "utf8"), "stale after scaffold");
 });
 
 test("safeReadConfig parses and trims valid config rules", async () => {

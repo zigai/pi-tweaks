@@ -56,7 +56,27 @@ test("safeReadConfig scaffolds defaults for a missing aliases file", async () =>
 
     assert.match(loadedAgain.error ?? "", /Failed to load/);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
-    assert.match(await readFile(schemaPath, "utf8"), /Pi model and provider alias config/);
+    assert.equal(await readFile(schemaPath, "utf8"), "stale schema");
+});
+
+test("safeReadConfig skips global scaffolding after the first load for a config path", async () => {
+    await writeFile(
+        configPath,
+        JSON.stringify({
+            aliases: [],
+            providerAliases: [],
+            stableProviderColumn: true,
+        }),
+        "utf8",
+    );
+    const state = runtimeState();
+    const loaded = config.safeReadConfig(state);
+
+    await writeFile(schemaPath, "stale after scaffold", "utf8");
+    const loadedAgain = config.safeReadConfig(state);
+
+    assert.equal(loadedAgain, loaded);
+    assert.equal(await readFile(schemaPath, "utf8"), "stale after scaffold");
 });
 
 test("safeReadConfig parses and trims valid aliases", async () => {

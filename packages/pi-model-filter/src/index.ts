@@ -281,6 +281,16 @@ function scaffoldGlobalConfig(): void {
     writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_FILTER_CONFIG, null, 2)}\n`);
 }
 
+let scaffoldedGlobalConfigPath: string | undefined;
+
+function ensureGlobalConfigScaffolded(): void {
+    const globalConfigPath = getGlobalConfigPath();
+    if (scaffoldedGlobalConfigPath === globalConfigPath) return;
+
+    scaffoldGlobalConfig();
+    scaffoldedGlobalConfigPath = globalConfigPath;
+}
+
 function getConfigPath(state: RuntimeState): string {
     if (state.projectTrusted === true && state.configCwd !== undefined) {
         const projectConfigPath = getProjectConfigPath(state.configCwd);
@@ -307,7 +317,7 @@ function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
 }
 
 export function safeReadConfig(state: RuntimeState): LoadedConfig {
-    scaffoldGlobalConfig();
+    ensureGlobalConfigScaffolded();
     const configPath = getConfigPath(state);
     let mtimeMs = -1;
     try {
