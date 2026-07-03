@@ -5,12 +5,14 @@ import { getFooterComponentKind } from "./footer-component.ts";
 const FOOTER_SHRINK_PADDING_PATCH_MARKER = Symbol.for(
     "zigai.pi-footer.tui-footer-shrink-padding-patch",
 );
+const CHILD_LINE_RANGES_FRAME_KEY = Symbol.for("zigai.pi-tweaks.tui-child-line-ranges-frame");
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
 const TERMINAL_LINE_RESET = `${ESC}[0m${ESC}]8;;${BEL}`;
 const BOTTOM_CHROME_PRECEDING_SIBLINGS = 2;
 
 type PatchableTuiInstance = {
+    [CHILD_LINE_RANGES_FRAME_KEY]?: ChildLineRangesFrame;
     children: Component[];
     focusedComponent?: Component | null;
     previousLines: string[];
@@ -36,6 +38,12 @@ type ChildLineRange = {
     index: number;
     start: number;
     end: number;
+};
+
+type ChildLineRangesFrame = {
+    width: number;
+    depth: number;
+    ranges?: ChildLineRange[];
 };
 
 type BottomChromeSpacingResult = {
@@ -130,16 +138,14 @@ function getFocusedTopLevelChildIndex(
 }
 
 function countRenderedChildLines(
-    children: readonly Component[],
+    ranges: readonly ChildLineRange[],
     startIndex: number,
     endIndex: number,
-    width: number,
 ): number {
     let count = 0;
-    for (let index = startIndex; index <= endIndex; index += 1) {
-        const child = children[index];
-        if (child === undefined) continue;
-        count += child.render(width).length;
+    for (const range of ranges) {
+        if (range.index < startIndex || range.index > endIndex) continue;
+        count += range.end - range.start;
     }
     return count;
 }
@@ -161,25 +167,29 @@ function getAnchoredTailStartIndex(tui: PatchableTuiInstance): number | undefine
     return focusedIndex;
 }
 
-function getAnchoredTailLength(
-    tui: PatchableTuiInstance,
-    width: number,
-    lineCount: number,
-    removedBottomChromeRows: number,
-): number {
-    const footerIndex = getFooterChildIndex(tui);
-    const tailStartIndex = getAnchoredTailStartIndex(tui);
-    if (footerIndex === undefined || tailStartIndex === undefined) return 1;
+function enterChildLineRangesFrame(tui: PatchableTuiInstance, width: number): () => void {
+    const existingFrame = tui[CHILD_LINE_RANGES_FRAME_KEY];
+    if (existingFrame?.width === width) {
+        existingFrame.depth += 1;
+        return () => {
+            existingFrame.depth -= 1;
+            if (existingFrame.depth === 0 && tui[CHILD_LINE_RANGES_FRAME_KEY] === existingFrame) {
+                tui[CHILD_LINE_RANGES_FRAME_KEY] = undefined;
+            }
+        };
+    }
 
-    const tailLength = Math.max(
-        1,
-        countRenderedChildLines(tui.children, tailStartIndex, footerIndex, width) -
-            removedBottomChromeRows,
-    );
-    return Math.min(tailLength, lineCount);
+    const frame: ChildLineRangesFrame = { width, depth: 1 };
+    tui[CHILD_LINE_RANGES_FRAME_KEY] = frame;
+    return () => {
+        frame.depth -= 1;
+        if (frame.depth === 0 && tui[CHILD_LINE_RANGES_FRAME_KEY] === frame) {
+            tui[CHILD_LINE_RANGES_FRAME_KEY] = undefined;
+        }
+    };
 }
 
-function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
+function computeChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
     const ranges: ChildLineRange[] = [];
     let start = 0;
 
@@ -193,6 +203,37 @@ function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLine
     }
 
     return ranges;
+}
+
+function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
+    const frame = tui[CHILD_LINE_RANGES_FRAME_KEY];
+    if (frame?.width === width && frame.ranges !== undefined) {
+        return frame.ranges;
+    }
+
+    const ranges = computeChildLineRanges(tui, width);
+    if (frame?.width === width) {
+        frame.ranges = ranges;
+    }
+    return ranges;
+}
+
+function getAnchoredTailLength(
+    tui: PatchableTuiInstance,
+    width: number,
+    lineCount: number,
+    removedBottomChromeRows: number,
+): number {
+    const footerIndex = getFooterChildIndex(tui);
+    const tailStartIndex = getAnchoredTailStartIndex(tui);
+    if (footerIndex === undefined || tailStartIndex === undefined) return 1;
+
+    const tailLength = Math.max(
+        1,
+        countRenderedChildLines(getChildLineRanges(tui, width), tailStartIndex, footerIndex) -
+            removedBottomChromeRows,
+    );
+    return Math.min(tailLength, lineCount);
 }
 
 function getRangeForChild(
@@ -319,15 +360,20 @@ export function installFooterShrinkPaddingPatch(): void {
         this: PatchableTuiInstance,
         width: number,
     ): string[] {
-        const lines = compactBottomChromeSpacing(this, originalRender.call(this, width), width);
-        if (!shouldPadShrink(this, lines.lines)) return lines.lines;
-        return padAtVisibleBoundary(
-            this,
-            lines.lines,
-            this.previousLines.length,
-            width,
-            lines.removedRows,
-        );
+        const leaveFrame = enterChildLineRangesFrame(this, width);
+        try {
+            const lines = compactBottomChromeSpacing(this, originalRender.call(this, width), width);
+            if (!shouldPadShrink(this, lines.lines)) return lines.lines;
+            return padAtVisibleBoundary(
+                this,
+                lines.lines,
+                this.previousLines.length,
+                width,
+                lines.removedRows,
+            );
+        } finally {
+            leaveFrame();
+        }
     };
 
     prototype[FOOTER_SHRINK_PADDING_PATCH_MARKER] = true;

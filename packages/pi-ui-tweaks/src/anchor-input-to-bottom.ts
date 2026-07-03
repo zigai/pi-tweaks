@@ -5,6 +5,7 @@ import { getUiTweaksPatchState } from "./patch-state.ts";
 const ANCHOR_INPUT_TO_BOTTOM_PATCHED = Symbol.for(
     "zigai.pi-ui-tweaks.anchor-input-to-bottom-patched",
 );
+const CHILD_LINE_RANGES_FRAME_KEY = Symbol.for("zigai.pi-tweaks.tui-child-line-ranges-frame");
 const BOTTOM_CHROME_PRECEDING_SIBLINGS = 2;
 
 type ComponentContainer = Component & {
@@ -12,6 +13,7 @@ type ComponentContainer = Component & {
 };
 
 type PatchableTuiInstance = {
+    [CHILD_LINE_RANGES_FRAME_KEY]?: ChildLineRangesFrame;
     children: Component[];
     focusedComponent?: Component | null;
     terminal?: {
@@ -25,6 +27,12 @@ type ChildLineRange = {
     index: number;
     start: number;
     end: number;
+};
+
+type ChildLineRangesFrame = {
+    width: number;
+    depth: number;
+    ranges?: ChildLineRange[];
 };
 
 type BottomChromeSpacing = {
@@ -80,7 +88,29 @@ function getBottomChromeStartChildIndex(tui: PatchableTuiInstance): number | und
     return focusedIndex;
 }
 
-function getChildLineRanges(children: readonly Component[], width: number): ChildLineRange[] {
+function enterChildLineRangesFrame(tui: PatchableTuiInstance, width: number): () => void {
+    const existingFrame = tui[CHILD_LINE_RANGES_FRAME_KEY];
+    if (existingFrame?.width === width) {
+        existingFrame.depth += 1;
+        return () => {
+            existingFrame.depth -= 1;
+            if (existingFrame.depth === 0 && tui[CHILD_LINE_RANGES_FRAME_KEY] === existingFrame) {
+                tui[CHILD_LINE_RANGES_FRAME_KEY] = undefined;
+            }
+        };
+    }
+
+    const frame: ChildLineRangesFrame = { width, depth: 1 };
+    tui[CHILD_LINE_RANGES_FRAME_KEY] = frame;
+    return () => {
+        frame.depth -= 1;
+        if (frame.depth === 0 && tui[CHILD_LINE_RANGES_FRAME_KEY] === frame) {
+            tui[CHILD_LINE_RANGES_FRAME_KEY] = undefined;
+        }
+    };
+}
+
+function computeChildLineRanges(children: readonly Component[], width: number): ChildLineRange[] {
     const ranges: ChildLineRange[] = [];
     let start = 0;
 
@@ -93,6 +123,19 @@ function getChildLineRanges(children: readonly Component[], width: number): Chil
         start += lineCount;
     }
 
+    return ranges;
+}
+
+function getChildLineRanges(tui: PatchableTuiInstance, width: number): ChildLineRange[] {
+    const frame = tui[CHILD_LINE_RANGES_FRAME_KEY];
+    if (frame?.width === width && frame.ranges !== undefined) {
+        return frame.ranges;
+    }
+
+    const ranges = computeChildLineRanges(tui.children, width);
+    if (frame?.width === width) {
+        frame.ranges = ranges;
+    }
     return ranges;
 }
 
@@ -122,7 +165,7 @@ function compactBottomChromeSpacing(
     const bottomChromeStartChildIndex = getBottomChromeStartChildIndex(tui);
     if (bottomChromeStartChildIndex === undefined) return undefined;
 
-    const ranges = getChildLineRanges(tui.children, width);
+    const ranges = getChildLineRanges(tui, width);
     const focusedRange = getRangeForChild(ranges, focusedIndex);
     const bottomChromeStartRange = getRangeForChild(ranges, bottomChromeStartChildIndex);
     if (focusedRange === undefined || bottomChromeStartRange === undefined) return undefined;
@@ -204,8 +247,13 @@ export function installAnchorInputToBottomPatch(
         this: PatchableTuiInstance,
         width: number,
     ): string[] {
-        const lines = originalRender.call(this, width);
-        return anchorInputToBottomLines(this, lines, width);
+        const leaveFrame = enterChildLineRangesFrame(this, width);
+        try {
+            const lines = originalRender.call(this, width);
+            return anchorInputToBottomLines(this, lines, width);
+        } finally {
+            leaveFrame();
+        }
     };
     prototype[ANCHOR_INPUT_TO_BOTTOM_PATCHED] = true;
 }

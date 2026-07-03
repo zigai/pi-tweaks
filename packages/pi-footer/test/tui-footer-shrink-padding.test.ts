@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import { Container, TUI, type Component, type Terminal } from "@earendil-works/pi-tui";
+import {
+    installAnchorInputToBottomPatch,
+    setAnchorInputToBottom,
+} from "../../pi-ui-tweaks/src/anchor-input-to-bottom.ts";
 import { markFooterComponent } from "../src/footer-component.ts";
 import { installFooterShrinkPaddingPatch } from "../src/tui-footer-shrink-padding.ts";
 
@@ -109,6 +113,28 @@ class MutableLines implements Component {
     invalidate(): void {}
 }
 
+class CountingLines implements Component {
+    renderCount = 0;
+
+    constructor(private readonly lines: string[]) {}
+
+    render(): string[] {
+        this.renderCount += 1;
+        return this.lines;
+    }
+
+    invalidate(): void {}
+}
+
+class CountingContainer extends Container {
+    renderCount = 0;
+
+    override render(width: number): string[] {
+        this.renderCount += 1;
+        return super.render(width);
+    }
+}
+
 class TestEditor implements Component {
     focused = false;
 
@@ -126,6 +152,41 @@ class TestFooter implements Component {
 
     invalidate(): void {}
 }
+
+test("footer and anchor patches share child line ranges for one render frame", () => {
+    installFooterShrinkPaddingPatch();
+    installAnchorInputToBottomPatch();
+    setAnchorInputToBottom(true);
+
+    const terminal = new FakeTerminal();
+    const tui = new TUI(terminal);
+    const message = new CountingLines(["message"]);
+    const status = new CountingLines(["", "⠴ Working... (4s)"]);
+    const spacer = new CountingLines([""]);
+    const editorContainer = new CountingContainer();
+    const editor = new TestEditor();
+    const footer = new CountingLines(["FOOTER"]);
+
+    try {
+        editorContainer.addChild(editor);
+        tui.addChild(message);
+        tui.addChild(status);
+        tui.addChild(spacer);
+        tui.addChild(editorContainer);
+        tui.addChild(markFooterComponent(footer, "live"));
+        tui.setFocus(editor);
+
+        tui.render(30);
+
+        assert.equal(message.renderCount, 2);
+        assert.equal(status.renderCount, 2);
+        assert.equal(spacer.renderCount, 2);
+        assert.equal(editorContainer.renderCount, 2);
+        assert.equal(footer.renderCount, 2);
+    } finally {
+        setAnchorInputToBottom(false);
+    }
+});
 
 test("footer shrink padding preserves visible tail without native clear", () => {
     installFooterShrinkPaddingPatch();
