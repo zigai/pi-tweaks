@@ -121,12 +121,25 @@ export async function listProjectDirectories(
 export function createProjectDirectorySource(
     settings: MentionProjectSettings,
     cwd: string,
+    ttlMs = 5_000,
 ): ProjectDirectorySource {
     let cachedProjects: ProjectDirectory[] = [];
+    let lastRefreshMs: number | undefined;
+    let refreshInFlight: Promise<ProjectDirectory[]> | undefined;
 
-    const refresh = async (): Promise<ProjectDirectory[]> => {
-        cachedProjects = await listProjectDirectories(settings, cwd);
-        return [...cachedProjects];
+    const refresh = (): Promise<ProjectDirectory[]> => {
+        if (refreshInFlight !== undefined) return refreshInFlight;
+
+        refreshInFlight = listProjectDirectories(settings, cwd)
+            .then((projects) => {
+                cachedProjects = projects;
+                lastRefreshMs = Date.now();
+                return [...cachedProjects];
+            })
+            .finally(() => {
+                refreshInFlight = undefined;
+            });
+        return refreshInFlight;
     };
 
     return {
@@ -134,6 +147,9 @@ export function createProjectDirectorySource(
             return [...cachedProjects];
         },
         getProjects() {
+            if (lastRefreshMs !== undefined && Date.now() - lastRefreshMs < ttlMs) {
+                return Promise.resolve([...cachedProjects]);
+            }
             return refresh();
         },
         refresh,

@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-import { listProjectDirectories, resolveProjectRoot } from "../src/projects.ts";
+import {
+    createProjectDirectorySource,
+    listProjectDirectories,
+    resolveProjectRoot,
+} from "../src/projects.ts";
 import type { MentionProjectSettings } from "../src/types.ts";
 
 function settings(
@@ -110,6 +114,41 @@ test("listProjectDirectories includes symlinks to git directories", async () => 
         assert.deepEqual(
             projects.map((project) => project.name),
             ["linked"],
+        );
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("createProjectDirectorySource serves warm cache until refresh or ttl expiry", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-cache-"));
+    try {
+        const root = path.join(dir, "root");
+        const alpha = path.join(root, "alpha");
+        const beta = path.join(root, "beta");
+        await mkdir(alpha, { recursive: true });
+        await markGitRepo(alpha);
+
+        const projectSource = createProjectDirectorySource(settings([root]), dir, 60_000);
+        const initialProjects = await projectSource.refresh();
+        assert.deepEqual(
+            initialProjects.map((project) => project.name),
+            ["alpha"],
+        );
+
+        await mkdir(beta, { recursive: true });
+        await markGitRepo(beta);
+
+        const cachedProjects = await projectSource.getProjects();
+        assert.deepEqual(
+            cachedProjects.map((project) => project.name),
+            ["alpha"],
+        );
+
+        const refreshedProjects = await projectSource.refresh();
+        assert.deepEqual(
+            refreshedProjects.map((project) => project.name),
+            ["alpha", "beta"],
         );
     } finally {
         await rm(dir, { recursive: true, force: true });
