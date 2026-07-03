@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-mention-skill/config.schema.json",
+  "title": "Pi skill mention config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "trigger": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1,
+      "pattern": "^[^/\\s]$",
+      "default": "$"
+    },
+    "hideSlashSkills": { "type": "boolean", "default": true },
+    "completionSuffix": { "type": "string", "default": " " }
+  }
+}

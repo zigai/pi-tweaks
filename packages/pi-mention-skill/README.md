@@ -26,29 +26,20 @@ The selected mention loads the same skill content that `/skill:name` would have 
 
 ## Configuration
 
-Configuration lives in Pi settings: globally in `~/.pi/agent/settings.json`, or per trusted project in `.pi/settings.json`.
+Configure global settings at `~/.pi/agent/pi-mention-skill/config.json`.
 
-The mention character defaults to `$`. To change it, set `mentionSkillTrigger` to a single non-whitespace character:
-
-```json
-{
-  "mentionSkillTrigger": "#"
-}
-```
-
-Skills are hidden from Pi's default slash autocomplete menu by default. To keep `/skill:*` entries visible, set `mentionSkillHideSlashSkills` to `false`:
+| Option             | Type      | Default | Description                                                     |
+| ------------------ | --------- | ------- | --------------------------------------------------------------- |
+| `trigger`          | `string`  | `"$"`   | Single non-whitespace mention character. It cannot be `/`.      |
+| `hideSlashSkills`  | `boolean` | `true`  | Hides `/skill:*` entries from Pi's default slash autocomplete.  |
+| `completionSuffix` | `string`  | `" "`   | Text inserted after a selected mention. Use `""` for no suffix. |
 
 ```json
 {
-  "mentionSkillHideSlashSkills": false
-}
-```
-
-Completions insert a trailing space by default. To change the text inserted after a selected mention, set `mentionSkillCompletionSuffix`:
-
-```json
-{
-  "mentionSkillCompletionSuffix": ""
+  "$schema": "./config.schema.json",
+  "trigger": "$",
+  "hideSlashSkills": true,
+  "completionSuffix": " "
 }
 ```
 

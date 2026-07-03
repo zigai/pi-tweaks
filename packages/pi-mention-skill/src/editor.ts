@@ -1,18 +1,11 @@
-import {
-    CustomEditor,
-    type ExtensionAPI,
-    type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { autocompleteStartIndex, colorSkillMentions, isSkillMentionContext } from "./rendering.ts";
+import { applyEditorEnhancer } from "./editor-enhancer.ts";
 import { getSkillCommands, skillName } from "./skill-commands.ts";
-import type { EditorFactory, EditorLike } from "./types.ts";
+import type { EditorLike } from "./types.ts";
 
-const MENTION_FACTORY_BASE = Symbol.for("zigai.pi-mention-skill.editor-factory-base");
-
-type WrappedEditorFactory = EditorFactory & {
-    [MENTION_FACTORY_BASE]?: EditorFactory | undefined;
-};
+const MENTION_EDITOR_ENHANCER = Symbol.for("zigai.pi-mention-skill.editor-enhancer");
 
 function enhanceEditor(
     editor: EditorLike,
@@ -63,14 +56,7 @@ export function applyMentionSkillEditor(
 ): void {
     if (!ctx.hasUI) return;
 
-    const existing = ctx.ui.getEditorComponent() as WrappedEditorFactory | undefined;
-    const baseFactory = existing?.[MENTION_FACTORY_BASE] ?? existing;
-    const factory = ((tui, theme, keybindings) => {
-        const editor = (baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as unknown as EditorLike;
-        return enhanceEditor(editor, pi, ctx, trigger);
-    }) as WrappedEditorFactory;
-    factory[MENTION_FACTORY_BASE] = baseFactory;
-
-    ctx.ui.setEditorComponent(factory);
+    applyEditorEnhancer(ctx, MENTION_EDITOR_ENHANCER, (editor) =>
+        enhanceEditor(editor, pi, ctx, trigger),
+    );
 }
