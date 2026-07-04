@@ -38,7 +38,7 @@ export function formatProjectMention(name: string, trigger: string): string {
 
 function parseUnquotedName(
     rawName: string,
-    knownNames: Set<string>,
+    knownNames: ReadonlySet<string>,
 ): ParsedProjectMention | undefined {
     if (knownNames.has(rawName)) {
         return { name: rawName, suffix: "" };
@@ -61,7 +61,7 @@ function parseUnquotedName(
 export function parseProjectMentionName(
     quotedName: string | undefined,
     unquotedName: string | undefined,
-    knownNames: Set<string>,
+    knownNames: ReadonlySet<string>,
 ): ParsedProjectMention | undefined {
     if (quotedName !== undefined) {
         const name = unescapeQuotedName(quotedName);
@@ -73,7 +73,7 @@ export function parseProjectMentionName(
     return parseUnquotedName(unquotedName, knownNames);
 }
 
-export function projectNameSet(projects: ProjectDirectory[]): Set<string> {
+export function projectNameSet(projects: ReadonlyArray<ProjectDirectory>): Set<string> {
     return new Set(projects.map((project) => project.name));
 }
 

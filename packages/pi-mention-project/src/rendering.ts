@@ -4,9 +4,7 @@ import {
     isProjectMentionContext,
     parseProjectMentionName,
     projectMentionPattern,
-    projectNameSet,
 } from "./mention-syntax.ts";
-import type { ProjectDirectory } from "./types.ts";
 
 export { isProjectMentionContext };
 
@@ -14,11 +12,9 @@ export function colorProjectMentions(
     line: string,
     ctx: ExtensionContext,
     trigger: string,
-    projects: ProjectDirectory[],
+    knownNames: ReadonlySet<string>,
 ): string {
     if (!line.includes(trigger)) return line;
-
-    const knownNames = projectNameSet(projects);
     if (knownNames.size === 0) return line;
 
     return line.replace(

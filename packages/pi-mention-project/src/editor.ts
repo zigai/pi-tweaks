@@ -6,11 +6,11 @@ import {
     isProjectMentionContext,
 } from "./rendering.ts";
 import { applyEditorEnhancer } from "./editor-enhancer.ts";
-import type { EditorLike, ProjectDirectory } from "./types.ts";
+import type { EditorLike } from "./types.ts";
 
 const MENTION_EDITOR_ENHANCER = Symbol.for("zigai.pi-mention-project.editor-enhancer");
 
-type ProjectSnapshot = () => ProjectDirectory[];
+type ProjectNameSnapshot = () => ReadonlySet<string>;
 
 function shouldReactToInput(data: string, trigger: string): boolean {
     if (data === trigger) return true;
@@ -22,7 +22,7 @@ function enhanceEditor(
     editor: EditorLike,
     ctx: ExtensionContext,
     trigger: string,
-    getProjects: ProjectSnapshot,
+    getProjectNames: ProjectNameSnapshot,
 ): EditorLike {
     const originalHandleInput = editor.handleInput.bind(editor);
     editor.handleInput = (data: string) => {
@@ -49,11 +49,11 @@ function enhanceEditor(
         if (editor.isShowingAutocomplete?.() === true) {
             colorThrough = autocompleteStartIndex(renderedLines);
         }
-        let projects: ProjectDirectory[] | undefined;
+        let projectNames: ReadonlySet<string> | undefined;
         return renderedLines.map((line, index) => {
             if (index >= colorThrough || !line.includes(trigger)) return line;
-            projects ??= getProjects();
-            return colorProjectMentions(line, ctx, trigger, projects);
+            projectNames ??= getProjectNames();
+            return colorProjectMentions(line, ctx, trigger, projectNames);
         });
     };
 
@@ -63,11 +63,11 @@ function enhanceEditor(
 export function applyMentionProjectEditor(
     ctx: ExtensionContext,
     trigger: string,
-    getProjects: ProjectSnapshot,
+    getProjectNames: ProjectNameSnapshot,
 ): void {
     if (!ctx.hasUI) return;
 
     applyEditorEnhancer(ctx, MENTION_EDITOR_ENHANCER, (editor) =>
-        enhanceEditor(editor, ctx, trigger, getProjects),
+        enhanceEditor(editor, ctx, trigger, getProjectNames),
     );
 }

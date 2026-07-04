@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { projectNameSet } from "./mention-syntax.ts";
 import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
 import { compareProjectNames } from "./util.ts";
 
@@ -12,6 +13,7 @@ export type ProjectDirectoryLoadOptions = {
 
 export type ProjectDirectorySource = {
     getCachedProjects(): ProjectDirectory[];
+    getCachedProjectNames(): ReadonlySet<string>;
     getProjects(options?: ProjectDirectoryLoadOptions): Promise<ProjectDirectory[]>;
     refresh(options?: ProjectDirectoryLoadOptions): Promise<ProjectDirectory[]>;
 };
@@ -154,6 +156,7 @@ export function createProjectDirectorySource(
     ttlMs = 5_000,
 ): ProjectDirectorySource {
     let cachedProjects: ProjectDirectory[] = [];
+    let cachedProjectNames: ReadonlySet<string> = new Set();
     let lastRefreshMs: number | undefined;
     let refreshInFlight: Promise<ProjectDirectory[]> | undefined;
 
@@ -165,6 +168,7 @@ export function createProjectDirectorySource(
             .then((projects) => {
                 if (isAborted(options)) return [...cachedProjects];
                 cachedProjects = projects;
+                cachedProjectNames = projectNameSet(cachedProjects);
                 lastRefreshMs = Date.now();
                 return [...cachedProjects];
             })
@@ -177,6 +181,9 @@ export function createProjectDirectorySource(
     return {
         getCachedProjects() {
             return [...cachedProjects];
+        },
+        getCachedProjectNames() {
+            return cachedProjectNames;
         },
         getProjects(options?: ProjectDirectoryLoadOptions) {
             if (isAborted(options)) return Promise.resolve([...cachedProjects]);

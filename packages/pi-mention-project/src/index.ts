@@ -2,7 +2,10 @@ import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-wor
 
 import { createProjectMentionProvider } from "./autocomplete.ts";
 import { applyMentionProjectEditor } from "./editor.ts";
-import { expandProjectMentions, expandProjectMentionsInMessages } from "./expand-mentions.ts";
+import {
+    contextContainsProjectMentionTrigger,
+    expandProjectMentionsInMessages,
+} from "./expand-mentions.ts";
 import { createProjectDirectorySource, listProjectDirectories } from "./projects.ts";
 import {
     applyMentionProjectCliFlags,
@@ -33,29 +36,14 @@ type ProjectMentionContextHandler = (
     ctx: ExtensionContext,
 ) => Promise<ProjectMentionContextResult | undefined>;
 
-type ContextMessage = ContextEvent["messages"][number];
-type UserContextMessage = Extract<ContextMessage, { role: "user" }>;
-type UserContentBlock = Exclude<UserContextMessage["content"], string>[number];
-
-function contentBlockContainsTrigger(block: UserContentBlock, trigger: string): boolean {
-    return block.type === "text" && block.text.includes(trigger);
-}
-
-function contextContainsTrigger(messages: ContextEvent["messages"], trigger: string): boolean {
-    return messages.some((message) => {
-        if (message.role !== "user") return false;
-        if (typeof message.content === "string") return message.content.includes(trigger);
-        return message.content.some((block) => contentBlockContainsTrigger(block, trigger));
-    });
-}
-
 export function createProjectMentionContextHandler(
     pi: ExtensionAPI,
     loadProjects: ProjectDirectoryLoader = listProjectDirectories,
 ): ProjectMentionContextHandler {
     return async (event, ctx) => {
         const settings = mentionProjectSettings(pi, ctx);
-        if (!contextContainsTrigger(event.messages, settings.trigger)) return undefined;
+        if (!contextContainsProjectMentionTrigger(event.messages, settings.trigger))
+            return undefined;
 
         const projects = await loadProjects(settings, ctx.cwd);
         const messages = expandProjectMentionsInMessages(
@@ -86,26 +74,14 @@ export default function (pi: ExtensionAPI): void {
         const projectSource = createProjectDirectorySource(settings, ctx.cwd);
         void projectSource.refresh();
 
-        applyMentionProjectEditor(ctx, settings.trigger, () => projectSource.getCachedProjects());
+        applyMentionProjectEditor(ctx, settings.trigger, () =>
+            projectSource.getCachedProjectNames(),
+        );
         ctx.ui.addAutocompleteProvider((current) =>
             createProjectMentionProvider(current, settings, (options) =>
                 projectSource.getProjects(options),
             ),
         );
-    });
-
-    pi.on("input", async (event, ctx) => {
-        const settings = mentionProjectSettings(pi, ctx);
-        if (!event.text.includes(settings.trigger)) return { action: "continue" };
-
-        if (event.streamingBehavior !== undefined) {
-            return { action: "continue" };
-        }
-
-        const projects = await listProjectDirectories(settings, ctx.cwd);
-        const expanded = expandProjectMentions(event.text, projects, settings.trigger);
-        if (expanded === event.text) return { action: "continue" };
-        return { action: "transform", text: expanded, images: event.images };
     });
 
     pi.on("context", createProjectMentionContextHandler(pi));

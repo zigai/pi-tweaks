@@ -155,6 +155,7 @@ test("createProjectDirectorySource serves warm cache until refresh or ttl expiry
             initialProjects.map((project) => project.name),
             ["alpha"],
         );
+        assert.deepEqual([...projectSource.getCachedProjectNames()], ["alpha"]);
 
         await mkdir(beta, { recursive: true });
         await markGitRepo(beta);
@@ -164,12 +165,14 @@ test("createProjectDirectorySource serves warm cache until refresh or ttl expiry
             cachedProjects.map((project) => project.name),
             ["alpha"],
         );
+        assert.deepEqual([...projectSource.getCachedProjectNames()], ["alpha"]);
 
         const refreshedProjects = await projectSource.refresh();
         assert.deepEqual(
             refreshedProjects.map((project) => project.name),
             ["alpha", "beta"],
         );
+        assert.deepEqual([...projectSource.getCachedProjectNames()], ["alpha", "beta"]);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -190,6 +193,7 @@ test("createProjectDirectorySource serves cached projects when a request is abor
             initialProjects.map((project) => project.name),
             ["alpha"],
         );
+        assert.deepEqual([...projectSource.getCachedProjectNames()], ["alpha"]);
 
         await mkdir(beta, { recursive: true });
         await markGitRepo(beta);
@@ -201,6 +205,7 @@ test("createProjectDirectorySource serves cached projects when a request is abor
             abortedProjects.map((project) => project.name),
             ["alpha"],
         );
+        assert.deepEqual([...projectSource.getCachedProjectNames()], ["alpha"]);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

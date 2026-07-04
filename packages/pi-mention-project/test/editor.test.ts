@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { applyMentionSkillEditor } from "../../pi-mention-skill/src/editor.ts";
 import { applyMentionProjectEditor } from "../src/editor.ts";
-import type { EditorFactory, EditorLike, ProjectDirectory } from "../src/types.ts";
+import type { EditorFactory, EditorLike } from "../src/types.ts";
 
 class FakeEditor implements EditorLike {
     text = "";
@@ -64,14 +64,6 @@ function createEditor(factory: EditorFactory): FakeEditor {
     return editor as unknown as FakeEditor;
 }
 
-function project(name: string): ProjectDirectory {
-    return {
-        name,
-        root: "/home/zigai/Projects",
-        path: `/home/zigai/Projects/${name}`,
-    };
-}
-
 test("applyMentionProjectEditor replaces its enhancer instead of stacking hooks", () => {
     let editor = new FakeEditor();
     const baseFactory = (() => {
@@ -80,14 +72,14 @@ test("applyMentionProjectEditor replaces its enhancer instead of stacking hooks"
         return editor;
     }) as unknown as EditorFactory;
     const { ctx, getFactory } = contextWithFactory(baseFactory);
-    let projectSnapshotCalls = 0;
-    const getProjects = (): ProjectDirectory[] => {
-        projectSnapshotCalls += 1;
-        return [project("gameops")];
+    let projectNameSnapshotCalls = 0;
+    const getProjectNames = (): ReadonlySet<string> => {
+        projectNameSnapshotCalls += 1;
+        return new Set(["gameops"]);
     };
 
-    applyMentionProjectEditor(ctx, "#", getProjects);
-    applyMentionProjectEditor(ctx, "#", getProjects);
+    applyMentionProjectEditor(ctx, "#", getProjectNames);
+    applyMentionProjectEditor(ctx, "#", getProjectNames);
 
     const factory = getFactory();
     assert.ok(factory);
@@ -96,7 +88,7 @@ test("applyMentionProjectEditor replaces its enhancer instead of stacking hooks"
     enhanced.render(80);
 
     assert.equal(editor.autocompleteTriggers, 1);
-    assert.equal(projectSnapshotCalls, 1);
+    assert.equal(projectNameSnapshotCalls, 1);
 });
 
 test("mention project and skill editors share one enhancer registry", () => {
@@ -106,12 +98,11 @@ test("mention project and skill editors share one enhancer registry", () => {
         return editor;
     }) as unknown as EditorFactory;
     const { ctx, getFactory } = contextWithFactory(baseFactory);
-    const pi = {} as unknown as ExtensionAPI;
 
-    applyMentionProjectEditor(ctx, "#", () => [project("gameops")]);
-    applyMentionSkillEditor(pi, ctx, "$");
-    applyMentionProjectEditor(ctx, "#", () => [project("gameops")]);
-    applyMentionSkillEditor(pi, ctx, "$");
+    applyMentionProjectEditor(ctx, "#", () => new Set(["gameops"]));
+    applyMentionSkillEditor(ctx, "$", () => new Set(["typescript"]));
+    applyMentionProjectEditor(ctx, "#", () => new Set(["gameops"]));
+    applyMentionSkillEditor(ctx, "$", () => new Set(["typescript"]));
 
     const factory = getFactory();
     assert.ok(factory);

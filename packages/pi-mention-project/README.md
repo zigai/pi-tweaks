@@ -4,13 +4,26 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-mention-project.svg)](https://www.npmjs.com/package/@zigai/pi-mention-project)
 [![license](https://img.shields.io/npm/l/@zigai/pi-mention-project.svg)](../../LICENSE)
 
-Type `#` to fuzzy-search your project folder. The completion inserts `#project-name`; the model receives the project's absolute path.
+Use short `#project` mentions in Pi while the model receives the matching absolute project path.
+
+```text
+#pi-tweaks update the package README
+```
+
+Your chat stays readable with `#pi-tweaks`. Before each model request, matching project mentions in current and past user messages expand to paths such as `/home/you/Projects/pi-tweaks`.
 
 ## Install
 
 ```sh
 pi install npm:@zigai/pi-mention-project
 ```
+
+## Usage
+
+- Type `#` to fuzzy-search configured project folders.
+- Pick a project to insert a mention such as `#pi-tweaks`.
+- Use quoted mentions for names with spaces, such as `#"My Project"`.
+- Unknown mentions stay unchanged.
 
 ## Configuration
 

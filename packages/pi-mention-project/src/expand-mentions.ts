@@ -64,6 +64,21 @@ function shouldExpandContextText(text: string, trigger: string): boolean {
     return !trimmed.startsWith("<projects>");
 }
 
+export function contextContainsProjectMentionTrigger(
+    messages: ContextEvent["messages"],
+    trigger: string,
+): boolean {
+    return messages.some((message) => {
+        if (message.role !== "user") return false;
+        if (typeof message.content === "string") {
+            return shouldExpandContextText(message.content, trigger);
+        }
+        return message.content.some((block) => {
+            return isUserTextContentBlock(block) && shouldExpandContextText(block.text, trigger);
+        });
+    });
+}
+
 function expandProjectMentionsInUserMessage(
     message: UserContextMessage,
     projects: ProjectDirectory[],
