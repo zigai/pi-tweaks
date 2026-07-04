@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 import { createSkillMentionProvider } from "../src/autocomplete.ts";
 import type { SkillCommand } from "../src/types.ts";
@@ -15,14 +14,6 @@ function skillCommand(name: string, description = "test skill"): SkillCommand {
             path: `/tmp/${name}.md`,
         },
     } as unknown as SkillCommand;
-}
-
-function fakePi(commands: SkillCommand[]): ExtensionAPI {
-    return {
-        getCommands() {
-            return commands;
-        },
-    } as unknown as ExtensionAPI;
 }
 
 function fallbackProvider(items: AutocompleteItem[]): AutocompleteProvider {
@@ -41,9 +32,9 @@ function fallbackProvider(items: AutocompleteItem[]): AutocompleteProvider {
 
 test("createSkillMentionProvider suggests skills after the configured trigger", async () => {
     const provider = createSkillMentionProvider(
-        fakePi([skillCommand("python", "Python workflows"), skillCommand("review", "Code review")]),
         fallbackProvider([]),
         { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
+        () => [skillCommand("python", "Python workflows"), skillCommand("review", "Code review")],
     );
 
     const suggestions = await provider.getSuggestions(["Use $py"], 0, "Use $py".length, {
@@ -63,12 +54,12 @@ test("createSkillMentionProvider suggests skills after the configured trigger", 
 
 test("createSkillMentionProvider falls back outside mention context and can hide slash skills", async () => {
     const provider = createSkillMentionProvider(
-        fakePi([skillCommand("python")]),
         fallbackProvider([
             { value: "skill:python", label: "/skill python" },
             { value: "help", label: "/help" },
         ]),
         { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
+        () => [skillCommand("python")],
     );
 
     const suggestions = await provider.getSuggestions(["/"], 0, 1, {
@@ -80,9 +71,9 @@ test("createSkillMentionProvider falls back outside mention context and can hide
 
 test("createSkillMentionProvider returns null when hidden slash skills are the only fallback items", async () => {
     const provider = createSkillMentionProvider(
-        fakePi([skillCommand("python")]),
         fallbackProvider([{ value: "skill:python", label: "/skill python" }]),
         { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
+        () => [skillCommand("python")],
     );
 
     const suggestions = await provider.getSuggestions(["/"], 0, 1, {
@@ -93,11 +84,15 @@ test("createSkillMentionProvider returns null when hidden slash skills are the o
 });
 
 test("applyCompletion replaces the mention prefix and inserts a trailing space when needed", () => {
-    const provider = createSkillMentionProvider(fakePi([]), fallbackProvider([]), {
-        trigger: "$",
-        hideSlashSkills: true,
-        completionSuffix: " ",
-    });
+    const provider = createSkillMentionProvider(
+        fallbackProvider([]),
+        {
+            trigger: "$",
+            hideSlashSkills: true,
+            completionSuffix: " ",
+        },
+        () => [],
+    );
 
     const result = provider.applyCompletion(
         ["Use $py"],
@@ -115,11 +110,15 @@ test("applyCompletion replaces the mention prefix and inserts a trailing space w
 });
 
 test("applyCompletion uses the configured completion suffix", () => {
-    const provider = createSkillMentionProvider(fakePi([]), fallbackProvider([]), {
-        trigger: "$",
-        hideSlashSkills: true,
-        completionSuffix: "\n",
-    });
+    const provider = createSkillMentionProvider(
+        fallbackProvider([]),
+        {
+            trigger: "$",
+            hideSlashSkills: true,
+            completionSuffix: "\n",
+        },
+        () => [],
+    );
 
     const result = provider.applyCompletion(
         ["Use $py"],

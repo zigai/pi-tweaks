@@ -1,4 +1,3 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
     type AutocompleteItem,
     type AutocompleteProvider,
@@ -7,12 +6,14 @@ import {
 } from "@earendil-works/pi-tui";
 
 import { DEFAULT_MENTION_TRIGGER } from "./settings.ts";
-import { getSkillCommands, skillName } from "./skill-commands.ts";
+import { skillName } from "./skill-commands.ts";
 import type { MentionSkillSettings, SkillCommand } from "./types.ts";
 import { escapeRegExp } from "./util.ts";
 
 const MAX_SUGGESTIONS = 20;
 const SKILL_COMMAND_PREFIX = "skill:";
+
+type SkillLoader = () => SkillCommand[];
 
 function skillToItem(command: SkillCommand, trigger = DEFAULT_MENTION_TRIGGER): AutocompleteItem {
     const name = skillName(command);
@@ -93,9 +94,9 @@ function applyMentionCompletion(
 }
 
 export function createSkillMentionProvider(
-    pi: ExtensionAPI,
     current: AutocompleteProvider,
     settings: MentionSkillSettings,
+    loadSkills: SkillLoader,
 ): AutocompleteProvider {
     const { trigger, hideSlashSkills, completionSuffix } = settings;
     const getFallbackSuggestions = async (
@@ -124,7 +125,7 @@ export function createSkillMentionProvider(
                 return getFallbackSuggestions(lines, cursorLine, cursorCol, options);
             }
 
-            const items = filterSkills(getSkillCommands(pi), token, trigger);
+            const items = filterSkills(loadSkills(), token, trigger);
             if (items.length === 0) {
                 return getFallbackSuggestions(lines, cursorLine, cursorCol, options);
             }

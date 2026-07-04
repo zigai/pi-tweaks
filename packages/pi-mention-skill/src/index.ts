@@ -8,17 +8,19 @@ import {
     expandSkillMentionsInMessages,
 } from "./expand-mentions.ts";
 import { configuredMentionSkillSettings } from "./settings.ts";
-import { getSkillCommands } from "./skill-commands.ts";
+import { createSkillCommandSource } from "./skill-commands.ts";
 
 export default function (pi: ExtensionAPI): void {
     const loadSkillExpansion = createCachedSkillExpansionLoader();
+    const skillSource = createSkillCommandSource(pi);
 
     pi.on("session_start", async (_event, ctx) => {
         if (!ctx.hasUI) return;
         const settings = configuredMentionSkillSettings(ctx);
-        applyMentionSkillEditor(pi, ctx, settings.trigger);
+        skillSource.refresh();
+        applyMentionSkillEditor(ctx, settings.trigger, () => skillSource.getCachedSkillNames());
         ctx.ui.addAutocompleteProvider((current) =>
-            createSkillMentionProvider(pi, current, settings),
+            createSkillMentionProvider(current, settings, () => skillSource.getSkillCommands()),
         );
     });
 
@@ -28,7 +30,7 @@ export default function (pi: ExtensionAPI): void {
 
         const messages = await expandSkillMentionsInMessages(
             event.messages,
-            getSkillCommands(pi),
+            skillSource.getSkillCommands(),
             trigger,
             loadSkillExpansion,
         );

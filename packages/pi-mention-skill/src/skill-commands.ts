@@ -20,6 +20,12 @@ export function stripFrontmatter(content: string): string {
     return content.slice(afterMarker);
 }
 
+export type SkillCommandSource = {
+    getCachedSkillNames(): ReadonlySet<string>;
+    getSkillCommands(): SkillCommand[];
+    refresh(): SkillCommand[];
+};
+
 export function getSkillCommands(pi: ExtensionAPI): SkillCommand[] {
     return pi.getCommands().filter((command): command is SkillCommand => {
         return command.source === "skill" && command.name.startsWith(SKILL_COMMAND_PREFIX);
@@ -28,4 +34,29 @@ export function getSkillCommands(pi: ExtensionAPI): SkillCommand[] {
 
 export function skillName(command: SkillCommand): string {
     return command.name.slice(SKILL_COMMAND_PREFIX.length);
+}
+
+export function skillNameSet(commands: ReadonlyArray<SkillCommand>): Set<string> {
+    return new Set(commands.map(skillName));
+}
+
+export function createSkillCommandSource(pi: ExtensionAPI): SkillCommandSource {
+    let cachedCommands: SkillCommand[] = [];
+    let cachedSkillNames: ReadonlySet<string> = new Set();
+
+    const refresh = (): SkillCommand[] => {
+        cachedCommands = getSkillCommands(pi);
+        cachedSkillNames = skillNameSet(cachedCommands);
+        return [...cachedCommands];
+    };
+
+    return {
+        getCachedSkillNames() {
+            return cachedSkillNames;
+        },
+        getSkillCommands() {
+            return refresh();
+        },
+        refresh,
+    };
 }
