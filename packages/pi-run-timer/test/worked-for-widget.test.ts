@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { beforeEach, test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { WIDGET_KEY } from "../src/constants.ts";
-import { formatDuration, setWorkedForWidget } from "../src/worked-for-widget.ts";
+import {
+    formatDuration,
+    resetWorkedForWidgetCache,
+    setWorkedForWidget,
+} from "../src/worked-for-widget.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+beforeEach(() => {
+    resetWorkedForWidgetCache();
+});
 
 function stripAnsi(value: string): string {
     return value.replace(ANSI_PATTERN, "");
@@ -16,14 +24,20 @@ type WidgetFactory = (
     theme: { fg(role: string, text: string): string },
 ) => { render(width: number): string[]; invalidate(): void };
 
-function widgetContext(): { ctx: ExtensionContext; currentWidget: () => unknown } {
+function widgetContext(): {
+    ctx: ExtensionContext;
+    currentWidget: () => unknown;
+    updateCount: () => number;
+} {
     let widget: unknown;
+    let updates = 0;
     const ctx = {
         hasUI: true,
         ui: {
             setWidget(key: string, nextWidget: unknown) {
                 assert.equal(key, WIDGET_KEY);
                 widget = nextWidget;
+                updates += 1;
             },
         },
     } as unknown as ExtensionContext;
@@ -33,6 +47,9 @@ function widgetContext(): { ctx: ExtensionContext; currentWidget: () => unknown 
         currentWidget() {
             return widget;
         },
+        updateCount() {
+            return updates;
+        },
     };
 }
 
@@ -41,6 +58,28 @@ test("formatDuration rounds to seconds and uses readable minute/hour boundaries"
     assert.equal(formatDuration(1_400), "1s");
     assert.equal(formatDuration(65_000), "1m 05s");
     assert.equal(formatDuration(3_660_000), "1h 01m");
+});
+
+test("setWorkedForWidget skips unchanged widget updates", () => {
+    const { ctx, updateCount } = widgetContext();
+
+    setWorkedForWidget(ctx, undefined);
+    assert.equal(updateCount(), 0);
+
+    setWorkedForWidget(ctx, "10s", 2);
+    assert.equal(updateCount(), 1);
+
+    setWorkedForWidget(ctx, "10s", 2);
+    assert.equal(updateCount(), 1);
+
+    setWorkedForWidget(ctx, "11s", 2);
+    assert.equal(updateCount(), 2);
+
+    setWorkedForWidget(ctx, undefined);
+    assert.equal(updateCount(), 3);
+
+    setWorkedForWidget(ctx, undefined);
+    assert.equal(updateCount(), 3);
 });
 
 test("setWorkedForWidget renders duration and token rate within the provided width", () => {

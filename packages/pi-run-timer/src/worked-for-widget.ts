@@ -3,6 +3,12 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 
 import { WIDGET_KEY } from "./constants.ts";
 
+let workedForWidgetSignature: string | undefined;
+
+export function resetWorkedForWidgetCache(): void {
+    workedForWidgetSignature = undefined;
+}
+
 export function formatDuration(ms: number): string {
     const wholeSeconds = Math.max(0, Math.round(ms / 1000));
     if (wholeSeconds < 60) return `${wholeSeconds}s`;
@@ -23,7 +29,16 @@ export function setWorkedForWidget(
 ): void {
     if (ctx.hasUI !== true) return;
 
-    if (workedForText === undefined || workedForText.length === 0) {
+    let nextSignature: string | undefined;
+    if (workedForText !== undefined && workedForText.length > 0) {
+        nextSignature = `${workedForText}\0${tokensPerSecond ?? ""}`;
+    }
+    if (nextSignature === workedForWidgetSignature) {
+        return;
+    }
+    workedForWidgetSignature = nextSignature;
+
+    if (nextSignature === undefined) {
         ctx.ui.setWidget(WIDGET_KEY, undefined);
         return;
     }
