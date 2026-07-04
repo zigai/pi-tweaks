@@ -95,6 +95,19 @@ type StyledMarkdownInstance = {
     options?: MarkdownOptions;
 };
 
+type HeadingLineTextsCache = {
+    readonly text: string;
+    readonly width: number;
+    readonly paddingX: number;
+    readonly theme: MarkdownTheme;
+    readonly defaultTextStyle: DefaultTextStyle | undefined;
+    readonly options: MarkdownOptions | undefined;
+    readonly value: ReadonlySet<string>;
+};
+
+const EMPTY_HEADING_LINE_TEXTS: ReadonlySet<string> = new Set();
+const headingLineTextsByMarkdown = new WeakMap<object, HeadingLineTextsCache>();
+
 function getStylePrefix(styleFn: (text: string) => string): string {
     const sentinel = "\u0000";
     const styled = styleFn(sentinel);
@@ -156,31 +169,90 @@ function getLevelOneOrTwoHeadingSources(markdown: string): string[] {
     return headings;
 }
 
+function markdownPaddingX(markdownInstance: StyledMarkdownInstance): number {
+    if (
+        typeof markdownInstance.paddingX === "number" &&
+        Number.isFinite(markdownInstance.paddingX) &&
+        markdownInstance.paddingX >= 0
+    ) {
+        return markdownInstance.paddingX;
+    }
+    return 0;
+}
+
+function cacheMatchesHeadingRenderInputs(
+    cache: HeadingLineTextsCache,
+    markdownInstance: StyledMarkdownInstance,
+    text: string,
+    width: number,
+    paddingX: number,
+    theme: MarkdownTheme,
+): boolean {
+    return (
+        cache.text === text &&
+        cache.width === width &&
+        cache.paddingX === paddingX &&
+        cache.theme === theme &&
+        cache.defaultTextStyle === markdownInstance.defaultTextStyle &&
+        cache.options === markdownInstance.options
+    );
+}
+
+function cacheHeadingLineTexts(
+    instance: Markdown,
+    markdownInstance: StyledMarkdownInstance,
+    text: string,
+    width: number,
+    paddingX: number,
+    theme: MarkdownTheme,
+    value: ReadonlySet<string>,
+): ReadonlySet<string> {
+    headingLineTextsByMarkdown.set(instance, {
+        text,
+        width,
+        paddingX,
+        theme,
+        defaultTextStyle: markdownInstance.defaultTextStyle,
+        options: markdownInstance.options,
+        value,
+    });
+    return value;
+}
+
 function resolveHeadingLineTexts(
     instance: Markdown,
     width: number,
     renderMarkdown: MarkdownRender,
 ): ReadonlySet<string> {
     const markdownInstance = instance as unknown as StyledMarkdownInstance;
-    if (typeof markdownInstance.text !== "string") {
-        return new Set();
+    const text = markdownInstance.text;
+    if (typeof text !== "string") {
+        return EMPTY_HEADING_LINE_TEXTS;
     }
-    if (markdownInstance.theme === undefined) {
-        return new Set();
+    const theme = markdownInstance.theme;
+    if (theme === undefined) {
+        return EMPTY_HEADING_LINE_TEXTS;
     }
-
-    const headingSources = getLevelOneOrTwoHeadingSources(markdownInstance.text);
-    if (headingSources.length === 0) {
-        return new Set();
-    }
-
-    let paddingX = 0;
+    const paddingX = markdownPaddingX(markdownInstance);
+    const cached = headingLineTextsByMarkdown.get(instance);
     if (
-        typeof markdownInstance.paddingX === "number" &&
-        Number.isFinite(markdownInstance.paddingX) &&
-        markdownInstance.paddingX >= 0
+        cached !== undefined &&
+        cacheMatchesHeadingRenderInputs(cached, markdownInstance, text, width, paddingX, theme)
     ) {
-        paddingX = markdownInstance.paddingX;
+        return cached.value;
+    }
+
+    const headingSources = getLevelOneOrTwoHeadingSources(text);
+    if (headingSources.length === 0) {
+        return cacheHeadingLineTexts(
+            instance,
+            markdownInstance,
+            text,
+            width,
+            paddingX,
+            theme,
+            EMPTY_HEADING_LINE_TEXTS,
+        );
     }
 
     const headingLines = new Set<string>();
@@ -189,7 +261,7 @@ function resolveHeadingLineTexts(
             headingSource,
             paddingX,
             0,
-            markdownInstance.theme,
+            theme,
             markdownInstance.defaultTextStyle,
             markdownInstance.options,
         );
@@ -200,7 +272,15 @@ function resolveHeadingLineTexts(
         }
     }
 
-    return headingLines;
+    return cacheHeadingLineTexts(
+        instance,
+        markdownInstance,
+        text,
+        width,
+        paddingX,
+        theme,
+        headingLines,
+    );
 }
 
 function resolveHeadingPrefix(instance: Markdown): string {
