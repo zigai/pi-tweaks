@@ -5,7 +5,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
     closeSync,
-    existsSync,
     mkdirSync,
     openSync,
     readFileSync,
@@ -69,7 +68,6 @@ const DEFAULT_MODE_CONFIG_FILE = {
 let settingsReadContext: SettingsReadContext | undefined;
 let cachedSettings:
     | {
-          mtimeKey: string;
           showModeName: boolean;
           useThinkingBorderColors: boolean;
           showThinkingLevelStatus: boolean;
@@ -283,20 +281,6 @@ function atomicWriteUtf8Sync(filePath: string, content: string): void {
     }
 }
 
-function getFileMtimeMs(filePath: string | undefined): number | null {
-    if (filePath === undefined) return null;
-    try {
-        if (!existsSync(filePath)) return null;
-        return statSync(filePath).mtimeMs;
-    } catch {
-        return null;
-    }
-}
-
-function getSettingsMtimeKey(): string {
-    return `${getFileMtimeMs(getSettingsPath())}:${getFileMtimeMs(getProjectSettingsPath())}`;
-}
-
 function formatSchemaPath(instancePath: string): string {
     if (instancePath.length === 0) return "root";
     return instancePath
@@ -369,8 +353,7 @@ function readModeSettings(): {
     useThinkingBorderColors: boolean;
     showThinkingLevelStatus: boolean;
 } {
-    const mtimeKey = getSettingsMtimeKey();
-    if (cachedSettings?.mtimeKey === mtimeKey) {
+    if (cachedSettings !== undefined) {
         return cachedSettings;
     }
 
@@ -412,7 +395,6 @@ function readModeSettings(): {
     }
 
     cachedSettings = {
-        mtimeKey,
         showModeName,
         useThinkingBorderColors,
         showThinkingLevelStatus,
