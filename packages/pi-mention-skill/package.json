@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-mention-skill",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Pi package that moves skill discovery from slash commands to $ mentions.",
   "keywords": [
     "mention",
