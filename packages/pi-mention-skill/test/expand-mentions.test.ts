@@ -7,6 +7,7 @@ import { test } from "vitest";
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
 import {
+    contextContainsSkillMentionTrigger,
     createCachedSkillExpansionLoader,
     expandSkillMentions,
     expandSkillMentionsInMessages,
@@ -179,6 +180,61 @@ test("expandSkillMentionsInMessages leaves existing skill blocks alone", async (
                 timestamp: 1,
             },
         ];
+
+        const expanded = await expandSkillMentionsInMessages(
+            messages,
+            [skillCommand("python", filePath)],
+            "$",
+        );
+
+        assert.equal(expanded, messages);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("expandSkillMentionsInMessages ignores stale mentions before the latest assistant response", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
+    try {
+        const filePath = path.join(dir, "python.md");
+        await writeFile(filePath, "Use Python carefully.\n", "utf8");
+        const messages: ContextEvent["messages"] = [
+            {
+                role: "user",
+                content: [{ type: "text", text: "Earlier please use $python" }],
+                timestamp: 1,
+            },
+            {
+                role: "assistant",
+                content: [{ type: "text", text: "Done." }],
+                api: "test",
+                provider: "test",
+                model: "test",
+                usage: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 0,
+                    cost: {
+                        input: 0,
+                        output: 0,
+                        cacheRead: 0,
+                        cacheWrite: 0,
+                        total: 0,
+                    },
+                },
+                stopReason: "stop",
+                timestamp: 2,
+            },
+            {
+                role: "user",
+                content: [{ type: "text", text: "Continue without skill mentions." }],
+                timestamp: 3,
+            },
+        ];
+
+        assert.equal(contextContainsSkillMentionTrigger(messages, "$"), false);
 
         const expanded = await expandSkillMentionsInMessages(
             messages,

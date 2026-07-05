@@ -119,24 +119,52 @@ function isUserTextContentBlock(block: UserContentBlock): block is UserTextConte
     return block.type === "text";
 }
 
+function firstRecentMessageIndex(messages: ContextEvent["messages"]): number {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (messages[index]?.role === "assistant") return index + 1;
+    }
+
+    return 0;
+}
+
 function shouldExpandContextText(text: string, trigger: string): boolean {
     if (!text.includes(trigger)) return false;
     return !text.trimStart().startsWith("<skill ");
+}
+
+function recentUserMessageIndexesWithSkillMentionTrigger(
+    messages: ContextEvent["messages"],
+    trigger: string,
+): number[] {
+    const indexes: number[] = [];
+    for (let index = firstRecentMessageIndex(messages); index < messages.length; index += 1) {
+        const message = messages[index];
+        if (message?.role !== "user") continue;
+
+        if (typeof message.content === "string") {
+            if (shouldExpandContextText(message.content, trigger)) indexes.push(index);
+            continue;
+        }
+
+        if (
+            message.content.some((block) => {
+                return (
+                    isUserTextContentBlock(block) && shouldExpandContextText(block.text, trigger)
+                );
+            })
+        ) {
+            indexes.push(index);
+        }
+    }
+
+    return indexes;
 }
 
 export function contextContainsSkillMentionTrigger(
     messages: ContextEvent["messages"],
     trigger: string,
 ): boolean {
-    return messages.some((message) => {
-        if (message.role !== "user") return false;
-        if (typeof message.content === "string") {
-            return shouldExpandContextText(message.content, trigger);
-        }
-        return message.content.some((block) => {
-            return isUserTextContentBlock(block) && shouldExpandContextText(block.text, trigger);
-        });
-    });
+    return recentUserMessageIndexesWithSkillMentionTrigger(messages, trigger).length > 0;
 }
 
 async function expandSkillMentionsInUserMessage(
@@ -180,25 +208,25 @@ export async function expandSkillMentionsInMessages(
     trigger: string,
     loadExpansion: SkillExpansionLoader = loadSkillExpansion,
 ): Promise<ContextEvent["messages"]> {
-    let changed = false;
-    const expandedMessages: ContextEvent["messages"] = [];
+    const indexes = recentUserMessageIndexesWithSkillMentionTrigger(messages, trigger);
+    if (indexes.length === 0) return messages;
 
-    for (const message of messages) {
-        if (message.role !== "user") {
-            expandedMessages.push(message);
-            continue;
-        }
+    let expandedMessages: ContextEvent["messages"] | undefined;
 
+    for (const index of indexes) {
+        const message = messages[index];
+        if (message?.role !== "user") continue;
         const expanded = await expandSkillMentionsInUserMessage(
             message,
             skills,
             trigger,
             loadExpansion,
         );
-        if (expanded !== message) changed = true;
-        expandedMessages.push(expanded);
+        if (expanded === message) continue;
+
+        expandedMessages ??= [...messages];
+        expandedMessages[index] = expanded;
     }
 
-    if (!changed) return messages;
-    return expandedMessages;
+    return expandedMessages ?? messages;
 }
