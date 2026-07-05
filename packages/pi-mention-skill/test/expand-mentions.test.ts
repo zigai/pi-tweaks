@@ -15,6 +15,8 @@ import {
 import { stripFrontmatter } from "../src/skill-commands.ts";
 import type { SkillCommand } from "../src/types.ts";
 
+type AssistantContextMessage = Extract<ContextEvent["messages"][number], { role: "assistant" }>;
+
 function skillCommand(name: string, filePath: string, description = "test skill"): SkillCommand {
     return {
         source: "skill",
@@ -25,6 +27,42 @@ function skillCommand(name: string, filePath: string, description = "test skill"
             baseDir: path.dirname(filePath),
         },
     } as unknown as SkillCommand;
+}
+
+function assistantMessage(
+    stopReason: AssistantContextMessage["stopReason"],
+    timestamp: number,
+): AssistantContextMessage {
+    let content: AssistantContextMessage["content"];
+    if (stopReason === "toolUse") {
+        content = [{ type: "toolCall", id: "tool-1", name: "read", arguments: {} }];
+    } else {
+        content = [{ type: "text", text: "Done." }];
+    }
+
+    return {
+        role: "assistant",
+        content,
+        api: "test",
+        provider: "test",
+        model: "test",
+        usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+            },
+        },
+        stopReason,
+        timestamp,
+    };
 }
 
 test("stripFrontmatter removes yaml blocks and preserves ordinary markdown", () => {
@@ -204,29 +242,7 @@ test("expandSkillMentionsInMessages ignores stale mentions before the latest ass
                 content: [{ type: "text", text: "Earlier please use $python" }],
                 timestamp: 1,
             },
-            {
-                role: "assistant",
-                content: [{ type: "text", text: "Done." }],
-                api: "test",
-                provider: "test",
-                model: "test",
-                usage: {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    totalTokens: 0,
-                    cost: {
-                        input: 0,
-                        output: 0,
-                        cacheRead: 0,
-                        cacheWrite: 0,
-                        total: 0,
-                    },
-                },
-                stopReason: "stop",
-                timestamp: 2,
-            },
+            assistantMessage("stop", 2),
             {
                 role: "user",
                 content: [{ type: "text", text: "Continue without skill mentions." }],
@@ -243,6 +259,53 @@ test("expandSkillMentionsInMessages ignores stale mentions before the latest ass
         );
 
         assert.equal(expanded, messages);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("expandSkillMentionsInMessages keeps active mentions across tool continuations", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
+    try {
+        const filePath = path.join(dir, "python.md");
+        await writeFile(filePath, "Use Python carefully.\n", "utf8");
+        const messages: ContextEvent["messages"] = [
+            {
+                role: "user",
+                content: [{ type: "text", text: "Please use $python before reading." }],
+                timestamp: 1,
+            },
+            assistantMessage("toolUse", 2),
+            {
+                role: "toolResult",
+                toolCallId: "tool-1",
+                toolName: "read",
+                content: [{ type: "text", text: "file contents" }],
+                isError: false,
+                timestamp: 3,
+            },
+        ];
+
+        assert.equal(contextContainsSkillMentionTrigger(messages, "$"), true);
+
+        const expanded = await expandSkillMentionsInMessages(
+            messages,
+            [skillCommand("python", filePath)],
+            "$",
+        );
+
+        assert.notEqual(expanded, messages);
+        const message = expanded[0];
+        assert.equal(message?.role, "user");
+        if (message?.role !== "user" || !Array.isArray(message.content)) {
+            assert.fail("expected expanded user text message");
+        }
+
+        const text = message.content[0];
+        assert.equal(text?.type, "text");
+        if (text?.type !== "text") assert.fail("expected text content");
+        assert.match(text.text, /^<skill name="python"/);
+        assert.match(text.text, /Please use python before reading\.$/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

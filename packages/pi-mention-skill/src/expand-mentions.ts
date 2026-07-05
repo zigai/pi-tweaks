@@ -121,7 +121,10 @@ function isUserTextContentBlock(block: UserContentBlock): block is UserTextConte
 
 function firstRecentMessageIndex(messages: ContextEvent["messages"]): number {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-        if (messages[index]?.role === "assistant") return index + 1;
+        const message = messages[index];
+        if (message?.role === "assistant" && message.stopReason !== "toolUse") {
+            return index + 1;
+        }
     }
 
     return 0;
