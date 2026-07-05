@@ -3,7 +3,11 @@ import { test } from "vitest";
 
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
-import { expandProjectMentions, expandProjectMentionsInMessages } from "../src/expand-mentions.ts";
+import {
+    contextContainsProjectMentionTrigger,
+    expandProjectMentions,
+    expandProjectMentionsInMessages,
+} from "../src/expand-mentions.ts";
 import type { ProjectDirectory } from "../src/types.ts";
 
 function project(name: string, root = "/tmp/projects"): ProjectDirectory {
@@ -111,6 +115,50 @@ test("expandProjectMentionsInMessages leaves existing project blocks alone", () 
             timestamp: 1,
         },
     ];
+
+    const expanded = expandProjectMentionsInMessages(messages, [project("pi-tweaks")], "#");
+
+    assert.equal(expanded, messages);
+});
+
+test("expandProjectMentionsInMessages ignores stale mentions before the latest assistant response", () => {
+    const messages: ContextEvent["messages"] = [
+        {
+            role: "user",
+            content: [{ type: "text", text: "Earlier inspect #pi-tweaks" }],
+            timestamp: 1,
+        },
+        {
+            role: "assistant",
+            content: [{ type: "text", text: "Done." }],
+            api: "test",
+            provider: "test",
+            model: "test",
+            usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    total: 0,
+                },
+            },
+            stopReason: "stop",
+            timestamp: 2,
+        },
+        {
+            role: "user",
+            content: [{ type: "text", text: "Continue without project mentions." }],
+            timestamp: 3,
+        },
+    ];
+
+    assert.equal(contextContainsProjectMentionTrigger(messages, "#"), false);
 
     const expanded = expandProjectMentionsInMessages(messages, [project("pi-tweaks")], "#");
 
