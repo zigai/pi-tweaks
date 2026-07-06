@@ -1,3 +1,4 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
     Text,
     type Component,
@@ -14,7 +15,7 @@ const USER_MESSAGE_PLAINTEXT_PATCH_KEY = Symbol.for(
 const plainTextUserMessages = new WeakSet<object>();
 
 type PatchState = typeof globalThis & {
-    [USER_MESSAGE_PLAINTEXT_PATCH_KEY]?: boolean;
+    [USER_MESSAGE_PLAINTEXT_PATCH_KEY]?: UserMessagePatchRecord | true;
 };
 
 type MarkdownInternals = {
@@ -31,6 +32,12 @@ type UserMessageComponentInstance = Component & {
 
 type UserMessageComponentPrototype = {
     render(this: UserMessageComponentInstance, width: number): string[];
+};
+
+type UserMessagePatchRecord = {
+    userMessagePrototype: UserMessageComponentPrototype;
+    originalRender: UserMessageComponentPrototype["render"];
+    patchedRender: UserMessageComponentPrototype["render"];
 };
 
 type BoxLike = {
@@ -161,6 +168,19 @@ function getPatchState(): PatchState {
     return globalThis as PatchState;
 }
 
+function restoreUserMessageRenderingPatch(): void {
+    const state = getPatchState();
+    const patch = state[USER_MESSAGE_PLAINTEXT_PATCH_KEY];
+    if (patch === undefined || patch === true) {
+        return;
+    }
+
+    if (patch.userMessagePrototype.render === patch.patchedRender) {
+        patch.userMessagePrototype.render = patch.originalRender;
+    }
+    delete state[USER_MESSAGE_PLAINTEXT_PATCH_KEY];
+}
+
 async function resolvePiDistDir(): Promise<string> {
     const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
     return dirname(codingAgentEntry);
@@ -238,7 +258,7 @@ function ensurePlainTextUserMessage(instance: UserMessageComponentInstance): voi
 
 async function patchUserMessageRendering(): Promise<void> {
     const state = getPatchState();
-    if (state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] === true) {
+    if (state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] !== undefined) {
         return;
     }
 
@@ -255,17 +275,25 @@ async function patchUserMessageRendering(): Promise<void> {
         return;
     }
 
-    userMessagePrototype.render = function patchedUserMessageRender(
+    const patchedRender = function patchedUserMessageRender(
         this: UserMessageComponentInstance,
         width: number,
     ): string[] {
         ensurePlainTextUserMessage(this);
         return originalRender.call(this, width);
     };
+    userMessagePrototype.render = patchedRender;
 
-    state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] = true;
+    state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] = {
+        userMessagePrototype,
+        originalRender,
+        patchedRender,
+    };
 }
 
-export default async function plainUserMessagesExtension(): Promise<void> {
+export default async function plainUserMessagesExtension(pi?: ExtensionAPI): Promise<void> {
     await patchUserMessageRendering();
+    pi?.on("session_shutdown", () => {
+        restoreUserMessageRenderingPatch();
+    });
 }
