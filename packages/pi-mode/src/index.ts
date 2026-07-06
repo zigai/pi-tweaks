@@ -8,7 +8,7 @@ import {
     selectModeUI,
 } from "./mode-state.ts";
 import { setSettingsContext } from "./settings.ts";
-import { applyThinkingLevelStatusPatch } from "./status.ts";
+import { applyThinkingLevelStatusPatch, restoreThinkingLevelStatusPatch } from "./status.ts";
 
 export default function (pi: ExtensionAPI) {
     void applyThinkingLevelStatusPatch();
@@ -45,5 +45,9 @@ export default function (pi: ExtensionAPI) {
 
     pi.on("model_select", async (event, ctx) => {
         await handleModelSelect(pi, ctx, event);
+    });
+
+    pi.on("session_shutdown", () => {
+        restoreThinkingLevelStatusPatch();
     });
 }

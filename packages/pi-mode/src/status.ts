@@ -11,8 +11,15 @@ type InteractiveModePrototype = {
     [STATUS_PATCH_MARKER]?: true;
 };
 
+type StatusPatchRecord = {
+    prototype: InteractiveModePrototype;
+    originalShowStatus: ShowStatus;
+    patchedShowStatus: ShowStatus;
+};
+
 type StatusPatchState = {
     shouldShowThinkingLevelStatus: () => boolean;
+    patch?: StatusPatchRecord;
 };
 
 type InteractiveModeClass = {
@@ -60,6 +67,20 @@ function warnStatusPatchUnavailable(error?: unknown): void {
     );
 }
 
+export function restoreThinkingLevelStatusPatch(): void {
+    const patchState = getStatusPatchState();
+    const patch = patchState.patch;
+    if (patch === undefined) {
+        return;
+    }
+
+    if (patch.prototype.showStatus === patch.patchedShowStatus) {
+        patch.prototype.showStatus = patch.originalShowStatus;
+    }
+    delete patch.prototype[STATUS_PATCH_MARKER];
+    patchState.patch = undefined;
+}
+
 async function loadInteractiveModeModule(): Promise<InteractiveModeModule | undefined> {
     try {
         const codingAgentEntry = fileURLToPath(
@@ -87,6 +108,9 @@ export async function applyThinkingLevelStatusPatch(
     const module = await loadModule();
     const prototype = module?.InteractiveMode?.prototype;
     if (prototype === undefined) return;
+    if (patchState.patch !== undefined && patchState.patch.prototype !== prototype) {
+        restoreThinkingLevelStatusPatch();
+    }
     if (prototype[STATUS_PATCH_MARKER] === true) return;
     if (typeof prototype.showStatus !== "function") {
         warnStatusPatchUnavailable(new Error("InteractiveMode.showStatus is not a function"));
@@ -100,7 +124,7 @@ export async function applyThinkingLevelStatusPatch(
         return;
     }
 
-    prototype.showStatus = function patchedShowStatus(
+    const patchedShowStatus = function patchedShowStatus(
         this: InteractiveModePrototype,
         message: string,
     ): void {
@@ -112,5 +136,11 @@ export async function applyThinkingLevelStatusPatch(
         }
         showStatus.call(this, message);
     };
+    prototype.showStatus = patchedShowStatus;
     prototype[STATUS_PATCH_MARKER] = true;
+    patchState.patch = {
+        prototype,
+        originalShowStatus: showStatus,
+        patchedShowStatus,
+    };
 }
