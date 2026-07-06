@@ -3,7 +3,9 @@ import { test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { registerFooterSlot } from "@zigai/pi-footer/api";
 import { createFooterComponent } from "../src/footer-rendering.ts";
+import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
 import type { FooterContext, FooterData } from "../src/types.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -56,6 +58,14 @@ test("createFooterComponent renders key session status without exceeding width",
         footerData("main", new Map([["mcp", "MCP:\n 2\tservers"]])),
         () => "medium",
         () => undefined,
+        {
+            ...DEFAULT_FOOTER_CONFIG,
+            layout: {
+                left: DEFAULT_FOOTER_CONFIG.layout.left,
+                right: ["mcp", "context"],
+                hidden: DEFAULT_FOOTER_CONFIG.layout.hidden,
+            },
+        },
     );
 
     const line = component.render(120)[0] ?? "";
@@ -77,14 +87,14 @@ test("createFooterComponent renders configured plain separator", () => {
         footerData("main", new Map()),
         () => "medium",
         () => undefined,
-        { separator: "·" },
+        { ...DEFAULT_FOOTER_CONFIG, separator: "/" },
     );
 
     const line = component.render(120)[0] ?? "";
     const plain = stripAnsi(line);
 
-    assert.match(plain, /pi-tweaks · .*main · .*copilot · .*gpt-5 · .*medium/);
-    assert.doesNotMatch(plain, / \| /);
+    assert.match(plain, /pi-tweaks \/ .*main \/ .*copilot \/ .*gpt-5 \/ .*medium/);
+    assert.doesNotMatch(plain, / · /);
 });
 
 test("createFooterComponent prefers model display names over model ids", () => {
@@ -204,6 +214,138 @@ test("createFooterComponent preserves the primary path and drops optional narrow
     assert.doesNotMatch(plain, /high/);
     assert.doesNotMatch(plain, /75\.0%\/200k/);
     assert.doesNotMatch(plain, /MCP: connected/);
+});
+
+test("createFooterComponent renders configured layout order and omissions", () => {
+    const component = createFooterComponent(
+        footerContext(),
+        footerData("main", new Map([["mcp", "MCP: connected"]])),
+        () => "medium",
+        () => undefined,
+        {
+            ...DEFAULT_FOOTER_CONFIG,
+            layout: {
+                left: ["model", "provider"],
+                right: [],
+                hidden: [],
+            },
+        },
+    );
+
+    const line = component.render(120)[0] ?? "";
+    const plain = stripAnsi(line);
+
+    assert.match(plain, /gpt-5 · copilot/);
+    assert.doesNotMatch(plain, /\/workspace\/pi-tweaks/);
+    assert.doesNotMatch(plain, /main/);
+    assert.doesNotMatch(plain, /medium/);
+    assert.doesNotMatch(plain, /MCP: connected/);
+    assert.doesNotMatch(plain, /75\.0%\/200k/);
+});
+
+test("createFooterComponent renders custom API slots and updates on text changes", () => {
+    const handle = registerFooterSlot({
+        id: "test-footer.status",
+        defaultSide: "right",
+        text: "ready",
+    });
+    let renderRequests = 0;
+
+    try {
+        const component = createFooterComponent(
+            footerContext(),
+            footerData(null, new Map()),
+            () => "medium",
+            () => {
+                renderRequests += 1;
+            },
+        );
+
+        let line = component.render(120)[0] ?? "";
+        let plain = stripAnsi(line);
+        assert.match(plain, /ready/);
+
+        handle.setText("working\nnow");
+        assert.equal(renderRequests, 1);
+
+        line = component.render(120)[0] ?? "";
+        plain = stripAnsi(line);
+        assert.match(plain, /working now/);
+
+        handle.clear();
+        assert.equal(renderRequests, 2);
+
+        line = component.render(120)[0] ?? "";
+        plain = stripAnsi(line);
+        assert.doesNotMatch(plain, /working now/);
+
+        component.dispose();
+    } finally {
+        handle.dispose();
+    }
+});
+
+test("createFooterComponent places explicit custom API slots from config", () => {
+    const handle = registerFooterSlot({
+        id: "test-footer.explicit",
+        text: "custom",
+    });
+
+    try {
+        const component = createFooterComponent(
+            footerContext(),
+            footerData(null, new Map()),
+            () => "medium",
+            () => undefined,
+            {
+                ...DEFAULT_FOOTER_CONFIG,
+                layout: {
+                    left: ["test-footer.explicit", "path"],
+                    right: [],
+                    hidden: [],
+                },
+            },
+        );
+
+        const line = component.render(120)[0] ?? "";
+        const plain = stripAnsi(line);
+
+        assert.match(plain.trim(), /^custom · \/workspace\/pi-tweaks/);
+    } finally {
+        handle.dispose();
+    }
+});
+
+test("createFooterComponent hides custom API slots through config", () => {
+    const handle = registerFooterSlot({
+        id: "test-footer.hidden",
+        defaultSide: "right",
+        text: "hidden custom",
+    });
+
+    try {
+        const component = createFooterComponent(
+            footerContext(),
+            footerData(null, new Map()),
+            () => "medium",
+            () => undefined,
+            {
+                ...DEFAULT_FOOTER_CONFIG,
+                layout: {
+                    left: DEFAULT_FOOTER_CONFIG.layout.left,
+                    right: DEFAULT_FOOTER_CONFIG.layout.right,
+                    hidden: ["test-footer.hidden"],
+                },
+            },
+        );
+
+        const line = component.render(120)[0] ?? "";
+        const plain = stripAnsi(line);
+
+        assert.doesNotMatch(plain, /hidden custom/);
+    } finally {
+        handle.dispose();
+    }
 });
 
 test("createFooterComponent disposes the branch-change subscription", () => {

@@ -27,6 +27,10 @@
     "*.json"
   ],
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api.ts"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -4,12 +4,16 @@ import { dirname, join } from "node:path";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
+import { FOOTER_LAYOUT } from "./constants.ts";
+import { FOOTER_CUSTOM_SLOT_ID_PATTERN, type FooterLayout, type FooterSlotId } from "./types.ts";
+
 const EXTENSION_ID = "pi-footer";
 const CONFIG_FILE = "config.json";
 const SCHEMA_FILE = "config.schema.json";
 
 export type FooterConfig = {
     readonly separator: string;
+    readonly layout: FooterLayout;
 };
 
 export type LoadedFooterConfig = {
@@ -23,14 +27,44 @@ export type FooterSettingsSource = {
 };
 
 type FooterSettings = {
-    readonly $schema?: string;
-    readonly separator?: string;
+    $schema?: string;
+    separator?: string;
+    layout?: FooterLayoutSettings;
 };
+
+type FooterLayoutSettings = {
+    left?: readonly FooterSlotId[];
+    right?: readonly FooterSlotId[];
+    hidden?: readonly FooterSlotId[];
+};
+
+const FooterBuiltinSlotIdSchema = Type.Union([
+    Type.Literal("path"),
+    Type.Literal("branch"),
+    Type.Literal("provider"),
+    Type.Literal("model"),
+    Type.Literal("thinking"),
+    Type.Literal("mcp"),
+    Type.Literal("context"),
+]);
+
+const FooterCustomSlotIdSchema = Type.String({ pattern: FOOTER_CUSTOM_SLOT_ID_PATTERN });
+const FooterSlotIdSchema = Type.Union([FooterBuiltinSlotIdSchema, FooterCustomSlotIdSchema]);
+
+const FooterLayoutSchema = Type.Object(
+    {
+        left: Type.Optional(Type.Array(FooterSlotIdSchema, { uniqueItems: true })),
+        right: Type.Optional(Type.Array(FooterSlotIdSchema, { uniqueItems: true })),
+        hidden: Type.Optional(Type.Array(FooterSlotIdSchema, { uniqueItems: true })),
+    },
+    { additionalProperties: false },
+);
 
 const FooterConfigSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
         separator: Type.Optional(Type.String()),
+        layout: Type.Optional(FooterLayoutSchema),
     },
     { additionalProperties: false },
 );
@@ -38,12 +72,22 @@ const FooterConfigSchema = Type.Object(
 type ParsedFooterConfig = Static<typeof FooterConfigSchema>;
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfig = {
-    separator: "|",
+    separator: "·",
+    layout: {
+        left: [...FOOTER_LAYOUT.left],
+        right: [...FOOTER_LAYOUT.right],
+        hidden: [],
+    },
 };
 
 const DEFAULT_FOOTER_CONFIG_FILE: ParsedFooterConfig = {
     $schema: `./${SCHEMA_FILE}`,
-    ...DEFAULT_FOOTER_CONFIG,
+    separator: DEFAULT_FOOTER_CONFIG.separator,
+    layout: {
+        left: [...DEFAULT_FOOTER_CONFIG.layout.left],
+        right: [...DEFAULT_FOOTER_CONFIG.layout.right],
+        hidden: [...DEFAULT_FOOTER_CONFIG.layout.hidden],
+    },
 };
 
 function formatSchemaPath(instancePath: string): string {
@@ -85,6 +129,67 @@ function sanitizeSeparator(value: string): string {
         .trim();
 }
 
+function cloneSlotIds(values: readonly FooterSlotId[]): FooterSlotId[] {
+    return [...values];
+}
+
+function parseSlotIds(values: readonly string[]): FooterSlotId[] {
+    const slotIds: FooterSlotId[] = [];
+    for (const value of values) {
+        // SAFETY: FooterConfigSchema accepted either a built-in slot literal or a namespaced custom slot id.
+        slotIds.push(value as FooterSlotId);
+    }
+    return slotIds;
+}
+
+function findSharedVisibleSlotId(
+    left: readonly FooterSlotId[] | undefined,
+    right: readonly FooterSlotId[] | undefined,
+    hidden: readonly FooterSlotId[] | undefined,
+): FooterSlotId | undefined {
+    if (left === undefined || right === undefined) return undefined;
+
+    const hiddenIds = new Set(hidden ?? []);
+    const leftIds = new Set<FooterSlotId>();
+    for (const slotId of left) {
+        if (!hiddenIds.has(slotId)) {
+            leftIds.add(slotId);
+        }
+    }
+
+    for (const slotId of right) {
+        if (hiddenIds.has(slotId)) continue;
+        if (leftIds.has(slotId)) return slotId;
+    }
+    return undefined;
+}
+
+function parseFooterLayoutSettings(
+    layout: NonNullable<ParsedFooterConfig["layout"]>,
+    label: string,
+): { layout?: FooterLayoutSettings; errors: string[] } {
+    const settings: FooterLayoutSettings = {};
+
+    if (layout.left !== undefined) {
+        settings.left = parseSlotIds(layout.left);
+    }
+    if (layout.right !== undefined) {
+        settings.right = parseSlotIds(layout.right);
+    }
+    if (layout.hidden !== undefined) {
+        settings.hidden = parseSlotIds(layout.hidden);
+    }
+
+    const sharedSlotId = findSharedVisibleSlotId(settings.left, settings.right, settings.hidden);
+    if (sharedSlotId !== undefined) {
+        return {
+            errors: [`${label}.layout cannot place "${sharedSlotId}" on both left and right.`],
+        };
+    }
+
+    return { layout: settings, errors: [] };
+}
+
 function parseFooterSettings(
     settings: unknown,
     label: string,
@@ -103,21 +208,67 @@ function parseFooterSettings(
     }
 
     if (parsed.separator === undefined) {
-        return { settings: {}, errors: [] };
+        if (parsed.layout === undefined) {
+            return { settings: {}, errors: [] };
+        }
     }
 
-    const sanitized = sanitizeSeparator(parsed.separator);
-    if (sanitized.length === 0) {
-        return { settings: {}, errors: [`${label}.separator must contain a visible character.`] };
+    const nextSettings: FooterSettings = {};
+    const errors: string[] = [];
+
+    if (parsed.separator !== undefined) {
+        const sanitized = sanitizeSeparator(parsed.separator);
+        if (sanitized.length === 0) {
+            errors.push(`${label}.separator must contain a visible character.`);
+        } else {
+            nextSettings.separator = sanitized;
+        }
     }
 
-    return { settings: { separator: sanitized }, errors: [] };
+    if (parsed.layout !== undefined) {
+        const parsedLayout = parseFooterLayoutSettings(parsed.layout, label);
+        if (parsedLayout.layout !== undefined) {
+            nextSettings.layout = parsedLayout.layout;
+        }
+        errors.push(...parsedLayout.errors);
+    }
+
+    return { settings: nextSettings, errors };
 }
 
 function buildFooterConfig(settings: FooterSettings): FooterConfig {
     return {
         separator: settings.separator ?? DEFAULT_FOOTER_CONFIG.separator,
+        layout: {
+            left: cloneSlotIds(settings.layout?.left ?? DEFAULT_FOOTER_CONFIG.layout.left),
+            right: cloneSlotIds(settings.layout?.right ?? DEFAULT_FOOTER_CONFIG.layout.right),
+            hidden: cloneSlotIds(settings.layout?.hidden ?? DEFAULT_FOOTER_CONFIG.layout.hidden),
+        },
     };
+}
+
+function buildDefaultFooterLayout(): FooterLayout {
+    return {
+        left: cloneSlotIds(DEFAULT_FOOTER_CONFIG.layout.left),
+        right: cloneSlotIds(DEFAULT_FOOTER_CONFIG.layout.right),
+        hidden: cloneSlotIds(DEFAULT_FOOTER_CONFIG.layout.hidden),
+    };
+}
+
+function getFooterLayoutError(layout: FooterLayout): string | undefined {
+    const sharedSlotId = findSharedVisibleSlotId(layout.left, layout.right, layout.hidden);
+    if (sharedSlotId === undefined) return undefined;
+    return `footer layout cannot place "${sharedSlotId}" on both left and right.`;
+}
+
+function mergeFooterSettings(current: FooterSettings, next: FooterSettings): FooterSettings {
+    const merged: FooterSettings = { ...current, ...next };
+    if (current.layout === undefined && next.layout === undefined) {
+        return merged;
+    }
+
+    merged.layout = { ...current.layout, ...next.layout };
+    return merged;
 }
 
 export function resolveFooterConfig(
@@ -128,14 +279,23 @@ export function resolveFooterConfig(
 
     for (const source of settingsSources) {
         const parsed = parseFooterSettings(source.settings, source.label);
-        mergedSettings = { ...mergedSettings, ...parsed.settings };
+        mergedSettings = mergeFooterSettings(mergedSettings, parsed.settings);
         errors.push(...parsed.errors);
     }
 
-    return {
-        config: buildFooterConfig(mergedSettings),
-        errors,
-    };
+    const config = buildFooterConfig(mergedSettings);
+    const layoutError = getFooterLayoutError(config.layout);
+    if (layoutError !== undefined) {
+        return {
+            config: {
+                separator: config.separator,
+                layout: buildDefaultFooterLayout(),
+            },
+            errors: [...errors, layoutError],
+        };
+    }
+
+    return { config, errors };
 }
 
 function getGlobalConfigPath(): string {

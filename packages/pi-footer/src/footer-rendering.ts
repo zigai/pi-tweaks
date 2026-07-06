@@ -4,17 +4,19 @@ import {
     ACTIVE_FOOTER_VARIANT,
     BLOCK_COLORS,
     BRANCH_ICON,
-    FOOTER_LAYOUT,
     PLAIN_COLORS,
     PLAIN_SEPARATOR_COLORS,
 } from "./constants.ts";
+import { getFooterSlotSnapshots, subscribeFooterSlotUpdates } from "./footer-slot-api.ts";
 import { DEFAULT_FOOTER_CONFIG, type FooterConfig } from "./settings.ts";
 import type {
     ContextUsage,
     FooterContext,
     FooterData,
     FooterItem,
-    FooterKey,
+    FooterLayout,
+    FooterSlotId,
+    FooterSlotSnapshot,
     FooterSide,
     FooterVariant,
     Rgb,
@@ -188,14 +190,14 @@ function joinRenderedItems(
 }
 
 function buildSideVariants(
-    itemsByKey: Partial<Record<FooterKey, FooterItem>>,
-    keys: readonly FooterKey[],
+    itemsByKey: ReadonlyMap<FooterSlotId, FooterItem>,
+    keys: readonly FooterSlotId[],
     variant: FooterVariant,
     side: FooterSide,
     config: FooterConfig,
 ): string[] {
     const items = keys
-        .map((key) => itemsByKey[key])
+        .map((key) => itemsByKey.get(key))
         .filter((item): item is FooterItem => item !== undefined);
     if (items.length === 0) {
         return [""];
@@ -249,7 +251,8 @@ function buildFooterItems(
     ctx: FooterContext,
     footerData: FooterData,
     thinkingLevel: string,
-): Partial<Record<FooterKey, FooterItem>> {
+    customSlots: readonly FooterSlotSnapshot[],
+): Map<FooterSlotId, FooterItem> {
     const branch = footerData.getGitBranch();
     const pathText = collapseHome(ctx.cwd);
     const providerId = ctx.model?.provider ?? "no-provider";
@@ -259,51 +262,93 @@ function buildFooterItems(
     const contextText = getContextText(usage, ctx.model?.contextWindow);
     const mcpText = getMcpText(ctx, footerData);
 
-    const items: Partial<Record<FooterKey, FooterItem>> = {
-        path: {
-            key: "path",
-            text: pathText,
-            colors: BLOCK_COLORS.path,
-        },
-        provider: {
-            key: "provider",
-            text: providerLabel,
-            colors: BLOCK_COLORS.provider,
-        },
-        model: {
-            key: "model",
-            text: modelLabel,
-            colors: BLOCK_COLORS.model,
-        },
-        thinking: {
-            key: "thinking",
-            text: thinkingLevel,
-            colors: getThinkingColors(thinkingLevel),
-        },
-        context: {
-            key: "context",
-            text: contextText,
-            colors: getContextColors(usage?.percent),
-        },
-    };
+    const items = new Map<FooterSlotId, FooterItem>();
+    items.set("path", {
+        key: "path",
+        text: pathText,
+        colors: BLOCK_COLORS.path,
+    });
+    items.set("provider", {
+        key: "provider",
+        text: providerLabel,
+        colors: BLOCK_COLORS.provider,
+    });
+    items.set("model", {
+        key: "model",
+        text: modelLabel,
+        colors: BLOCK_COLORS.model,
+    });
+    items.set("thinking", {
+        key: "thinking",
+        text: thinkingLevel,
+        colors: getThinkingColors(thinkingLevel),
+    });
+    items.set("context", {
+        key: "context",
+        text: contextText,
+        colors: getContextColors(usage?.percent),
+    });
 
     if (branch !== null && branch.length > 0) {
-        items.branch = {
+        items.set("branch", {
             key: "branch",
             text: `${BRANCH_ICON} ${branch}`,
             colors: BLOCK_COLORS.branch,
-        };
+        });
     }
 
     if (mcpText !== null && mcpText.length > 0) {
-        items.mcp = {
+        items.set("mcp", {
             key: "mcp",
             text: mcpText,
             colors: BLOCK_COLORS.mcp,
-        };
+        });
+    }
+
+    for (const slot of customSlots) {
+        items.set(slot.id, {
+            key: slot.id,
+            text: slot.text,
+            colors: slot.colors,
+        });
     }
 
     return items;
+}
+
+function resolveFooterLayout(
+    configLayout: FooterLayout,
+    customSlots: readonly FooterSlotSnapshot[],
+): Pick<FooterLayout, "left" | "right"> {
+    const hiddenIds = new Set(configLayout.hidden);
+    const left: FooterSlotId[] = [];
+    const right: FooterSlotId[] = [];
+
+    for (const slotId of configLayout.left) {
+        if (!hiddenIds.has(slotId)) {
+            left.push(slotId);
+        }
+    }
+    for (const slotId of configLayout.right) {
+        if (!hiddenIds.has(slotId)) {
+            right.push(slotId);
+        }
+    }
+
+    const configuredIds = new Set<FooterSlotId>([...hiddenIds, ...left, ...right]);
+    for (const slot of customSlots) {
+        if (slot.defaultSide === undefined) continue;
+        if (configuredIds.has(slot.id)) continue;
+
+        if (slot.defaultSide === "left") {
+            left.push(slot.id);
+        } else {
+            right.push(slot.id);
+        }
+        configuredIds.add(slot.id);
+    }
+
+    return { left, right };
 }
 
 export function createFooterComponent(
@@ -313,10 +358,14 @@ export function createFooterComponent(
     requestRender: () => void,
     config: FooterConfig = DEFAULT_FOOTER_CONFIG,
 ) {
-    const unsubscribe = footerData.onBranchChange(() => requestRender());
+    const unsubscribeBranchChange = footerData.onBranchChange(() => requestRender());
+    const unsubscribeSlotUpdates = subscribeFooterSlotUpdates(() => requestRender());
 
     return {
-        dispose: unsubscribe,
+        dispose() {
+            unsubscribeBranchChange();
+            unsubscribeSlotUpdates();
+        },
         invalidate() {},
         render(width: number): string[] {
             // Keep spare terminal cells unused as a guard against ambiguous-width
@@ -326,17 +375,19 @@ export function createFooterComponent(
             const renderWidth = Math.max(0, width - 2);
             if (renderWidth === 0) return [""];
             const variant: FooterVariant = ACTIVE_FOOTER_VARIANT;
-            const itemsByKey = buildFooterItems(ctx, footerData, getThinkingLevel());
+            const customSlots = getFooterSlotSnapshots();
+            const layout = resolveFooterLayout(config.layout, customSlots);
+            const itemsByKey = buildFooterItems(ctx, footerData, getThinkingLevel(), customSlots);
             const leftVariants = buildSideVariants(
                 itemsByKey,
-                FOOTER_LAYOUT.left,
+                layout.left,
                 variant,
                 "left",
                 config,
             );
             const rightVariants = buildSideVariants(
                 itemsByKey,
-                FOOTER_LAYOUT.right,
+                layout.right,
                 variant,
                 "right",
                 config,

@@ -18,10 +18,15 @@ test("loadFooterConfig scaffolds missing global config and schema", async () => 
         const loaded = loadFooterConfig(cwd, false);
 
         assert.deepEqual(loaded.errors, []);
-        assert.equal(loaded.config.separator, "|");
+        assert.equal(loaded.config.separator, "·");
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
             $schema: "./config.schema.json",
-            separator: "|",
+            separator: "·",
+            layout: {
+                left: ["path", "branch", "provider", "model", "thinking"],
+                right: ["context"],
+                hidden: [],
+            },
         });
         assert.match(await readFile(schemaPath, "utf8"), /Pi footer config/);
 
@@ -44,10 +49,15 @@ test("loadFooterConfig scaffolds missing global config and schema", async () => 
     }
 });
 
-test("resolveFooterConfig defaults to pipe separator", () => {
+test("resolveFooterConfig defaults to middle-dot separator", () => {
     const loaded = resolveFooterConfig([]);
 
-    assert.equal(loaded.config.separator, "|");
+    assert.equal(loaded.config.separator, "·");
+    assert.deepEqual(loaded.config.layout, {
+        left: ["path", "branch", "provider", "model", "thinking"],
+        right: ["context"],
+        hidden: [],
+    });
     assert.deepEqual(loaded.errors, []);
 });
 
@@ -70,7 +80,7 @@ test("resolveFooterConfig lets later sources override earlier sources", () => {
         {
             label: "global settings",
             settings: {
-                separator: "|",
+                separator: "·",
             },
         },
         {
@@ -84,6 +94,56 @@ test("resolveFooterConfig lets later sources override earlier sources", () => {
     assert.equal(loaded.config.separator, "/");
 });
 
+test("resolveFooterConfig reads configured layout slots", () => {
+    const loaded = resolveFooterConfig([
+        {
+            label: "global settings",
+            settings: {
+                layout: {
+                    left: ["model", "provider", "my-extension.status"],
+                    right: ["context"],
+                    hidden: ["thinking"],
+                },
+            },
+        },
+    ]);
+
+    assert.deepEqual(loaded.config.layout, {
+        left: ["model", "provider", "my-extension.status"],
+        right: ["context"],
+        hidden: ["thinking"],
+    });
+    assert.deepEqual(loaded.errors, []);
+});
+
+test("resolveFooterConfig merges partial layout overrides", () => {
+    const loaded = resolveFooterConfig([
+        {
+            label: "global settings",
+            settings: {
+                layout: {
+                    left: ["model", "provider"],
+                },
+            },
+        },
+        {
+            label: "project settings",
+            settings: {
+                layout: {
+                    hidden: ["provider"],
+                },
+            },
+        },
+    ]);
+
+    assert.deepEqual(loaded.config.layout, {
+        left: ["model", "provider"],
+        right: ["context"],
+        hidden: ["provider"],
+    });
+    assert.deepEqual(loaded.errors, []);
+});
+
 test("resolveFooterConfig reports invalid separator settings", () => {
     const loaded = resolveFooterConfig([
         {
@@ -94,7 +154,7 @@ test("resolveFooterConfig reports invalid separator settings", () => {
         },
     ]);
 
-    assert.equal(loaded.config.separator, "|");
+    assert.equal(loaded.config.separator, "·");
     assert.deepEqual(loaded.errors, [
         "global settings.separator must contain a visible character.",
     ]);
@@ -110,8 +170,96 @@ test("resolveFooterConfig rejects unknown config keys", () => {
         },
     ]);
 
-    assert.equal(loaded.config.separator, "|");
+    assert.equal(loaded.config.separator, "·");
     assert.equal(loaded.errors.length, 1);
     assert.match(loaded.errors[0] ?? "", /global settings is invalid:/);
     assert.match(loaded.errors[0] ?? "", /additional properties/);
+});
+
+test("resolveFooterConfig rejects misspelled builtin layout slots", () => {
+    const loaded = resolveFooterConfig([
+        {
+            label: "global settings",
+            settings: {
+                layout: {
+                    left: ["mdoel"],
+                },
+            },
+        },
+    ]);
+
+    assert.deepEqual(loaded.config.layout.left, [
+        "path",
+        "branch",
+        "provider",
+        "model",
+        "thinking",
+    ]);
+    assert.equal(loaded.errors.length, 1);
+    assert.match(loaded.errors[0] ?? "", /global settings is invalid:/);
+});
+
+test("resolveFooterConfig rejects slots placed on both sides", () => {
+    const loaded = resolveFooterConfig([
+        {
+            label: "global settings",
+            settings: {
+                layout: {
+                    left: ["model"],
+                    right: ["model"],
+                },
+            },
+        },
+    ]);
+
+    assert.deepEqual(loaded.config.layout, {
+        left: ["path", "branch", "provider", "model", "thinking"],
+        right: ["context"],
+        hidden: [],
+    });
+    assert.deepEqual(loaded.errors, [
+        'global settings.layout cannot place "model" on both left and right.',
+    ]);
+});
+
+test("resolveFooterConfig rejects partial layout overrides that conflict with defaults", () => {
+    const loaded = resolveFooterConfig([
+        {
+            label: "global settings",
+            settings: {
+                layout: {
+                    right: ["model"],
+                },
+            },
+        },
+    ]);
+
+    assert.deepEqual(loaded.config.layout, {
+        left: ["path", "branch", "provider", "model", "thinking"],
+        right: ["context"],
+        hidden: [],
+    });
+    assert.deepEqual(loaded.errors, ['footer layout cannot place "model" on both left and right.']);
+});
+
+test("resolveFooterConfig lets hidden slots appear in both configured sides", () => {
+    const loaded = resolveFooterConfig([
+        {
+            label: "global settings",
+            settings: {
+                layout: {
+                    left: ["model"],
+                    right: ["model"],
+                    hidden: ["model"],
+                },
+            },
+        },
+    ]);
+
+    assert.deepEqual(loaded.config.layout, {
+        left: ["model"],
+        right: ["model"],
+        hidden: ["model"],
+    });
+    assert.deepEqual(loaded.errors, []);
 });

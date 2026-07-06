@@ -8,8 +8,54 @@
     "$schema": { "type": "string" },
     "separator": {
       "type": "string",
-      "default": "|",
+      "default": "·",
       "description": "Visible separator placed between footer status segments. Whitespace-only values are ignored at runtime."
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": {
+        "left": ["path", "branch", "provider", "model", "thinking"],
+        "right": ["context"],
+        "hidden": []
+      },
+      "description": "Footer slot placement. Built-in slots use their names; custom slots must use namespaced ids like my-extension.status.",
+      "properties": {
+        "left": {
+          "type": "array",
+          "uniqueItems": true,
+          "default": ["path", "branch", "provider", "model", "thinking"],
+          "items": { "$ref": "#/$defs/slotId" },
+          "description": "Left-side slot order. Earlier slots are kept first when the footer narrows."
+        },
+        "right": {
+          "type": "array",
+          "uniqueItems": true,
+          "default": ["context"],
+          "items": { "$ref": "#/$defs/slotId" },
+          "description": "Right-side slot order. Later slots are kept first when the footer narrows."
+        },
+        "hidden": {
+          "type": "array",
+          "uniqueItems": true,
+          "default": [],
+          "items": { "$ref": "#/$defs/slotId" },
+          "description": "Slots omitted even if configured on a side or registered by another extension."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "slotId": {
+      "oneOf": [
+        {
+          "enum": ["path", "branch", "provider", "model", "thinking", "mcp", "context"]
+        },
+        {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+        }
+      ]
     }
   }
 }

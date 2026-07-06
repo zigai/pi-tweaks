@@ -3,7 +3,8 @@ export const BRANCH_ICON = "";
 
 export const FOOTER_LAYOUT = {
     left: ["path", "branch", "provider", "model", "thinking"],
-    right: ["mcp", "context"],
+    right: ["context"],
+    hidden: [],
 } as const;
 
 export const BLOCK_COLORS = {
@@ -24,4 +25,9 @@ export const PLAIN_COLORS = {
 export const PLAIN_SEPARATOR_COLORS = {
     bg: "#000000",
     fg: "#6b7280",
+} as const;
+
+export const CUSTOM_SLOT_COLORS = {
+    bg: "#374151",
+    fg: "#e5e7eb",
 } as const;
