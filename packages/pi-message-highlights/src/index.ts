@@ -1,3 +1,4 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Editor } from "@earendil-works/pi-tui";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,7 +13,7 @@ import {
 const MESSAGE_HIGHLIGHTS_PATCH_KEY = Symbol.for("zigai.pi-message-highlights.patched");
 
 type PatchState = typeof globalThis & {
-    [MESSAGE_HIGHLIGHTS_PATCH_KEY]?: boolean;
+    [MESSAGE_HIGHLIGHTS_PATCH_KEY]?: MessageHighlightsPatchRecord | true;
 };
 
 type ThemeLike = {
@@ -25,8 +26,33 @@ type RenderablePrototype = {
     render(this: object, width: number): string[];
 };
 
+type RenderPatchRecord = {
+    prototype: RenderablePrototype;
+    originalRender: RenderablePrototype["render"];
+    patchedRender: RenderablePrototype["render"];
+};
+
+type MessageHighlightsPatchRecord = {
+    patches: RenderPatchRecord[];
+};
+
 function getPatchState(): PatchState {
     return globalThis as PatchState;
+}
+
+function restoreMessageHighlightPatch(): void {
+    const state = getPatchState();
+    const patch = state[MESSAGE_HIGHLIGHTS_PATCH_KEY];
+    if (patch === undefined || patch === true) {
+        return;
+    }
+
+    for (const renderPatch of patch.patches) {
+        if (renderPatch.prototype.render === renderPatch.patchedRender) {
+            renderPatch.prototype.render = renderPatch.originalRender;
+        }
+    }
+    delete state[MESSAGE_HIGHLIGHTS_PATCH_KEY];
 }
 
 async function resolvePiDistDir(): Promise<string> {
@@ -137,20 +163,27 @@ function getEditorPrototype(): RenderablePrototype | undefined {
 function patchRenderablePrototype(
     prototype: RenderablePrototype,
     getStyles: HighlightStylesProvider,
-): void {
+): RenderPatchRecord | undefined {
     const originalRender = Reflect.get(prototype, "render") as
         | ((this: object, width: number) => string[])
         | undefined;
-    if (typeof originalRender !== "function") return;
+    if (typeof originalRender !== "function") return undefined;
 
-    prototype.render = function highlightedRender(this: object, width: number): string[] {
+    const patchedRender = function highlightedRender(this: object, width: number): string[] {
         return highlightMessageLines(originalRender.call(this, width), getStyles());
+    };
+    prototype.render = patchedRender;
+
+    return {
+        prototype,
+        originalRender,
+        patchedRender,
     };
 }
 
 async function installMessageHighlightPatch(): Promise<void> {
     const state = getPatchState();
-    if (state[MESSAGE_HIGHLIGHTS_PATCH_KEY] === true) return;
+    if (state[MESSAGE_HIGHLIGHTS_PATCH_KEY] !== undefined) return;
 
     const theme = await loadPiTheme();
     const getStyles = () => buildHighlightStyles(theme);
@@ -168,13 +201,20 @@ async function installMessageHighlightPatch(): Promise<void> {
         return;
     }
 
-    patchRenderablePrototype(assistantPrototype, getStyles);
-    patchRenderablePrototype(userPrototype, getStyles);
-    patchRenderablePrototype(editorPrototype, getStyles);
+    const patches: RenderPatchRecord[] = [];
+    const assistantPatch = patchRenderablePrototype(assistantPrototype, getStyles);
+    if (assistantPatch !== undefined) patches.push(assistantPatch);
+    const userPatch = patchRenderablePrototype(userPrototype, getStyles);
+    if (userPatch !== undefined) patches.push(userPatch);
+    const editorPatch = patchRenderablePrototype(editorPrototype, getStyles);
+    if (editorPatch !== undefined) patches.push(editorPatch);
 
-    state[MESSAGE_HIGHLIGHTS_PATCH_KEY] = true;
+    state[MESSAGE_HIGHLIGHTS_PATCH_KEY] = { patches };
 }
 
-export default async function messageHighlightsExtension(): Promise<void> {
+export default async function messageHighlightsExtension(pi?: ExtensionAPI): Promise<void> {
     await installMessageHighlightPatch();
+    pi?.on("session_shutdown", () => {
+        restoreMessageHighlightPatch();
+    });
 }
