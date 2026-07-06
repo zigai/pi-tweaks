@@ -1,3 +1,4 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
     Markdown,
     type Component,
@@ -18,7 +19,7 @@ const ANSI_SGR_REGEX = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
 const fencesHiddenInstances = new WeakSet<object>();
 
 type PatchState = typeof globalThis & {
-    [MARKDOWN_FENCES_PATCH_KEY]?: boolean;
+    [MARKDOWN_FENCES_PATCH_KEY]?: MarkdownFencesPatchRecord | true;
 };
 
 type AssistantMessageComponentInstance = Component & {
@@ -86,6 +87,21 @@ function isTableLine(line: string): boolean {
 }
 
 type MarkdownRender = (this: Markdown, width: number) => string[];
+
+type MarkdownPrototype = {
+    render?: MarkdownRender;
+};
+
+type MarkdownFencesPatchRecord = {
+    markdownPrototype: MarkdownPrototype;
+    originalMarkdownRender: MarkdownRender;
+    patchedMarkdownRender: MarkdownRender;
+    assistantPrototype?: AssistantMessageComponentPrototype;
+    originalAssistantRender?: AssistantMessageComponentPrototype["render"];
+    patchedAssistantRender?: AssistantMessageComponentPrototype["render"];
+    originalAssistantUpdateContent?: AssistantMessageComponentPrototype["updateContent"];
+    patchedAssistantUpdateContent?: AssistantMessageComponentPrototype["updateContent"];
+};
 
 type StyledMarkdownInstance = {
     text?: string;
@@ -388,6 +404,38 @@ function getPatchState(): PatchState {
     return globalThis as PatchState;
 }
 
+function restoreMarkdownFencesPatch(): void {
+    const state = getPatchState();
+    const patch = state[MARKDOWN_FENCES_PATCH_KEY];
+    if (patch === undefined || patch === true) {
+        return;
+    }
+
+    if (patch.markdownPrototype.render === patch.patchedMarkdownRender) {
+        patch.markdownPrototype.render = patch.originalMarkdownRender;
+    }
+
+    if (
+        patch.assistantPrototype !== undefined &&
+        patch.originalAssistantRender !== undefined &&
+        patch.patchedAssistantRender !== undefined &&
+        patch.assistantPrototype.render === patch.patchedAssistantRender
+    ) {
+        patch.assistantPrototype.render = patch.originalAssistantRender;
+    }
+
+    if (
+        patch.assistantPrototype !== undefined &&
+        patch.originalAssistantUpdateContent !== undefined &&
+        patch.patchedAssistantUpdateContent !== undefined &&
+        patch.assistantPrototype.updateContent === patch.patchedAssistantUpdateContent
+    ) {
+        patch.assistantPrototype.updateContent = patch.originalAssistantUpdateContent;
+    }
+
+    delete state[MARKDOWN_FENCES_PATCH_KEY];
+}
+
 async function resolvePiDistDir(): Promise<string> {
     const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
     return dirname(codingAgentEntry);
@@ -423,20 +471,17 @@ async function loadAssistantMessagePrototype(): Promise<
 
 async function patchMarkdownFences(): Promise<void> {
     const state = getPatchState();
-    if (state[MARKDOWN_FENCES_PATCH_KEY] === true) {
+    if (state[MARKDOWN_FENCES_PATCH_KEY] !== undefined) {
         return;
     }
 
-    const markdownPrototype = Markdown.prototype as {
-        render?: (width: number) => string[];
-    };
+    const markdownPrototype = Markdown.prototype as MarkdownPrototype;
     const originalMarkdownRender = Reflect.get(markdownPrototype, "render");
     if (typeof originalMarkdownRender !== "function") {
         warnInternalPatchUnavailable("markdown render patch");
         return;
     }
-    state[MARKDOWN_FENCES_PATCH_KEY] = true;
-    markdownPrototype.render = function patchedMarkdownRender(
+    const patchedMarkdownRender = function patchedMarkdownRender(
         this: Markdown,
         width: number,
     ): string[] {
@@ -450,6 +495,14 @@ async function patchMarkdownFences(): Promise<void> {
             resolveHeadingLineTexts(this, width, originalMarkdownRender),
         );
     };
+    markdownPrototype.render = patchedMarkdownRender;
+
+    const patch: MarkdownFencesPatchRecord = {
+        markdownPrototype,
+        originalMarkdownRender,
+        patchedMarkdownRender,
+    };
+    state[MARKDOWN_FENCES_PATCH_KEY] = patch;
 
     const assistantPrototype = await loadAssistantMessagePrototype();
     if (assistantPrototype === undefined) {
@@ -463,12 +516,16 @@ async function patchMarkdownFences(): Promise<void> {
         warnInternalPatchUnavailable("assistant render patch");
         return;
     }
-    assistantPrototype.render = function patchedAssistantRender(
+    const patchedAssistantRender = function patchedAssistantRender(
         this: AssistantMessageComponentInstance,
         width: number,
     ): string[] {
         return originalRender.call(this, width).map(stripItalicAnsi);
     };
+    assistantPrototype.render = patchedAssistantRender;
+    patch.assistantPrototype = assistantPrototype;
+    patch.originalAssistantRender = originalRender;
+    patch.patchedAssistantRender = patchedAssistantRender;
 
     const originalUpdateContent = Reflect.get(assistantPrototype, "updateContent") as
         | ((this: AssistantMessageComponentInstance, message: unknown) => void)
@@ -477,7 +534,7 @@ async function patchMarkdownFences(): Promise<void> {
         warnInternalPatchUnavailable("assistant content patch");
         return;
     }
-    assistantPrototype.updateContent = function patchedUpdateContent(
+    const patchedAssistantUpdateContent = function patchedUpdateContent(
         this: AssistantMessageComponentInstance,
         message: unknown,
     ): void {
@@ -508,8 +565,15 @@ async function patchMarkdownFences(): Promise<void> {
             }
         }
     };
+    assistantPrototype.updateContent = patchedAssistantUpdateContent;
+
+    patch.originalAssistantUpdateContent = originalUpdateContent;
+    patch.patchedAssistantUpdateContent = patchedAssistantUpdateContent;
 }
 
-export default async function assistantRenderingExtension(): Promise<void> {
+export default async function assistantRenderingExtension(pi?: ExtensionAPI): Promise<void> {
     await patchMarkdownFences();
+    pi?.on("session_shutdown", () => {
+        restoreMarkdownFencesPatch();
+    });
 }
