@@ -3,6 +3,7 @@ import { Editor } from "@earendil-works/pi-tui";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { highlightEditorRenderLines, type EditorHighlightTarget } from "./editor-highlighting.ts";
 import { highlightMessageLines, type HighlightStyles } from "./highlight-text.ts";
 import { buildHighlightStyles, type HighlightTheme } from "./highlight-styles.ts";
 import {
@@ -183,6 +184,47 @@ function patchRenderablePrototype(
     };
 }
 
+type EditorHighlightPrototype = RenderablePrototype & {
+    getText(this: object): string;
+};
+
+function isEditorHighlightPrototype(
+    prototype: RenderablePrototype,
+): prototype is EditorHighlightPrototype {
+    return typeof Reflect.get(prototype, "getText") === "function";
+}
+
+function isEditorHighlightTarget(value: object): value is EditorHighlightTarget {
+    return typeof Reflect.get(value, "getText") === "function";
+}
+
+function patchEditorPrototype(
+    prototype: RenderablePrototype,
+    getStyles: HighlightStylesProvider,
+): RenderPatchRecord | undefined {
+    if (!isEditorHighlightPrototype(prototype)) return undefined;
+
+    const originalRender = Reflect.get(prototype, "render") as
+        | ((this: object, width: number) => string[])
+        | undefined;
+    if (typeof originalRender !== "function") return undefined;
+
+    const patchedRender = function highlightedEditorRender(this: object, width: number): string[] {
+        const renderedLines = originalRender.call(this, width);
+        if (isEditorHighlightTarget(this)) {
+            return highlightEditorRenderLines(this, width, renderedLines, getStyles());
+        }
+        return highlightMessageLines(renderedLines, getStyles());
+    };
+    prototype.render = patchedRender;
+
+    return {
+        prototype,
+        originalRender,
+        patchedRender,
+    };
+}
+
 async function installMessageHighlightPatch(): Promise<void> {
     const state = getPatchState();
     if (state[MESSAGE_HIGHLIGHTS_PATCH_KEY] !== undefined) return;
@@ -208,7 +250,7 @@ async function installMessageHighlightPatch(): Promise<void> {
     if (assistantPatch !== undefined) patches.push(assistantPatch);
     const userPatch = patchRenderablePrototype(userPrototype, getStyles);
     if (userPatch !== undefined) patches.push(userPatch);
-    const editorPatch = patchRenderablePrototype(editorPrototype, getStyles);
+    const editorPatch = patchEditorPrototype(editorPrototype, getStyles);
     if (editorPatch !== undefined) patches.push(editorPatch);
 
     state[MESSAGE_HIGHLIGHTS_PATCH_KEY] = { patches };

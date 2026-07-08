@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { highlightMessageLine, type HighlightStyles } from "../src/highlight-text.ts";
+import {
+    highlightMessageLine,
+    highlightMessageLines,
+    type HighlightStyles,
+} from "../src/highlight-text.ts";
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
@@ -96,6 +100,55 @@ test("highlights absolute paths when they are specific enough", () => {
     assert.equal(stripAnsi(highlighted), line);
     assert.equal(highlighted.includes(`<path>/home/zigai/Projects/pi-tweaks${ESC}[39m`), true);
     assert.equal(highlighted.includes(`<path>/tmp/file.ts${ESC}[39m`), true);
+});
+
+test("highlights absolute file paths with spaced directory segments", () => {
+    const line = "Use /mnt/d/Software/Linux Distros/Fedora-Server-dvd-x86_64-44-1.7.iso for setup.";
+    const highlighted = highlightMessageLine(line, styles);
+
+    assert.equal(stripAnsi(highlighted), line);
+    assert.equal(
+        highlighted.includes(
+            `<path>/mnt/d/Software/Linux Distros/Fedora-Server-dvd-x86_64-44-1.7.iso${ESC}[39m for setup.`,
+        ),
+        true,
+    );
+});
+
+test("highlights file paths split across rendered message lines", () => {
+    const lines = [
+        "   from this /mnt/d/Software/Linux            ",
+        "   Distros/Fedora-Server-dvd-x86_64-",
+        "   44-1.7.iso it should             ",
+    ];
+    const highlighted = highlightMessageLines(lines, styles);
+
+    assert.deepEqual(highlighted.map(stripAnsi), lines);
+    assert.equal(highlighted[0]?.includes(`from this <path>/mnt/d/Software/Linux${ESC}[39m`), true);
+    assert.equal(
+        highlighted[1]?.includes(`   <path>Distros/Fedora-Server-dvd-x86_64-${ESC}[39m`),
+        true,
+    );
+    assert.equal(highlighted[2]?.includes(`   <path>44-1.7.iso${ESC}[39m it should`), true);
+});
+
+test("does not join prose before an absolute wrapped path", () => {
+    const lines = [
+        "   one, but no gui, from this          ",
+        "   /mnt/d/Software/Linux              ",
+        "   Distros/Fedora-Server-dvd-x86_64-4 ",
+        "   4-1.7.iso it should                ",
+    ];
+    const highlighted = highlightMessageLines(lines, styles);
+
+    assert.deepEqual(highlighted.map(stripAnsi), lines);
+    assert.equal(highlighted[0]?.includes("<path>this"), false);
+    assert.equal(highlighted[1]?.includes(`   <path>/mnt/d/Software/Linux${ESC}[39m`), true);
+    assert.equal(
+        highlighted[2]?.includes(`   <path>Distros/Fedora-Server-dvd-x86_64-4${ESC}[39m`),
+        true,
+    );
+    assert.equal(highlighted[3]?.includes(`   <path>4-1.7.iso${ESC}[39m it should`), true);
 });
 
 test("does not highlight path-like text inside a URL twice", () => {
