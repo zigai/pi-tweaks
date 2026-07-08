@@ -24,6 +24,7 @@ export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelSta
 const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
 const STALE_SETTINGS_LOCK_MS = 30_000;
 const EXTENSION_ID = "pi-model-modes";
+const LEGACY_EXTENSION_ID = "pi-mode";
 const CONFIG_FILE = "config.json";
 const SCHEMA_FILE = "config.schema.json";
 const ModeSpecJsonSchema = Type.Object(
@@ -96,8 +97,16 @@ export function setSettingsContext(ctx: ExtensionContext): void {
     }
 }
 
+function getSettingsPathForExtension(extensionId: string): string {
+    return join(getAgentDir(), extensionId, CONFIG_FILE);
+}
+
+function getProjectSettingsPathForExtension(cwd: string, extensionId: string): string {
+    return join(cwd, CONFIG_DIR_NAME, extensionId, CONFIG_FILE);
+}
+
 function getSettingsPath(): string {
-    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
+    return getSettingsPathForExtension(EXTENSION_ID);
 }
 
 function getSchemaPath(configPath: string): string {
@@ -153,12 +162,31 @@ function readBundledSchema(): string | undefined {
     }
 }
 
+function fileExistsSync(filePath: string): boolean {
+    try {
+        statSync(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function copyLegacyGlobalConfigIfMissing(configPath: string): void {
+    if (fileExistsSync(configPath)) return;
+
+    try {
+        const legacyConfig = readFileSync(getSettingsPathForExtension(LEGACY_EXTENSION_ID), "utf8");
+        writeIfMissing(configPath, legacyConfig);
+    } catch {}
+}
+
 function scaffoldGlobalConfig(): void {
     const globalConfigPath = getSettingsPath();
     const schema = readBundledSchema();
     if (schema !== undefined) {
         refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
     }
+    copyLegacyGlobalConfigIfMissing(globalConfigPath);
     writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_MODE_CONFIG_FILE, null, 2)}\n`);
 }
 
@@ -166,7 +194,17 @@ function getProjectSettingsPath(): string | undefined {
     if (settingsReadContext === undefined || !settingsReadContext.projectTrusted) {
         return undefined;
     }
-    return join(settingsReadContext.cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
+
+    const projectPath = getProjectSettingsPathForExtension(settingsReadContext.cwd, EXTENSION_ID);
+    if (fileExistsSync(projectPath)) return projectPath;
+
+    const legacyProjectPath = getProjectSettingsPathForExtension(
+        settingsReadContext.cwd,
+        LEGACY_EXTENSION_ID,
+    );
+    if (fileExistsSync(legacyProjectPath)) return legacyProjectPath;
+
+    return projectPath;
 }
 
 function getErrorCode(error: unknown): string | undefined {

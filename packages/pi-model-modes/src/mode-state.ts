@@ -28,6 +28,7 @@ import {
     atomicWriteUtf8,
     fileExists,
     getGlobalModesPath,
+    getLegacyProjectModesPath,
     getMtimeMs,
     getProjectModesPath,
     scaffoldGlobalModesConfig,
@@ -401,6 +402,9 @@ async function resolveModesPath(ctx: ExtensionContext): Promise<string> {
     if (isProjectTrusted(ctx)) {
         const projectPath = getProjectModesPath(ctx.cwd);
         if (await fileExists(projectPath)) return projectPath;
+
+        const legacyProjectPath = getLegacyProjectModesPath(ctx.cwd);
+        if (await fileExists(legacyProjectPath)) return legacyProjectPath;
     }
     return getGlobalModesPath();
 }

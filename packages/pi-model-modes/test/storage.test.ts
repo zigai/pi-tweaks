@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
@@ -35,14 +35,92 @@ test("scaffoldGlobalModesConfig creates missing global config and schema", async
             modeShowThinkingLevelStatus: false,
             modes: {},
         });
-        assert.match(await readFile(schemaPath, "utf8"), /Pi mode config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi model modes config/);
 
         await writeFile(configPath, "{ not json", "utf8");
         await writeFile(schemaPath, "stale schema", "utf8");
         await scaffoldGlobalModesConfig();
 
         assert.equal(await readFile(configPath, "utf8"), "{ not json");
-        assert.match(await readFile(schemaPath, "utf8"), /Pi mode config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi model modes config/);
+    } finally {
+        await rm(agentDir, { recursive: true, force: true });
+        if (originalAgentDir === undefined) {
+            delete process.env.PI_CODING_AGENT_DIR;
+        } else {
+            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+        }
+    }
+});
+
+test("scaffoldGlobalModesConfig copies legacy global config when new config is missing", async () => {
+    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    try {
+        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        const legacyConfigPath = path.join(agentDir, "pi-mode", "config.json");
+        const legacyConfig = {
+            version: 1,
+            currentMode: "deep",
+            modeShowName: true,
+            modes: {
+                deep: {
+                    provider: "openai",
+                    modelId: "gpt-5",
+                    thinkingLevel: "high",
+                },
+            },
+        };
+
+        await mkdir(path.dirname(legacyConfigPath), { recursive: true });
+        await writeFile(legacyConfigPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, "utf8");
+
+        await scaffoldGlobalModesConfig();
+
+        assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), legacyConfig);
+        assert.deepEqual(JSON.parse(await readFile(legacyConfigPath, "utf8")), legacyConfig);
+    } finally {
+        await rm(agentDir, { recursive: true, force: true });
+        if (originalAgentDir === undefined) {
+            delete process.env.PI_CODING_AGENT_DIR;
+        } else {
+            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+        }
+    }
+});
+
+test("setting writes copy legacy global config before updating new config", async () => {
+    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    try {
+        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        const legacyConfigPath = path.join(agentDir, "pi-mode", "config.json");
+        const legacyConfig = {
+            version: 1,
+            currentMode: "default",
+            modeShowName: false,
+            modes: {
+                default: {
+                    provider: "openai",
+                    modelId: "gpt-5",
+                },
+            },
+        };
+
+        await mkdir(path.dirname(legacyConfigPath), { recursive: true });
+        await writeFile(legacyConfigPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, "utf8");
+
+        setShowModeName(true);
+
+        const migratedConfig = JSON.parse(await readFile(configPath, "utf8"));
+        assert.equal(migratedConfig.modeShowName, true);
+        assert.equal(migratedConfig.currentMode, "default");
+        assert.deepEqual(migratedConfig.modes, legacyConfig.modes);
+        assert.deepEqual(JSON.parse(await readFile(legacyConfigPath, "utf8")), legacyConfig);
     } finally {
         await rm(agentDir, { recursive: true, force: true });
         if (originalAgentDir === undefined) {

@@ -7,6 +7,7 @@ export function getGlobalAgentDir(): string {
 }
 
 const EXTENSION_ID = "pi-model-modes";
+const LEGACY_EXTENSION_ID = "pi-mode";
 const CONFIG_FILE = "config.json";
 const SCHEMA_FILE = "config.schema.json";
 
@@ -20,12 +21,24 @@ const DEFAULT_MODES_CONFIG_FILE = {
     modes: {},
 };
 
+function getGlobalModesPathForExtension(extensionId: string): string {
+    return path.join(getGlobalAgentDir(), extensionId, CONFIG_FILE);
+}
+
+function getProjectModesPathForExtension(cwd: string, extensionId: string): string {
+    return path.join(cwd, CONFIG_DIR_NAME, extensionId, CONFIG_FILE);
+}
+
 export function getGlobalModesPath(): string {
-    return path.join(getGlobalAgentDir(), EXTENSION_ID, CONFIG_FILE);
+    return getGlobalModesPathForExtension(EXTENSION_ID);
 }
 
 export function getProjectModesPath(cwd: string): string {
-    return path.join(cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
+    return getProjectModesPathForExtension(cwd, EXTENSION_ID);
+}
+
+export function getLegacyProjectModesPath(cwd: string): string {
+    return getProjectModesPathForExtension(cwd, LEGACY_EXTENSION_ID);
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {
@@ -94,12 +107,25 @@ async function readBundledSchema(): Promise<string | undefined> {
     }
 }
 
+async function copyLegacyGlobalConfigIfMissing(configPath: string): Promise<void> {
+    if (await fileExists(configPath)) return;
+
+    try {
+        const legacyConfig = await fs.readFile(
+            getGlobalModesPathForExtension(LEGACY_EXTENSION_ID),
+            "utf8",
+        );
+        await writeIfMissing(configPath, legacyConfig);
+    } catch {}
+}
+
 export async function scaffoldGlobalModesConfig(): Promise<void> {
     const globalConfigPath = getGlobalModesPath();
     const schema = await readBundledSchema();
     if (schema !== undefined) {
         await refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
     }
+    await copyLegacyGlobalConfigIfMissing(globalConfigPath);
     await writeIfMissing(
         globalConfigPath,
         `${JSON.stringify(DEFAULT_MODES_CONFIG_FILE, null, 2)}\n`,
