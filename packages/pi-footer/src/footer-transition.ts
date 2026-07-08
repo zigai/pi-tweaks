@@ -5,7 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { markFooterComponent, getFooterComponentKind } from "./footer-component.ts";
-import { createFooterComponent } from "./footer-rendering.ts";
+import { createFooterComponent, type PlainFooterTheme } from "./footer-rendering.ts";
 import type { FooterConfig } from "./settings.ts";
 import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./types.ts";
 
@@ -19,7 +19,11 @@ type FooterTui = {
     requestRender(): void;
     setClearOnShrink?(enabled: boolean): void;
 };
-type FooterFactory = (tui: FooterTui, theme: unknown, footerData: FooterData) => FooterComponent;
+type FooterFactory = (
+    tui: FooterTui,
+    theme: PlainFooterTheme,
+    footerData: FooterData,
+) => FooterComponent;
 
 type FooterResetHost = {
     customFooter?: unknown;
@@ -154,13 +158,14 @@ function shouldBridgeFooter(kind: string | undefined, state: FooterTransitionSta
 function installBridgeFooter(host: FooterResetHost, snapshot: FooterSnapshot): void {
     const generationAtInstall = getTransitionState().liveInstallGeneration;
 
-    host.setExtensionFooter((tui, _theme, footerData) => {
+    host.setExtensionFooter((tui, theme, footerData) => {
         const component = createFooterComponent(
             snapshot.context,
             footerData,
             () => snapshot.thinkingLevel,
             () => tui.requestRender(),
             snapshot.config,
+            theme,
         );
         return markFooterComponent(component, "bridge");
     });
@@ -228,13 +233,14 @@ export function installLiveFooter(
     getThinkingLevel: () => string,
     config: FooterConfig,
 ): void {
-    ctx.ui.setFooter((tui, _theme, footerData) => {
+    ctx.ui.setFooter((tui, theme, footerData) => {
         const component = createFooterComponent(
             ctx,
             footerData,
             getThinkingLevel,
             () => tui.requestRender(),
             config,
+            theme,
         );
         return markFooterComponent(component, "live");
     });

@@ -1,12 +1,6 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-import {
-    ACTIVE_FOOTER_VARIANT,
-    BLOCK_COLORS,
-    BRANCH_ICON,
-    PLAIN_COLORS,
-    PLAIN_SEPARATOR_COLORS,
-} from "./constants.ts";
+import { ACTIVE_FOOTER_VARIANT, BRANCH_ICON } from "./constants.ts";
 import { getFooterSlotSnapshots, subscribeFooterSlotUpdates } from "./footer-slot-api.ts";
 import { DEFAULT_FOOTER_CONFIG, type FooterConfig } from "./settings.ts";
 import type {
@@ -19,9 +13,11 @@ import type {
     FooterSlotSnapshot,
     FooterSide,
     FooterVariant,
-    Rgb,
-    SegmentColors,
 } from "./types.ts";
+
+export type PlainFooterTheme = {
+    fg(role: "muted" | "dim", text: string): string;
+};
 
 function sanitizeStatusText(text: string): string {
     return text
@@ -46,45 +42,21 @@ function collapseHome(path: string): string {
     return path;
 }
 
-function hexToRgb(hex: string): Rgb {
-    const value = hex.replace(/^#/, "");
-    if (!/^[0-9a-fA-F]{6}$/.test(value)) {
-        throw new Error(`Invalid hex color: ${hex}`);
-    }
-    return [
-        parseInt(value.slice(0, 2), 16),
-        parseInt(value.slice(2, 4), 16),
-        parseInt(value.slice(4, 6), 16),
-    ];
-}
-
-function ansiColor(text: string, options: { fg?: string; bg?: string; bold?: boolean }): string {
-    const codes: string[] = [];
-
-    if (options.bold === true) codes.push("1");
-    if (options.fg !== undefined && options.fg.length > 0) {
-        const [r, g, b] = hexToRgb(options.fg);
-        codes.push(`38;2;${r};${g};${b}`);
-    }
-    if (options.bg !== undefined && options.bg.length > 0) {
-        const [r, g, b] = hexToRgb(options.bg);
-        codes.push(`48;2;${r};${g};${b}`);
-    }
-
-    if (codes.length === 0) return text;
-    return `\x1b[${codes.join(";")}m${text}\x1b[0m`;
-}
-
-function renderColoredText(text: string, colors: SegmentColors): string {
-    return ansiColor(text, { fg: colors.fg, bg: colors.bg });
-}
-
 function renderBlockItem(item: FooterItem): string {
-    return renderColoredText(` ${item.text} `, item.colors);
+    return ` ${item.text} `;
 }
 
-function renderPlainItem(item: FooterItem): string {
-    return renderColoredText(item.text, PLAIN_COLORS);
+function renderThemeText(
+    text: string,
+    role: "muted" | "dim",
+    theme: PlainFooterTheme | undefined,
+): string {
+    if (theme === undefined) return text;
+    return theme.fg(role, text);
+}
+
+function renderPlainItem(item: FooterItem, theme: PlainFooterTheme | undefined): string {
+    return renderThemeText(item.text, "muted", theme);
 }
 
 function getFallbackProviderDisplayName(provider: string): string {
@@ -114,32 +86,6 @@ function getProviderDisplayName(ctx: FooterContext, provider: string): string {
     return getFallbackProviderDisplayName(provider);
 }
 
-function getThinkingColors(level: string): SegmentColors {
-    switch (level) {
-        case "minimal":
-            return { bg: "#4338ca", fg: "#ffffff" };
-        case "low":
-            return { bg: "#0369a1", fg: "#ffffff" };
-        case "medium":
-            return { bg: "#0891b2", fg: "#062b33" };
-        case "high":
-            return { bg: "#8b5cf6", fg: "#ffffff" };
-        case "xhigh":
-            return { bg: "#dc2626", fg: "#ffffff" };
-        case "off":
-        default:
-            return { bg: "#374151", fg: "#e5e7eb" };
-    }
-}
-
-function getContextColors(percent: number | null | undefined): SegmentColors {
-    if (percent !== null && percent !== undefined) {
-        if (percent > 90) return { bg: "#dc2626", fg: "#ffffff" };
-        if (percent > 70) return { bg: "#f59e0b", fg: "#1f1300" };
-    }
-    return { bg: "#06b6d4", fg: "#062b33" };
-}
-
 function getContextText(usage: ContextUsage, fallbackWindow?: number): string {
     const contextWindow = usage?.contextWindow ?? fallbackWindow ?? 0;
     const contextPercent = usage?.percent;
@@ -165,19 +111,28 @@ function getMcpText(ctx: FooterContext, footerData: FooterData): string | null {
     return null;
 }
 
-function getSeparator(variant: FooterVariant, side: FooterSide, config: FooterConfig): string {
+function getSeparator(
+    variant: FooterVariant,
+    side: FooterSide,
+    config: FooterConfig,
+    theme: PlainFooterTheme | undefined,
+): string {
     if (variant === "blocks") return "";
     if (side === "left") {
-        return renderColoredText(` ${config.separator} `, PLAIN_SEPARATOR_COLORS);
+        return renderThemeText(` ${config.separator} `, "dim", theme);
     }
-    return renderColoredText("  ", PLAIN_SEPARATOR_COLORS);
+    return renderThemeText("  ", "dim", theme);
 }
 
-function renderItem(item: FooterItem, variant: FooterVariant): string {
+function renderItem(
+    item: FooterItem,
+    variant: FooterVariant,
+    theme: PlainFooterTheme | undefined,
+): string {
     if (variant === "blocks") {
         return renderBlockItem(item);
     }
-    return renderPlainItem(item);
+    return renderPlainItem(item, theme);
 }
 
 function joinRenderedItems(
@@ -185,8 +140,9 @@ function joinRenderedItems(
     variant: FooterVariant,
     side: FooterSide,
     config: FooterConfig,
+    theme: PlainFooterTheme | undefined,
 ): string {
-    return rendered.join(getSeparator(variant, side, config));
+    return rendered.join(getSeparator(variant, side, config, theme));
 }
 
 function buildSideVariants(
@@ -195,6 +151,7 @@ function buildSideVariants(
     variant: FooterVariant,
     side: FooterSide,
     config: FooterConfig,
+    theme: PlainFooterTheme | undefined,
 ): string[] {
     const items = keys
         .map((key) => itemsByKey.get(key))
@@ -209,10 +166,11 @@ function buildSideVariants(
     if (side === "left") {
         for (let count = items.length; count >= 1; count--) {
             const rendered = joinRenderedItems(
-                items.slice(0, count).map((item) => renderItem(item, variant)),
+                items.slice(0, count).map((item) => renderItem(item, variant, theme)),
                 variant,
                 side,
                 config,
+                theme,
             );
             if (!seen.has(rendered)) {
                 seen.add(rendered);
@@ -222,10 +180,11 @@ function buildSideVariants(
     } else {
         for (let start = 0; start < items.length; start++) {
             const rendered = joinRenderedItems(
-                items.slice(start).map((item) => renderItem(item, variant)),
+                items.slice(start).map((item) => renderItem(item, variant, theme)),
                 variant,
                 side,
                 config,
+                theme,
             );
             if (!seen.has(rendered)) {
                 seen.add(rendered);
@@ -238,11 +197,15 @@ function buildSideVariants(
     return variants;
 }
 
-function renderPadding(width: number, variant: FooterVariant): string {
+function renderPadding(
+    width: number,
+    variant: FooterVariant,
+    theme: PlainFooterTheme | undefined,
+): string {
     if (width <= 0) return "";
     const padding = " ".repeat(width);
     if (variant === "plain") {
-        return renderColoredText(padding, PLAIN_COLORS);
+        return renderThemeText(padding, "muted", theme);
     }
     return padding;
 }
@@ -266,34 +229,34 @@ function buildFooterItems(
     items.set("path", {
         key: "path",
         text: pathText,
-        colors: BLOCK_COLORS.path,
+        colors: { bg: "", fg: "" },
     });
     items.set("provider", {
         key: "provider",
         text: providerLabel,
-        colors: BLOCK_COLORS.provider,
+        colors: { bg: "", fg: "" },
     });
     items.set("model", {
         key: "model",
         text: modelLabel,
-        colors: BLOCK_COLORS.model,
+        colors: { bg: "", fg: "" },
     });
     items.set("thinking", {
         key: "thinking",
         text: thinkingLevel,
-        colors: getThinkingColors(thinkingLevel),
+        colors: { bg: "", fg: "" },
     });
     items.set("context", {
         key: "context",
         text: contextText,
-        colors: getContextColors(usage?.percent),
+        colors: { bg: "", fg: "" },
     });
 
     if (branch !== null && branch.length > 0) {
         items.set("branch", {
             key: "branch",
             text: `${BRANCH_ICON} ${branch}`,
-            colors: BLOCK_COLORS.branch,
+            colors: { bg: "", fg: "" },
         });
     }
 
@@ -301,7 +264,7 @@ function buildFooterItems(
         items.set("mcp", {
             key: "mcp",
             text: mcpText,
-            colors: BLOCK_COLORS.mcp,
+            colors: { bg: "", fg: "" },
         });
     }
 
@@ -357,6 +320,7 @@ export function createFooterComponent(
     getThinkingLevel: () => string,
     requestRender: () => void,
     config: FooterConfig = DEFAULT_FOOTER_CONFIG,
+    theme?: PlainFooterTheme,
 ) {
     const unsubscribeBranchChange = footerData.onBranchChange(() => requestRender());
     const unsubscribeSlotUpdates = subscribeFooterSlotUpdates(() => requestRender());
@@ -384,6 +348,7 @@ export function createFooterComponent(
                 variant,
                 "left",
                 config,
+                theme,
             );
             const rightVariants = buildSideVariants(
                 itemsByKey,
@@ -391,6 +356,7 @@ export function createFooterComponent(
                 variant,
                 "right",
                 config,
+                theme,
             );
 
             for (const left of leftVariants) {
@@ -413,7 +379,7 @@ export function createFooterComponent(
                         minimumInnerGap,
                         renderWidth - edgePaddingWidth - leftWidth - rightWidth,
                     );
-                    const padding = renderPadding(paddingWidth, variant);
+                    const padding = renderPadding(paddingWidth, variant, theme);
                     if (right.length > 0) {
                         return [truncateToWidth(` ${left}${padding}${right} `, renderWidth, "")];
                     }

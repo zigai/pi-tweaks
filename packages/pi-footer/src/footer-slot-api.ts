@@ -19,7 +19,7 @@ export type FooterSlotRegistration = {
     readonly defaultSide?: FooterSide;
     /** Initial visible text. Empty or whitespace-only text hides the slot. */
     readonly text?: string;
-    /** Colors used by block footer rendering variants. */
+    /** Optional colors preserved for compatibility with block footer variants. */
     readonly colors?: SegmentColors;
 };
 

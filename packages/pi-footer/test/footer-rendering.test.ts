@@ -9,6 +9,7 @@ import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
 import type { FooterContext, FooterData } from "../src/types.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const BACKGROUND_ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*48;2;`);
 
 function stripAnsi(value: string): string {
     return value.replace(ANSI_PATTERN, "");
@@ -79,6 +80,28 @@ test("createFooterComponent renders key session status without exceeding width",
     assert.match(plain, /medium/);
     assert.match(plain, /75\.0%\/200k/);
     assert.match(plain, /MCP: 2 servers/);
+});
+
+test("createFooterComponent leaves plain footer background transparent", () => {
+    const theme = {
+        fg(role: "muted" | "dim", text: string): string {
+            return `<${role}>${text}</${role}>`;
+        },
+    };
+    const component = createFooterComponent(
+        footerContext(),
+        footerData("main", new Map()),
+        () => "medium",
+        () => undefined,
+        DEFAULT_FOOTER_CONFIG,
+        theme,
+    );
+
+    const line = component.render(120)[0] ?? "";
+
+    assert.doesNotMatch(line, BACKGROUND_ANSI_PATTERN);
+    assert.match(line, /<muted>.*\/workspace\/pi-tweaks.*<\/muted>/);
+    assert.match(line, /<dim> · <\/dim>/);
 });
 
 test("createFooterComponent renders configured plain separator", () => {
