@@ -10,6 +10,7 @@ This Pi extension collects opinionated editor and message-submit key tweaks.
 
 - Makes `Enter` queue a follow-up and `Alt+Enter` steer the current run.
 - Normalizes terminal `LF` Enter input to submit correctly in SSH/TMUX sessions.
+- Prevents `Up` from recalling prompt history while a non-empty draft is open.
 - Adds Codex-style line start/end behavior for Pi's configured `tui.editor.cursorLineStart` and `tui.editor.cursorLineEnd` actions:
   - line start moves to the previous line when already at column 0
   - line end moves to the next line when already at the current line end

@@ -24,6 +24,7 @@ type PatchableEditorPrototype = Editor & {
 
 type EditorInternals = {
     state: { lines: string[]; cursorLine: number; cursorCol: number };
+    historyIndex?: unknown;
     lastAction: unknown;
     setCursorCol(column: number): void;
 };
@@ -136,6 +137,20 @@ function moveToCodexLineEnd(editor: EditorLike): void {
     editor.requestRenderNow?.();
 }
 
+function isBrowsingPromptHistory(editor: EditorLike): boolean {
+    const self = editor as unknown as EditorInternals;
+    return typeof self.historyIndex === "number" && self.historyIndex > -1;
+}
+
+function shouldBlockPromptHistoryUp(editor: EditorLike): boolean {
+    if (editor.isShowingAutocomplete()) return false;
+    if (editor.getText().length === 0) return false;
+    if (isBrowsingPromptHistory(editor)) return false;
+
+    const cursor = editor.getCursor();
+    return cursor.line === 0 && cursor.col === 0;
+}
+
 function enhanceEditor(
     editor: EditorLike,
     keybindings: ConstructorParameters<typeof CustomEditor>[2],
@@ -146,6 +161,14 @@ function enhanceEditor(
     const originalHandleInput = editor.handleInput.bind(editor);
     editor.handleInput = (data: string) => {
         if (editor.onExtensionShortcut?.(data) === true) return;
+
+        if (
+            keybindings.matches(data, "tui.editor.cursorUp") &&
+            shouldBlockPromptHistoryUp(editor)
+        ) {
+            editor.requestRenderNow?.();
+            return;
+        }
 
         if (keybindings.matches(data, "tui.editor.cursorLineStart")) {
             moveToCodexLineStart(editor);
