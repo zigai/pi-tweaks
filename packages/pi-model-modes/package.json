@@ -1,5 +1,5 @@
 {
-  "name": "@zigai/pi-mode",
+  "name": "@zigai/pi-model-modes",
   "version": "0.4.0",
   "description": "Pi package that adds prompt modes for model and thinking-level switching.",
   "keywords": [
@@ -10,7 +10,7 @@
     "pi-package",
     "pi-tweaks"
   ],
-  "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-mode#readme",
+  "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-model-modes#readme",
   "bugs": {
     "url": "https://github.com/zigai/pi-tweaks/issues"
   },
@@ -19,7 +19,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zigai/pi-tweaks.git",
-    "directory": "packages/pi-mode"
+    "directory": "packages/pi-model-modes"
   },
   "files": [
     "src",

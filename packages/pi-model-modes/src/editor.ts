@@ -8,7 +8,7 @@ import { shouldShowModeName } from "./settings.ts";
 
 const ANSI_SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const stripAnsi = (value: string) => value.replace(ANSI_SGR, "");
-const MODE_FACTORY_BASE = Symbol.for("zigai.pi-mode.editor-factory-base");
+const MODE_FACTORY_BASE = Symbol.for("zigai.pi-model-modes.editor-factory-base");
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 

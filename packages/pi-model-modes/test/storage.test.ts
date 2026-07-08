@@ -18,12 +18,12 @@ async function exists(filePath: string): Promise<boolean> {
 
 test("scaffoldGlobalModesConfig creates missing global config and schema", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
-    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mode-agent-"));
+    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-mode", "config.json");
-        const schemaPath = path.join(agentDir, "pi-mode", "config.schema.json");
+        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        const schemaPath = path.join(agentDir, "pi-model-modes", "config.schema.json");
         await scaffoldGlobalModesConfig();
 
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
@@ -55,11 +55,11 @@ test("scaffoldGlobalModesConfig creates missing global config and schema", async
 
 test("mode config writes reject unknown config keys", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
-    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mode-agent-"));
+    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-mode", "config.json");
+        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
         await scaffoldGlobalModesConfig();
         const invalidConfig = JSON.stringify({
             version: 1,
@@ -87,7 +87,7 @@ test("mode config writes reject unknown config keys", async () => {
 });
 
 test("atomicWriteUtf8 creates parent directories and replaces existing content", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pi-mode-storage-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-storage-"));
     try {
         const filePath = path.join(dir, "nested", "modes.json");
         await atomicWriteUtf8(filePath, "first");
@@ -100,7 +100,7 @@ test("atomicWriteUtf8 creates parent directories and replaces existing content",
 });
 
 test("withFileLock removes lock files when the callback throws", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pi-mode-storage-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-storage-"));
     try {
         const filePath = path.join(dir, "modes.json");
         const lockPath = `${filePath}.lock`;
@@ -119,7 +119,7 @@ test("withFileLock removes lock files when the callback throws", async () => {
 });
 
 test("withFileLock removes stale locks before running the callback", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pi-mode-storage-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-storage-"));
     try {
         const filePath = path.join(dir, "modes.json");
         const lockPath = `${filePath}.lock`;

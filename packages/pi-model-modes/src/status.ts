@@ -2,8 +2,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { shouldShowThinkingLevelStatus } from "./settings.ts";
 
-const STATUS_PATCH_MARKER = Symbol.for("zigai.pi-mode.thinking-status-patch");
-const STATUS_PATCH_STATE = Symbol.for("zigai.pi-mode.thinking-status-state");
+const STATUS_PATCH_MARKER = Symbol.for("zigai.pi-model-modes.thinking-status-patch");
+const STATUS_PATCH_STATE = Symbol.for("zigai.pi-model-modes.thinking-status-state");
 const THINKING_LEVEL_STATUS_PREFIX = "Thinking level: ";
 
 type InteractiveModePrototype = {
@@ -63,7 +63,7 @@ function warnStatusPatchUnavailable(error?: unknown): void {
         suffix = `: ${error.message}`;
     }
     console.warn(
-        `[pi-mode] thinking-level status patch unavailable; Pi internals may have changed${suffix}`,
+        `[pi-model-modes] thinking-level status patch unavailable; Pi internals may have changed${suffix}`,
     );
 }
 

@@ -1,15 +1,15 @@
-# Pi Mode
+# Pi Model Modes
 
-[![npm version](https://img.shields.io/npm/v/@zigai/pi-mode.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-mode)
-[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-mode.svg)](https://www.npmjs.com/package/@zigai/pi-mode)
-[![license](https://img.shields.io/npm/l/@zigai/pi-mode.svg)](../../LICENSE)
+[![npm version](https://img.shields.io/npm/v/@zigai/pi-model-modes.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-model-modes)
+[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-model-modes.svg)](https://www.npmjs.com/package/@zigai/pi-model-modes)
+[![license](https://img.shields.io/npm/l/@zigai/pi-model-modes.svg)](../../LICENSE)
 
 This Pi extension adds prompt modes for model and thinking-level switching.
 
 ## Install
 
 ```sh
-pi install npm:@zigai/pi-mode
+pi install npm:@zigai/pi-model-modes
 ```
 
 ## Features
@@ -20,11 +20,11 @@ pi install npm:@zigai/pi-mode
 - Can show the current mode in the prompt editor border when enabled.
 - Colors the prompt editor border from the active mode, with an opt-in setting for thinking-derived border colors.
 
-Modes can store a provider, model, thinking level, and optional color. By default, Pi Mode hides Pi's transient `Thinking level: …` status message because the active thinking level is already visible in the footer.
+Modes can store a provider, model, thinking level, and optional color. By default, Pi Model Modes hides Pi's transient `Thinking level: …` status message because the active thinking level is already visible in the footer.
 
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-mode/config.json`.
+Configure global settings at `~/.pi/agent/pi-model-modes/config.json`.
 
 | Option                        | Type      | Default     | Description                                                                |
 | ----------------------------- | --------- | ----------- | -------------------------------------------------------------------------- |

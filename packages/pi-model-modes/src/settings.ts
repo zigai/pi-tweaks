@@ -23,7 +23,7 @@ export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelSta
 
 const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
 const STALE_SETTINGS_LOCK_MS = 30_000;
-const EXTENSION_ID = "pi-mode";
+const EXTENSION_ID = "pi-model-modes";
 const CONFIG_FILE = "config.json";
 const SCHEMA_FILE = "config.schema.json";
 const ModeSpecJsonSchema = Type.Object(

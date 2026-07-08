@@ -108,7 +108,7 @@ function parseSchema<Schema extends TSchema>(
 }
 
 function parseModesFileJson(value: unknown): ModesFileJson {
-    return parseSchema(ModesFileJsonSchema, value, "pi-mode config.json");
+    return parseSchema(ModesFileJsonSchema, value, "pi-model-modes config.json");
 }
 
 function parseConfigObject(value: unknown, filePath: string): Record<string, unknown> {

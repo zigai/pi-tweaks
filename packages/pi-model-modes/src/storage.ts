@@ -6,7 +6,7 @@ export function getGlobalAgentDir(): string {
     return getAgentDir();
 }
 
-const EXTENSION_ID = "pi-mode";
+const EXTENSION_ID = "pi-model-modes";
 const CONFIG_FILE = "config.json";
 const SCHEMA_FILE = "config.schema.json";
 
