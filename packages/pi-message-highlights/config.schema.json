@@ -10,8 +10,8 @@
     },
     "urlColor": {
       "$ref": "#/$defs/highlightColor",
-      "default": 117,
-      "description": "URL highlight foreground. Use a 0-255 ANSI color, #RRGGBB hex color, empty string to disable URL color, or a Pi theme foreground role such as mdLink or accent."
+      "default": "#87d7ff",
+      "description": "URL highlight foreground. Use a #RRGGBB hex color, a 0-255 ANSI color, empty string to disable URL color, or a Pi theme foreground role such as mdLink or accent."
     }
   },
   "$defs": {

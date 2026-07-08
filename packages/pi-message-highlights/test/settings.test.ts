@@ -18,10 +18,10 @@ test("loadMessageHighlightsConfig scaffolds missing global config and schema", a
         const loaded = loadMessageHighlightsConfig(cwd, false);
 
         assert.deepEqual(loaded.errors, []);
-        assert.deepEqual(loaded.config.urlColor, { kind: "ansi256", color: 117 });
+        assert.deepEqual(loaded.config.urlColor, { kind: "hex", color: "#87d7ff" });
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
             $schema: "./config.schema.json",
-            urlColor: 117,
+            urlColor: "#87d7ff",
         });
         assert.match(await readFile(schemaPath, "utf8"), /Pi message highlights config/);
 
@@ -44,10 +44,10 @@ test("loadMessageHighlightsConfig scaffolds missing global config and schema", a
     }
 });
 
-test("resolveMessageHighlightsConfig defaults URL color to the original blue", () => {
+test("resolveMessageHighlightsConfig defaults URL color to the original blue hex", () => {
     const loaded = resolveMessageHighlightsConfig([]);
 
-    assert.deepEqual(loaded.config.urlColor, { kind: "ansi256", color: 117 });
+    assert.deepEqual(loaded.config.urlColor, { kind: "hex", color: "#87d7ff" });
     assert.deepEqual(loaded.errors, []);
 });
 
@@ -89,7 +89,7 @@ test("resolveMessageHighlightsConfig rejects invalid URL colors", () => {
         { label: "settings", settings: { urlColor: 300 } },
     ]);
 
-    assert.deepEqual(loaded.config.urlColor, { kind: "ansi256", color: 117 });
+    assert.deepEqual(loaded.config.urlColor, { kind: "hex", color: "#87d7ff" });
     assert.equal(loaded.errors.length, 1);
     assert.match(loaded.errors[0] ?? "", /settings is invalid:/);
 });
@@ -99,7 +99,7 @@ test("resolveMessageHighlightsConfig rejects unknown config keys", () => {
         { label: "settings", settings: { urlColour: 117 } },
     ]);
 
-    assert.deepEqual(loaded.config.urlColor, { kind: "ansi256", color: 117 });
+    assert.deepEqual(loaded.config.urlColor, { kind: "hex", color: "#87d7ff" });
     assert.equal(loaded.errors.length, 1);
     assert.match(loaded.errors[0] ?? "", /settings is invalid:/);
     assert.match(loaded.errors[0] ?? "", /additional properties/);

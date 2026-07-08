@@ -16,14 +16,14 @@ pi install npm:@zigai/pi-message-highlights
 
 Configure global settings at `~/.pi/agent/pi-message-highlights/config.json`.
 
-| Option     | Type               | Default | Description                                                                                                                               |
-| ---------- | ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `urlColor` | `number \| string` | `117`   | URL foreground color. Use a 0-255 ANSI color, `#RRGGBB`, empty string to disable URL color, or a Pi theme role like `mdLink` or `accent`. |
+| Option     | Type               | Default   | Description                                                                                                                               |
+| ---------- | ------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `urlColor` | `number \| string` | `#87d7ff` | URL foreground color. Use `#RRGGBB`, a 0-255 ANSI color, empty string to disable URL color, or a Pi theme role like `mdLink` or `accent`. |
 
 ```json
 {
   "$schema": "./config.schema.json",
-  "urlColor": 117
+  "urlColor": "#87d7ff"
 }
 ```
 

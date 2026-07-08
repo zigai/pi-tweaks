@@ -23,7 +23,7 @@ function theme(colorMode: "truecolor" | "256color" = "truecolor"): HighlightThem
 test("buildHighlightStyles defaults URLs to the original blue", () => {
     const styles = buildHighlightStyles(undefined, DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG);
 
-    assert.equal(styles.url, `${ESC}[38;5;117m`);
+    assert.equal(styles.url, `${ESC}[38;2;135;215;255m`);
     assert.equal(styles.filepath, "");
 });
 
@@ -71,7 +71,7 @@ test("buildHighlightStyles tolerates Pi theme access before initialization", () 
         DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG,
     );
 
-    assert.equal(defaultStyles.url, `${ESC}[38;5;117m`);
+    assert.equal(defaultStyles.url, `${ESC}[38;2;135;215;255m`);
     assert.equal(defaultStyles.filepath, "");
     assert.equal(
         buildHighlightStyles(uninitializedTheme, {

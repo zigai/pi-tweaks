@@ -117,11 +117,11 @@ const MessageHighlightsConfigSchema = Type.Object(
 type ParsedMessageHighlightsConfig = Static<typeof MessageHighlightsConfigSchema>;
 const THEME_FOREGROUND_COLOR_SET = new Set<string>(THEME_FOREGROUND_COLORS);
 
-export const DEFAULT_URL_COLOR_SETTING = 117;
+export const DEFAULT_URL_COLOR_SETTING = "#87d7ff";
 
 export const DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG: MessageHighlightsConfig = {
     urlColor: {
-        kind: "ansi256",
+        kind: "hex",
         color: DEFAULT_URL_COLOR_SETTING,
     },
 };
