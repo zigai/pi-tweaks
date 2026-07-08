@@ -14,14 +14,14 @@ A collection of small Pi extensions for improving interaction, display, and mode
 | [@zigai/pi-response-renderer](packages/pi-response-renderer)     | Makes assistant responses more compact.                                                                          | `pi install npm:@zigai/pi-response-renderer`   |
 | [@zigai/pi-plain-user-messages](packages/pi-plain-user-messages) | Renders user-submitted messages as plain text instead of Markdown.                                               | `pi install npm:@zigai/pi-plain-user-messages` |
 | [@zigai/pi-message-highlights](packages/pi-message-highlights)   | Highlights URLs and file paths in messages and the prompt editor.                                                | `pi install npm:@zigai/pi-message-highlights`  |
-| [@zigai/pi-run-timer](packages/pi-run-timer)                     | Shows live loader elapsed time, optional rotating working-bar messages, and post-run timing stats.               | `pi install npm:@zigai/pi-run-timer`           |
+| [@zigai/pi-status-bar](packages/pi-status-bar)                   | Provides a programmable active and idle status bar with timing stats.                                            | `pi install npm:@zigai/pi-status-bar`          |
 | [@zigai/pi-keymap-tweaks](packages/pi-keymap-tweaks)             | Adds opinionated editor key behavior plus `Enter`/`Alt+Enter` submit-mode tweaks.                                | `pi install npm:@zigai/pi-keymap-tweaks`       |
-| [@zigai/pi-mode](packages/pi-mode)                               | Adds prompt modes for model and thinking-level switching with editor border cues.                                | `pi install npm:@zigai/pi-mode`                |
+| [@zigai/pi-model-modes](packages/pi-model-modes)                 | Adds prompt modes for model and thinking-level switching with editor border cues.                                | `pi install npm:@zigai/pi-model-modes`         |
 | [@zigai/pi-prompt-history](packages/pi-prompt-history)           | Adds cross-session prompt history to the prompt editor.                                                          | `pi install npm:@zigai/pi-prompt-history`      |
 | [@zigai/pi-mention-skill](packages/pi-mention-skill)             | Moves skills from slash autocomplete to `$` mention.                                                             | `pi install npm:@zigai/pi-mention-skill`       |
 | [@zigai/pi-mention-project](packages/pi-mention-project)         | Adds fuzzy `#` mentions for configured Git project directories.                                                  | `pi install npm:@zigai/pi-mention-project`     |
 | [@zigai/pi-trust-all-folders](packages/pi-trust-all-folders)     | Automatically trust all folders                                                                                  | `pi install npm:@zigai/pi-trust-all-folders`   |
 
-# License
+## License
 
 MIT
