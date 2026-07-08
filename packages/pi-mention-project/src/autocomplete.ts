@@ -70,7 +70,7 @@ function filterProjects(
     trigger: string,
 ): AutocompleteItem[] {
     if (query.length === 0) {
-        return projects.slice(0, MAX_SUGGESTIONS).map((project) => projectToItem(project, trigger));
+        return projects.map((project) => projectToItem(project, trigger));
     }
 
     return fuzzyFilter(projects, query, (project) => `${project.name} ${project.path}`)

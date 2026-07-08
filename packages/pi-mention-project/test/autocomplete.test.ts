@@ -60,6 +60,25 @@ test("createProjectMentionProvider suggests projects after the configured trigge
     );
 });
 
+test("createProjectMentionProvider returns all projects for empty browse", async () => {
+    const projects = Array.from({ length: 25 }, (_value, index) => {
+        return project(`project-${index.toString().padStart(2, "0")}`);
+    });
+    const provider = createProjectMentionProvider(
+        fallbackProvider([]),
+        settings(["/tmp/projects"]),
+        async () => projects,
+    );
+
+    const suggestions = await provider.getSuggestions(["Use #"], 0, "Use #".length, {
+        signal: new AbortController().signal,
+    });
+
+    assert.equal(suggestions?.prefix, "#");
+    assert.equal(suggestions?.items.length, 25);
+    assert.equal(suggestions?.items.at(-1)?.value, "#project-24");
+});
+
 test("createProjectMentionProvider skips project loading when completion is aborted", async () => {
     let loadCount = 0;
     const provider = createProjectMentionProvider(
