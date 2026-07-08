@@ -27,6 +27,11 @@ import {
 } from "./model-selector-provider-badge.ts";
 import { installModelStatusPatch, setHideModelChangeStatus } from "./model-status.ts";
 import {
+    applyPasteCollapseEditor,
+    installPasteCollapsePatch,
+    setPasteCollapseSettings,
+} from "./paste-collapse.ts";
+import {
     installSelectedOptionPrefixSelectListPatch,
     installSelectedOptionPrefixThemePatch,
     setSelectedOptionPrefix,
@@ -62,6 +67,13 @@ function applyUiTweaksConfig(ctx: ExtensionContext): void {
     setHighlightSelectedModelProvider(loaded.config.highlightSelectedModelProvider);
     setInputPromptPrefix(loaded.config.inputPromptPrefix);
     setNeutralBorderColor(loaded.config.neutralBorderColor);
+    setPasteCollapseSettings({
+        pasteCollapseCharThreshold: loaded.config.pasteCollapseCharThreshold,
+        pasteCollapseEnabled: loaded.config.pasteCollapseEnabled,
+        pasteCollapseExpandKey: loaded.config.pasteCollapseExpandKey,
+        pasteCollapseLineThreshold: loaded.config.pasteCollapseLineThreshold,
+        pasteCollapseUseToolExpandKey: loaded.config.pasteCollapseUseToolExpandKey,
+    });
     setRestoreContentAfterAutocompleteClose(loaded.config.restoreContentAfterAutocompleteClose);
     setSelectedOptionPrefix(loaded.config.selectedOptionPrefix);
     reportConfigErrors(ctx, loaded);
@@ -78,6 +90,7 @@ export default function uiTweaksExtension(pi: ExtensionAPI): void {
     installModelSelectorHintPatch();
     void installModelSelectorProviderBadgePatch();
     installModelStatusPatch();
+    installPasteCollapsePatch();
     installSelectedOptionPrefixSelectListPatch();
     installSlashCommandSourcePatch();
     void installNeutralBorderColorPatch();
@@ -86,5 +99,6 @@ export default function uiTweaksExtension(pi: ExtensionAPI): void {
     pi.on("session_start", (_event, ctx) => {
         applyUiTweaksConfig(ctx);
         applyBashExecSpacingEditor(ctx);
+        applyPasteCollapseEditor(ctx);
     });
 }

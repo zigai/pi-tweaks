@@ -1,0 +1,249 @@
+import assert from "node:assert/strict";
+import { test } from "vitest";
+
+import type { ExtensionContext, KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import { TUI, type EditorComponent, type EditorTheme, type Terminal } from "@earendil-works/pi-tui";
+import { applyBashExecSpacingEditor } from "../src/bash-exec-spacing.ts";
+import {
+    applyPasteCollapseEditor,
+    installPasteCollapsePatch,
+    setPasteCollapseSettings,
+    type PasteCollapseSettings,
+} from "../src/paste-collapse.ts";
+
+const TOOL_EXPAND = "TOOL_EXPAND";
+const CUSTOM_EXPAND = "\x05";
+
+class FakeTerminal implements Terminal {
+    columns = 80;
+    rows = 24;
+
+    get kittyProtocolActive(): boolean {
+        return false;
+    }
+
+    start(): void {}
+
+    stop(): void {}
+
+    async drainInput(): Promise<void> {}
+
+    write(): void {}
+
+    moveBy(): void {}
+
+    hideCursor(): void {}
+
+    showCursor(): void {}
+
+    clearLine(): void {}
+
+    clearFromCursor(): void {}
+
+    clearScreen(): void {}
+
+    setTitle(): void {}
+
+    setProgress(): void {}
+}
+
+type TestEditor = EditorComponent & {
+    getExpandedText(): string;
+    getText(): string;
+    handleInput(data: string): void;
+};
+
+type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
+
+const defaultSettings: PasteCollapseSettings = {
+    pasteCollapseCharThreshold: 1000,
+    pasteCollapseEnabled: true,
+    pasteCollapseExpandKey: null,
+    pasteCollapseLineThreshold: 10,
+    pasteCollapseUseToolExpandKey: true,
+};
+
+const identityStyle = (text: string): string => text;
+const editorTheme: EditorTheme = {
+    borderColor: identityStyle,
+    selectList: {
+        selectedPrefix: identityStyle,
+        selectedText: identityStyle,
+        description: identityStyle,
+        scrollInfo: identityStyle,
+        noMatch: identityStyle,
+    },
+};
+
+const keybindings = {
+    matches(data: string, action: string): boolean {
+        return action === "app.tools.expand" && data === TOOL_EXPAND;
+    },
+} as unknown as KeybindingsManager;
+
+function setTestSettings(settings: Partial<PasteCollapseSettings>): void {
+    setPasteCollapseSettings({ ...defaultSettings, ...settings });
+}
+
+function withSettings(settings: Partial<PasteCollapseSettings>, run: () => void): void {
+    setTestSettings(settings);
+    try {
+        run();
+    } finally {
+        setPasteCollapseSettings(defaultSettings);
+    }
+}
+
+function createPasteCollapseEditor(): TestEditor {
+    installPasteCollapsePatch();
+    let editorFactory: EditorFactory | undefined;
+    const context = {
+        hasUI: true,
+        ui: {
+            getEditorComponent() {
+                return editorFactory;
+            },
+            setEditorComponent(nextFactory: EditorFactory | undefined): void {
+                editorFactory = nextFactory;
+            },
+        },
+    } as unknown as ExtensionContext;
+
+    applyPasteCollapseEditor(context);
+
+    if (editorFactory === undefined) {
+        assert.fail("expected editor factory");
+    }
+
+    const tui = new TUI(new FakeTerminal());
+    return editorFactory(tui, editorTheme, keybindings) as unknown as TestEditor;
+}
+
+function paste(text: string): string {
+    return `\x1b[200~${text}\x1b[201~`;
+}
+
+test("large paste collapse can be disabled", () => {
+    withSettings({ pasteCollapseEnabled: false }, () => {
+        const editor = createPasteCollapseEditor();
+        const pastedText = Array.from({ length: 20 }, (_value, index) => `line ${index}`).join(
+            "\n",
+        );
+
+        editor.handleInput(paste(pastedText));
+
+        assert.equal(editor.getText(), pastedText);
+        assert.equal(editor.getExpandedText(), pastedText);
+    });
+});
+
+test("paste collapse thresholds are configurable", () => {
+    withSettings({ pasteCollapseCharThreshold: 5, pasteCollapseLineThreshold: 99 }, () => {
+        const editor = createPasteCollapseEditor();
+
+        editor.handleInput(paste("abcdef"));
+
+        assert.equal(editor.getText(), "[paste #1 6 chars]");
+        assert.equal(editor.getExpandedText(), "abcdef");
+    });
+
+    withSettings({ pasteCollapseCharThreshold: 999, pasteCollapseLineThreshold: 1 }, () => {
+        const editor = createPasteCollapseEditor();
+
+        editor.handleInput(paste("one\ntwo"));
+
+        assert.equal(editor.getText(), "[paste #1 +2 lines]");
+        assert.equal(editor.getExpandedText(), "one\ntwo");
+    });
+});
+
+test("custom expand key expands the paste marker under the cursor", () => {
+    withSettings(
+        {
+            pasteCollapseExpandKey: "ctrl+e",
+            pasteCollapseLineThreshold: 1,
+            pasteCollapseUseToolExpandKey: false,
+        },
+        () => {
+            const editor = createPasteCollapseEditor();
+            editor.handleInput(paste("one\ntwo"));
+
+            editor.handleInput(CUSTOM_EXPAND);
+
+            assert.equal(editor.getText(), "one\ntwo");
+            assert.equal(editor.getExpandedText(), "one\ntwo");
+        },
+    );
+});
+
+test("tool expand key expands only the marker under the cursor", () => {
+    withSettings({ pasteCollapseLineThreshold: 1 }, () => {
+        const editor = createPasteCollapseEditor();
+        editor.handleInput(paste("one\ntwo"));
+        editor.handleInput(" ");
+        editor.handleInput(paste("three\nfour"));
+
+        editor.handleInput(TOOL_EXPAND);
+
+        assert.equal(editor.getText(), "[paste #1 +2 lines] three\nfour");
+        assert.equal(editor.getExpandedText(), "one\ntwo three\nfour");
+    });
+});
+
+test("tool expand key falls through when no paste marker is under the cursor", () => {
+    withSettings({}, () => {
+        const editor = createPasteCollapseEditor();
+
+        editor.handleInput(TOOL_EXPAND);
+
+        assert.equal(editor.getText(), TOOL_EXPAND);
+    });
+});
+
+test("editor wrappers remain idempotent across repeated session starts", () => {
+    withSettings({}, () => {
+        let shortcutChecks = 0;
+        const baseInputs: string[] = [];
+        const baseFactory: EditorFactory = () => {
+            return {
+                handleInput(data: string): void {
+                    baseInputs.push(data);
+                },
+                onExtensionShortcut(data: string): boolean {
+                    if (data === TOOL_EXPAND) {
+                        shortcutChecks += 1;
+                    }
+                    return false;
+                },
+            } as unknown as EditorComponent;
+        };
+        let editorFactory: EditorFactory | undefined = baseFactory;
+        const context = {
+            hasUI: true,
+            ui: {
+                getEditorComponent() {
+                    return editorFactory;
+                },
+                setEditorComponent(nextFactory: EditorFactory | undefined): void {
+                    editorFactory = nextFactory;
+                },
+            },
+        } as unknown as ExtensionContext;
+
+        applyBashExecSpacingEditor(context);
+        applyPasteCollapseEditor(context);
+        applyBashExecSpacingEditor(context);
+        applyPasteCollapseEditor(context);
+
+        if (editorFactory === undefined) {
+            assert.fail("expected editor factory");
+        }
+
+        const tui = new TUI(new FakeTerminal());
+        const editor = editorFactory(tui, editorTheme, keybindings) as unknown as TestEditor;
+        editor.handleInput(TOOL_EXPAND);
+
+        assert.equal(shortcutChecks, 1);
+        assert.deepEqual(baseInputs, [TOOL_EXPAND]);
+    });
+});

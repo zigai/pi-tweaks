@@ -1,12 +1,11 @@
 import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import {
+    hasEditorFactoryLayer,
+    markEditorFactoryLayer,
+    type EditorFactory,
+} from "./editor-factory-layers.ts";
 import { getUiTweaksPatchState } from "./patch-state.ts";
-
-const BASH_EXEC_SPACING_FACTORY_BASE = Symbol.for(
-    "zigai.pi-ui-tweaks.bash-exec-spacing-editor-factory-base",
-);
-
-type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
 export type BashExecSpacingEditor = {
     getCursor(): { line: number; col: number };
@@ -19,10 +18,6 @@ export type BashExecSpacingEditor = {
 };
 
 type EditorLike = CustomEditor & BashExecSpacingEditor;
-
-type WrappedEditorFactory = EditorFactory & {
-    [BASH_EXEC_SPACING_FACTORY_BASE]?: EditorFactory | undefined;
-};
 
 function requestEditorRender(editor: BashExecSpacingEditor): void {
     editor.requestRenderNow?.();
@@ -96,14 +91,18 @@ export function applyBashExecSpacingEditor(ctx: ExtensionContext): void {
         return;
     }
 
-    const existing = ctx.ui.getEditorComponent() as WrappedEditorFactory | undefined;
-    const baseFactory = existing?.[BASH_EXEC_SPACING_FACTORY_BASE] ?? existing;
-    const factory = ((tui, theme, keybindings) => {
+    const existing = ctx.ui.getEditorComponent();
+    if (hasEditorFactoryLayer(existing, "bashExecSpacing")) {
+        return;
+    }
+
+    const baseFactory = existing;
+    const factory: EditorFactory = (tui, theme, keybindings) => {
         const editor = (baseFactory?.(tui, theme, keybindings) ??
             new CustomEditor(tui, theme, keybindings)) as EditorLike;
         return enhanceEditor(editor, () => tui.requestRender());
-    }) as WrappedEditorFactory;
-    factory[BASH_EXEC_SPACING_FACTORY_BASE] = baseFactory;
+    };
+    markEditorFactoryLayer(factory, existing, "bashExecSpacing");
 
     ctx.ui.setEditorComponent(factory);
 }

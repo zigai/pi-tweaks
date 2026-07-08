@@ -4,6 +4,14 @@ import { dirname, join } from "node:path";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
+import {
+    DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
+    DEFAULT_PASTE_COLLAPSE_ENABLED,
+    DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
+    DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
+    DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+} from "./patch-state.ts";
+
 const EXTENSION_ID = "pi-ui-tweaks";
 const CONFIG_FILE = "config.json";
 const SCHEMA_FILE = "config.schema.json";
@@ -20,6 +28,11 @@ export type UiTweaksConfig = {
     readonly highlightSelectedModelProvider: boolean;
     readonly inputPromptPrefix: string;
     readonly neutralBorderColor: boolean;
+    readonly pasteCollapseCharThreshold: number;
+    readonly pasteCollapseEnabled: boolean;
+    readonly pasteCollapseExpandKey: string | null;
+    readonly pasteCollapseLineThreshold: number;
+    readonly pasteCollapseUseToolExpandKey: boolean;
     readonly restoreContentAfterAutocompleteClose: boolean;
     readonly selectedOptionPrefix: string;
 };
@@ -48,9 +61,22 @@ type UiTweaksSettings = {
     highlightSelectedModelProvider?: boolean;
     inputPromptPrefix?: string;
     neutralBorderColor?: boolean;
+    pasteCollapseCharThreshold?: number;
+    pasteCollapseEnabled?: boolean;
+    pasteCollapseExpandKey?: string | null;
+    pasteCollapseLineThreshold?: number;
+    pasteCollapseUseToolExpandKey?: boolean;
     restoreContentAfterAutocompleteClose?: boolean;
     selectedOptionPrefix?: string;
 };
+
+const PASTE_COLLAPSE_EXPAND_KEY_PATTERN =
+    "^(?:(?:ctrl|shift|alt|super)\\+)*(?:[a-z0-9]|escape|esc|enter|return|tab|space|backspace|delete|insert|clear|home|end|pageUp|pageDown|pageup|pagedown|up|down|left|right|f(?:[1-9]|1[0-2])|[`\\-=\\[\\]\\\\;',./!@#$%^&*()_|~{}:<>?])$";
+
+const OptionalPasteCollapseExpandKeySchema = Type.Union([
+    Type.String({ minLength: 1, pattern: PASTE_COLLAPSE_EXPAND_KEY_PATTERN }),
+    Type.Null(),
+]);
 
 const UiTweaksConfigSchema = Type.Object(
     {
@@ -67,6 +93,11 @@ const UiTweaksConfigSchema = Type.Object(
         highlightSelectedModelProvider: Type.Optional(Type.Boolean()),
         inputPromptPrefix: Type.Optional(Type.String({ minLength: 1 })),
         neutralBorderColor: Type.Optional(Type.Boolean()),
+        pasteCollapseCharThreshold: Type.Optional(Type.Integer({ minimum: 0 })),
+        pasteCollapseEnabled: Type.Optional(Type.Boolean()),
+        pasteCollapseExpandKey: Type.Optional(OptionalPasteCollapseExpandKeySchema),
+        pasteCollapseLineThreshold: Type.Optional(Type.Integer({ minimum: 0 })),
+        pasteCollapseUseToolExpandKey: Type.Optional(Type.Boolean()),
         restoreContentAfterAutocompleteClose: Type.Optional(Type.Boolean()),
         selectedOptionPrefix: Type.Optional(Type.String({ minLength: 1 })),
     },
@@ -87,6 +118,11 @@ const DEFAULT_UI_TWEAKS_CONFIG: UiTweaksConfig = {
     highlightSelectedModelProvider: true,
     inputPromptPrefix: "> ",
     neutralBorderColor: true,
+    pasteCollapseCharThreshold: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
+    pasteCollapseEnabled: DEFAULT_PASTE_COLLAPSE_ENABLED,
+    pasteCollapseExpandKey: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
+    pasteCollapseLineThreshold: DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
+    pasteCollapseUseToolExpandKey: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
     restoreContentAfterAutocompleteClose: true,
     selectedOptionPrefix: "→ ",
 };
@@ -155,6 +191,11 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
             highlightSelectedModelProvider: false,
             inputPromptPrefix: DEFAULT_UI_TWEAKS_CONFIG.inputPromptPrefix,
             neutralBorderColor: false,
+            pasteCollapseCharThreshold: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseCharThreshold,
+            pasteCollapseEnabled: false,
+            pasteCollapseExpandKey: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseExpandKey,
+            pasteCollapseLineThreshold: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseLineThreshold,
+            pasteCollapseUseToolExpandKey: false,
             restoreContentAfterAutocompleteClose: false,
             selectedOptionPrefix: DEFAULT_UI_TWEAKS_CONFIG.selectedOptionPrefix,
         };
@@ -185,6 +226,19 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
         inputPromptPrefix: settings.inputPromptPrefix ?? DEFAULT_UI_TWEAKS_CONFIG.inputPromptPrefix,
         neutralBorderColor:
             settings.neutralBorderColor ?? DEFAULT_UI_TWEAKS_CONFIG.neutralBorderColor,
+        pasteCollapseCharThreshold:
+            settings.pasteCollapseCharThreshold ??
+            DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseCharThreshold,
+        pasteCollapseEnabled:
+            settings.pasteCollapseEnabled ?? DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseEnabled,
+        pasteCollapseExpandKey:
+            settings.pasteCollapseExpandKey ?? DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseExpandKey,
+        pasteCollapseLineThreshold:
+            settings.pasteCollapseLineThreshold ??
+            DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseLineThreshold,
+        pasteCollapseUseToolExpandKey:
+            settings.pasteCollapseUseToolExpandKey ??
+            DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseUseToolExpandKey,
         restoreContentAfterAutocompleteClose:
             settings.restoreContentAfterAutocompleteClose ??
             DEFAULT_UI_TWEAKS_CONFIG.restoreContentAfterAutocompleteClose,

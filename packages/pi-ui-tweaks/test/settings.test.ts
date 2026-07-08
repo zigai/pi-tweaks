@@ -33,6 +33,11 @@ test("loadUiTweaksConfig scaffolds missing global config and schema", async () =
             highlightSelectedModelProvider: true,
             inputPromptPrefix: "> ",
             neutralBorderColor: true,
+            pasteCollapseCharThreshold: 1000,
+            pasteCollapseEnabled: true,
+            pasteCollapseExpandKey: null,
+            pasteCollapseLineThreshold: 10,
+            pasteCollapseUseToolExpandKey: true,
             restoreContentAfterAutocompleteClose: true,
             selectedOptionPrefix: "→ ",
         });
@@ -71,6 +76,11 @@ test("ui tweaks settings default to enabled tweaks", () => {
     assert.equal(loaded.config.highlightSelectedModelProvider, true);
     assert.equal(loaded.config.inputPromptPrefix, "> ");
     assert.equal(loaded.config.neutralBorderColor, true);
+    assert.equal(loaded.config.pasteCollapseCharThreshold, 1000);
+    assert.equal(loaded.config.pasteCollapseEnabled, true);
+    assert.equal(loaded.config.pasteCollapseExpandKey, null);
+    assert.equal(loaded.config.pasteCollapseLineThreshold, 10);
+    assert.equal(loaded.config.pasteCollapseUseToolExpandKey, true);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, true);
     assert.equal(loaded.config.selectedOptionPrefix, "→ ");
     assert.deepEqual(loaded.errors, []);
@@ -92,6 +102,11 @@ test("ui tweaks settings merge sources in precedence order", () => {
                 highlightSelectedModelProvider: false,
                 inputPromptPrefix: "> ",
                 neutralBorderColor: false,
+                pasteCollapseCharThreshold: 2000,
+                pasteCollapseEnabled: false,
+                pasteCollapseExpandKey: "ctrl+shift+o",
+                pasteCollapseLineThreshold: 20,
+                pasteCollapseUseToolExpandKey: false,
                 restoreContentAfterAutocompleteClose: false,
                 selectedOptionPrefix: "❯ ",
             },
@@ -108,6 +123,11 @@ test("ui tweaks settings merge sources in precedence order", () => {
                 hideSlashCommandSourceTags: false,
                 highlightSelectedModelProvider: true,
                 inputPromptPrefix: "❯",
+                pasteCollapseCharThreshold: 500,
+                pasteCollapseEnabled: true,
+                pasteCollapseExpandKey: null,
+                pasteCollapseLineThreshold: 5,
+                pasteCollapseUseToolExpandKey: true,
                 restoreContentAfterAutocompleteClose: true,
                 selectedOptionPrefix: "▌",
             },
@@ -125,6 +145,11 @@ test("ui tweaks settings merge sources in precedence order", () => {
     assert.equal(loaded.config.highlightSelectedModelProvider, true);
     assert.equal(loaded.config.inputPromptPrefix, "❯");
     assert.equal(loaded.config.neutralBorderColor, false);
+    assert.equal(loaded.config.pasteCollapseCharThreshold, 500);
+    assert.equal(loaded.config.pasteCollapseEnabled, true);
+    assert.equal(loaded.config.pasteCollapseExpandKey, null);
+    assert.equal(loaded.config.pasteCollapseLineThreshold, 5);
+    assert.equal(loaded.config.pasteCollapseUseToolExpandKey, true);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, true);
     assert.equal(loaded.config.selectedOptionPrefix, "▌");
 });
@@ -153,6 +178,11 @@ test("ui tweaks enabled false disables every tweak", () => {
     assert.equal(loaded.config.highlightSelectedModelProvider, false);
     assert.equal(loaded.config.inputPromptPrefix, "> ");
     assert.equal(loaded.config.neutralBorderColor, false);
+    assert.equal(loaded.config.pasteCollapseCharThreshold, 1000);
+    assert.equal(loaded.config.pasteCollapseEnabled, false);
+    assert.equal(loaded.config.pasteCollapseExpandKey, null);
+    assert.equal(loaded.config.pasteCollapseLineThreshold, 10);
+    assert.equal(loaded.config.pasteCollapseUseToolExpandKey, false);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, false);
     assert.equal(loaded.config.selectedOptionPrefix, "→ ");
 });
@@ -190,6 +220,11 @@ test("ui tweaks settings report invalid custom values", () => {
     assert.equal(loaded.config.highlightSelectedModelProvider, true);
     assert.equal(loaded.config.inputPromptPrefix, "> ");
     assert.equal(loaded.config.neutralBorderColor, true);
+    assert.equal(loaded.config.pasteCollapseCharThreshold, 1000);
+    assert.equal(loaded.config.pasteCollapseEnabled, true);
+    assert.equal(loaded.config.pasteCollapseExpandKey, null);
+    assert.equal(loaded.config.pasteCollapseLineThreshold, 10);
+    assert.equal(loaded.config.pasteCollapseUseToolExpandKey, true);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, true);
     assert.equal(loaded.config.selectedOptionPrefix, "→ ");
     assert.equal(loaded.errors.length, 1);
@@ -198,6 +233,50 @@ test("ui tweaks settings report invalid custom values", () => {
     assert.match(loaded.errors[0] ?? "", /anchorInputToBottom/);
     assert.match(loaded.errors[0] ?? "", /bashExecPromptSpacing/);
     assert.match(loaded.errors[0] ?? "", /hideAutocompleteScrollInfo/);
+});
+
+test("ui tweaks settings report invalid paste collapse values", () => {
+    const loaded = resolveUiTweaksConfig([
+        {
+            label: "global",
+            settings: {
+                pasteCollapseCharThreshold: -1,
+                pasteCollapseEnabled: "nah",
+                pasteCollapseExpandKey: "",
+                pasteCollapseLineThreshold: -1,
+                pasteCollapseUseToolExpandKey: "nah",
+            },
+        },
+    ]);
+
+    assert.equal(loaded.config.pasteCollapseCharThreshold, 1000);
+    assert.equal(loaded.config.pasteCollapseEnabled, true);
+    assert.equal(loaded.config.pasteCollapseExpandKey, null);
+    assert.equal(loaded.config.pasteCollapseLineThreshold, 10);
+    assert.equal(loaded.config.pasteCollapseUseToolExpandKey, true);
+    assert.equal(loaded.errors.length, 1);
+    assert.match(loaded.errors[0] ?? "", /global is invalid:/);
+    assert.match(loaded.errors[0] ?? "", /pasteCollapseCharThreshold/);
+    assert.match(loaded.errors[0] ?? "", /pasteCollapseEnabled/);
+    assert.match(loaded.errors[0] ?? "", /pasteCollapseExpandKey/);
+    assert.match(loaded.errors[0] ?? "", /pasteCollapseLineThreshold/);
+    assert.match(loaded.errors[0] ?? "", /pasteCollapseUseToolExpandKey/);
+});
+
+test("ui tweaks settings reject invalid paste collapse expand key syntax", () => {
+    const loaded = resolveUiTweaksConfig([
+        {
+            label: "global",
+            settings: {
+                pasteCollapseExpandKey: "ctr+e",
+            },
+        },
+    ]);
+
+    assert.equal(loaded.config.pasteCollapseExpandKey, null);
+    assert.equal(loaded.errors.length, 1);
+    assert.match(loaded.errors[0] ?? "", /global is invalid:/);
+    assert.match(loaded.errors[0] ?? "", /pasteCollapseExpandKey/);
 });
 
 test("ui tweaks settings reject unknown config keys", () => {

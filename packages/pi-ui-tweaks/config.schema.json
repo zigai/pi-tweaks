@@ -18,6 +18,21 @@
     "highlightSelectedModelProvider": { "type": "boolean", "default": true },
     "inputPromptPrefix": { "type": "string", "minLength": 1, "default": "> " },
     "neutralBorderColor": { "type": "boolean", "default": true },
+    "pasteCollapseCharThreshold": { "type": "integer", "minimum": 0, "default": 1000 },
+    "pasteCollapseEnabled": { "type": "boolean", "default": true },
+    "pasteCollapseExpandKey": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:(?:ctrl|shift|alt|super)\\+)*(?:[a-z0-9]|escape|esc|enter|return|tab|space|backspace|delete|insert|clear|home|end|pageUp|pageDown|pageup|pagedown|up|down|left|right|f(?:[1-9]|1[0-2])|[`\\-=\\[\\]\\\\;',./!@#$%^&*()_|~{}:<>?])$"
+        },
+        { "type": "null" }
+      ],
+      "default": null
+    },
+    "pasteCollapseLineThreshold": { "type": "integer", "minimum": 0, "default": 10 },
+    "pasteCollapseUseToolExpandKey": { "type": "boolean", "default": true },
     "restoreContentAfterAutocompleteClose": { "type": "boolean", "default": true },
     "selectedOptionPrefix": { "type": "string", "minLength": 1, "default": "→ " }
   }
