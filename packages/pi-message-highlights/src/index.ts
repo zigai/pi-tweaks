@@ -1,23 +1,20 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Editor } from "@earendil-works/pi-tui";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { highlightMessageLines, type HighlightStyles } from "./highlight-text.ts";
+import { buildHighlightStyles, type HighlightTheme } from "./highlight-styles.ts";
 import {
-    getStylePrefix,
-    highlightMessageLines,
-    URL_BLUE_STYLE,
-    type HighlightStyles,
-} from "./highlight-text.ts";
+    DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG,
+    loadMessageHighlightsConfig,
+    type LoadedMessageHighlightsConfig,
+} from "./settings.ts";
 
 const MESSAGE_HIGHLIGHTS_PATCH_KEY = Symbol.for("zigai.pi-message-highlights.patched");
 
 type PatchState = typeof globalThis & {
     [MESSAGE_HIGHLIGHTS_PATCH_KEY]?: MessageHighlightsPatchRecord | true;
-};
-
-type ThemeLike = {
-    fg(color: "accent", text: string): string;
 };
 
 type HighlightStylesProvider = () => HighlightStyles;
@@ -35,6 +32,9 @@ type RenderPatchRecord = {
 type MessageHighlightsPatchRecord = {
     patches: RenderPatchRecord[];
 };
+
+let activeConfig = DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG;
+const reportedConfigErrors = new Set<string>();
 
 function getPatchState(): PatchState {
     return globalThis as PatchState;
@@ -70,19 +70,41 @@ function warnInternalPatchUnavailable(feature: string, error?: unknown): void {
     );
 }
 
-async function loadPiTheme(): Promise<ThemeLike | undefined> {
+async function loadPiTheme(): Promise<HighlightTheme | undefined> {
     try {
         const distDir = await resolvePiDistDir();
         const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
         // SAFETY: This imports Pi's own interactive theme module. The exported
         // proxy is intentionally stable across Pi module loaders and exposes
-        // Theme.fg once the interactive theme is initialized.
-        const themeModule = (await import(themePath)) as { theme?: ThemeLike };
+        // Theme.fg/getColorMode once the interactive theme is initialized.
+        const themeModule = (await import(themePath)) as { theme?: unknown };
         const theme = themeModule.theme;
-        if (theme === undefined) return undefined;
+        if (typeof theme !== "object" || theme === null) {
+            warnInternalPatchUnavailable("theme color lookup");
+            return undefined;
+        }
         return {
-            fg(color: "accent", text: string): string {
-                return theme.fg(color, text);
+            fg(color, text): string {
+                const fg = Reflect.get(theme, "fg");
+                if (typeof fg !== "function") {
+                    throw new Error("Theme.fg unavailable");
+                }
+                const styled = fg.call(theme, color, text) as unknown;
+                if (typeof styled !== "string") {
+                    throw new Error("Theme.fg returned a non-string value");
+                }
+                return styled;
+            },
+            getColorMode(): "truecolor" | "256color" {
+                const getColorMode = Reflect.get(theme, "getColorMode");
+                if (typeof getColorMode !== "function") {
+                    throw new Error("Theme.getColorMode unavailable");
+                }
+                const colorMode = getColorMode.call(theme) as unknown;
+                if (colorMode !== "truecolor" && colorMode !== "256color") {
+                    throw new Error("Theme.getColorMode returned an unsupported value");
+                }
+                return colorMode;
             },
         };
     } catch (error: unknown) {
@@ -122,26 +144,6 @@ async function loadComponentPrototype(
         warnInternalPatchUnavailable(`${exportName} patch`, error);
     }
     return undefined;
-}
-
-function buildHighlightStyles(theme: ThemeLike | undefined): HighlightStyles {
-    let filepath = "\u001b[38;5;81m";
-    if (theme !== undefined) {
-        try {
-            const prefix = getStylePrefix((text: string) => theme.fg("accent", text));
-            if (prefix.length > 0) {
-                filepath = prefix;
-            }
-        } catch {
-            // Theme may not be initialized yet during early startup renders.
-            // Later renders will retry and pick up the native accent color.
-        }
-    }
-
-    return {
-        url: URL_BLUE_STYLE,
-        filepath,
-    };
 }
 
 function getEditorPrototype(): RenderablePrototype | undefined {
@@ -186,7 +188,7 @@ async function installMessageHighlightPatch(): Promise<void> {
     if (state[MESSAGE_HIGHLIGHTS_PATCH_KEY] !== undefined) return;
 
     const theme = await loadPiTheme();
-    const getStyles = () => buildHighlightStyles(theme);
+    const getStyles = () => buildHighlightStyles(theme, activeConfig);
     const assistantPrototype = await loadComponentPrototype(
         "assistant-message.js",
         "AssistantMessageComponent",
@@ -212,8 +214,27 @@ async function installMessageHighlightPatch(): Promise<void> {
     state[MESSAGE_HIGHLIGHTS_PATCH_KEY] = { patches };
 }
 
+function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedMessageHighlightsConfig): void {
+    for (const error of loaded.errors) {
+        if (reportedConfigErrors.has(error)) {
+            continue;
+        }
+        reportedConfigErrors.add(error);
+        ctx.ui.notify(`[pi-message-highlights] ${error}`, "error");
+    }
+}
+
+function applyMessageHighlightsConfig(ctx: ExtensionContext): void {
+    const loaded = loadMessageHighlightsConfig(ctx.cwd, ctx.isProjectTrusted());
+    activeConfig = loaded.config;
+    reportConfigErrors(ctx, loaded);
+}
+
 export default async function messageHighlightsExtension(pi?: ExtensionAPI): Promise<void> {
     await installMessageHighlightPatch();
+    pi?.on("session_start", (_event, ctx) => {
+        applyMessageHighlightsConfig(ctx);
+    });
     pi?.on("session_shutdown", () => {
         restoreMessageHighlightPatch();
     });

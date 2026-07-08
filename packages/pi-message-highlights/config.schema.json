@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-message-highlights/config.schema.json",
+  "title": "Pi message highlights config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "urlColor": {
+      "$ref": "#/$defs/highlightColor",
+      "default": 117,
+      "description": "URL highlight foreground. Use a 0-255 ANSI color, #RRGGBB hex color, empty string to disable URL color, or a Pi theme foreground role such as mdLink or accent."
+    }
+  },
+  "$defs": {
+    "highlightColor": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "type": "string",
+          "enum": [
+            "",
+            "accent",
+            "border",
+            "borderAccent",
+            "borderMuted",
+            "success",
+            "error",
+            "warning",
+            "muted",
+            "dim",
+            "text",
+            "thinkingText",
+            "userMessageText",
+            "customMessageText",
+            "customMessageLabel",
+            "toolTitle",
+            "toolOutput",
+            "mdHeading",
+            "mdLink",
+            "mdLinkUrl",
+            "mdCode",
+            "mdCodeBlock",
+            "mdCodeBlockBorder",
+            "mdQuote",
+            "mdQuoteBorder",
+            "mdHr",
+            "mdListBullet",
+            "toolDiffAdded",
+            "toolDiffRemoved",
+            "toolDiffContext",
+            "syntaxComment",
+            "syntaxKeyword",
+            "syntaxFunction",
+            "syntaxVariable",
+            "syntaxString",
+            "syntaxNumber",
+            "syntaxType",
+            "syntaxOperator",
+            "syntaxPunctuation",
+            "thinkingOff",
+            "thinkingMinimal",
+            "thinkingLow",
+            "thinkingMedium",
+            "thinkingHigh",
+            "thinkingXhigh",
+            "bashMode"
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      ]
+    }
+  }
+}

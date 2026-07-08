@@ -73,8 +73,6 @@ const CODE_VALUE_PREFIX_PATTERN = /[:=]\s*$/;
 const TRAILING_URL_PUNCTUATION = /[.,;:!?]+$/;
 const TRAILING_PATH_PUNCTUATION = /[.,;!?]+$/;
 
-export const URL_BLUE_STYLE = `${ESC}[38;5;117m`;
-
 export type HighlightStyles = {
     readonly url: string;
     readonly filepath: string;
