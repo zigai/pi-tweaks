@@ -33,6 +33,12 @@ function autocompleteTarget(
     });
 }
 
+function waitForImmediate(): Promise<void> {
+    return new Promise((resolve) => {
+        setImmediate(resolve);
+    });
+}
+
 test("autocomplete position patch reads config state updated by a reloaded module", async () => {
     const firstModule = await importAutocompletePositionModule("first-runtime");
     const secondModule = await importAutocompletePositionModule("second-runtime");
@@ -64,7 +70,7 @@ test("autocomplete position patch reads config state updated by a reloaded modul
     }
 });
 
-test("autocomplete position patch forces redraw after above-input autocomplete closes", async () => {
+test("autocomplete position patch defers forced redraw after above-input autocomplete closes", async () => {
     const autocompletePosition = await importAutocompletePositionModule("close-redraw");
     const requestedForces: Array<boolean | undefined> = [];
     const prototype: AutocompletePositionPatchTarget = {
@@ -102,6 +108,9 @@ test("autocomplete position patch forces redraw after above-input autocomplete c
         target.autocompleteState = null;
         target.autocompleteList = undefined;
         prototype.render.call(target, 20);
+
+        assert.deepEqual(requestedForces, []);
+        await waitForImmediate();
 
         assert.deepEqual(requestedForces, [true]);
     } finally {

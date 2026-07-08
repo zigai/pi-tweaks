@@ -242,6 +242,12 @@ const testTheme = {
     },
 };
 
+function waitForImmediate(): Promise<void> {
+    return new Promise((resolve) => {
+        setImmediate(resolve);
+    });
+}
+
 test("autocomplete position patch moves active autocomplete rows above input", () => {
     setAutocompleteAboveInput(true);
     installAutocompletePositionPatch(TestAutocompleteEditor.prototype);
@@ -265,7 +271,7 @@ test("autocomplete position patch leaves render order unchanged when disabled", 
     setAutocompleteAboveInput(true);
 });
 
-test("autocomplete position patch requests redraw after above input autocomplete closes", () => {
+test("autocomplete position patch requests redraw after above input autocomplete closes", async () => {
     setAutocompleteAboveInput(true);
     setRestoreContentAfterAutocompleteClose(true);
     installAutocompletePositionPatch(TestAutocompleteEditor.prototype);
@@ -281,7 +287,9 @@ test("autocomplete position patch requests redraw after above input autocomplete
     editor.autocompleteState = null;
 
     assert.deepEqual(editor.render(10), ["top", "input"]);
-    assert.deepEqual(editor.renderRequests, [undefined]);
+    assert.deepEqual(editor.renderRequests, []);
+    await waitForImmediate();
+    assert.deepEqual(editor.renderRequests, [true]);
 });
 
 test("autocomplete position patch can leave close redraw disabled", () => {

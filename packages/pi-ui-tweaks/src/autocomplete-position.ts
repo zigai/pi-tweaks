@@ -6,6 +6,9 @@ const AUTOCOMPLETE_POSITION_PATCHED = Symbol.for(
     "zigai.pi-ui-tweaks.autocomplete-position-patched",
 );
 const AUTOCOMPLETE_RENDERED_ABOVE = Symbol.for("zigai.pi-ui-tweaks.autocomplete-rendered-above");
+const AUTOCOMPLETE_RESTORE_RENDER_PENDING = Symbol.for(
+    "zigai.pi-ui-tweaks.autocomplete-restore-render-pending",
+);
 
 function blankSpacerLine(width: number): string {
     const visibleSpacer = "\x1b[0m \x1b[0m";
@@ -27,6 +30,7 @@ type AutocompletePositionPatchTarget = {
     tui?: { requestRender(force?: boolean): void };
     [AUTOCOMPLETE_POSITION_PATCHED]?: true;
     [AUTOCOMPLETE_RENDERED_ABOVE]?: true;
+    [AUTOCOMPLETE_RESTORE_RENDER_PENDING]?: true;
 };
 
 function warnAutocompletePositionPatchUnavailable(reason?: string): void {
@@ -50,6 +54,18 @@ function getAutocompleteLineCount(target: AutocompletePositionPatchTarget, width
     const paddingX = Math.min(rawPaddingX, maxPadding);
     const contentWidth = Math.max(1, width - paddingX * 2);
     return autocompleteList.render(contentWidth).length;
+}
+
+function requestDeferredForceRender(target: AutocompletePositionPatchTarget): void {
+    const tui = target.tui;
+    if (tui === undefined) return;
+    if (target[AUTOCOMPLETE_RESTORE_RENDER_PENDING] === true) return;
+
+    target[AUTOCOMPLETE_RESTORE_RENDER_PENDING] = true;
+    setImmediate(() => {
+        target[AUTOCOMPLETE_RESTORE_RENDER_PENDING] = undefined;
+        tui.requestRender(true);
+    });
 }
 
 /**
@@ -97,7 +113,7 @@ export function installAutocompletePositionPatch(
             if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
                 this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
                 if (patchState.restoreContentAfterAutocompleteClose) {
-                    this.tui?.requestRender(true);
+                    requestDeferredForceRender(this);
                 }
             }
             return result;
