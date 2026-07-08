@@ -55,18 +55,31 @@ test("highlights URLs and file paths without changing visible text", () => {
 });
 
 test("highlights common bare filenames", () => {
-    const line = "Edit README.md and package.json:12 next.";
+    const line = "Edit README.md, query.sql, and package.json:12 next.";
     const highlighted = highlightMessageLine(line, styles);
 
     assert.equal(stripAnsi(highlighted), line);
     assert.equal(highlighted.includes(`<path>README.md${ESC}[39m`), true);
+    assert.equal(highlighted.includes(`<path>query.sql${ESC}[39m`), true);
     assert.equal(highlighted.includes(`<path>package.json:12${ESC}[39m`), true);
+});
+
+test("does not highlight code value property access as a bare filename", () => {
+    const lines = ["        body: args.sql,", "const body = args.sql;"];
+
+    for (const line of lines) {
+        const highlighted = highlightMessageLine(line, styles);
+
+        assert.equal(highlighted, line);
+    }
 });
 
 test("does not highlight slash-separated prose as a file path", () => {
     const lines = [
         "Not before — I had only covered the configured/current extensions",
         "alpha/beta/gamma",
+        "Do we have guidance on how boolean variables and functions /methods should be named?",
+        "Use /help to list slash commands.",
     ];
 
     for (const line of lines) {
@@ -74,6 +87,15 @@ test("does not highlight slash-separated prose as a file path", () => {
 
         assert.equal(highlighted, line);
     }
+});
+
+test("highlights absolute paths when they are specific enough", () => {
+    const line = "Open /home/zigai/Projects/pi-tweaks and /tmp/file.ts next.";
+    const highlighted = highlightMessageLine(line, styles);
+
+    assert.equal(stripAnsi(highlighted), line);
+    assert.equal(highlighted.includes(`<path>/home/zigai/Projects/pi-tweaks${ESC}[39m`), true);
+    assert.equal(highlighted.includes(`<path>/tmp/file.ts${ESC}[39m`), true);
 });
 
 test("does not highlight path-like text inside a URL twice", () => {

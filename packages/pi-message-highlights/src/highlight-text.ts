@@ -53,17 +53,23 @@ const FILE_EXTENSION_PATTERN = [
     "ya?ml",
     "zsh",
 ].join("|");
-const EXPLICIT_PATH_PREFIX_PATTERN = String.raw`(?:~/|\.{1,2}/|/)`;
+const HOME_OR_DOT_PATH_PREFIX_PATTERN = String.raw`(?:~/|\.{1,2}/)`;
 const PATH_SEGMENT_PATTERN = String.raw`[A-Za-z0-9._~+@%-]+`;
 const PATH_FILENAME_PATTERN = String.raw`${PATH_SEGMENT_PATTERN}\.(?:${FILE_EXTENSION_PATTERN})`;
-const PREFIXED_PATH_PATTERN = String.raw`${EXPLICIT_PATH_PREFIX_PATTERN}${PATH_SEGMENT_PATTERN}(?:/${PATH_SEGMENT_PATTERN})*`;
+const HOME_OR_DOT_PATH_PATTERN = String.raw`${HOME_OR_DOT_PATH_PREFIX_PATTERN}${PATH_SEGMENT_PATTERN}(?:/${PATH_SEGMENT_PATTERN})*`;
+const ROOT_PATH_PATTERN = String.raw`/(?:${PATH_FILENAME_PATTERN}|${PATH_SEGMENT_PATTERN}/${PATH_SEGMENT_PATTERN}(?:/${PATH_SEGMENT_PATTERN})*)`;
+const PREFIXED_PATH_PATTERN = String.raw`(?:${HOME_OR_DOT_PATH_PATTERN}|${ROOT_PATH_PATTERN})`;
 const RELATIVE_FILE_PATH_PATTERN = String.raw`${PATH_SEGMENT_PATTERN}(?:/${PATH_SEGMENT_PATTERN})*/${PATH_FILENAME_PATTERN}`;
 const BARE_FILENAME_PATTERN = String.raw`(?:${PATH_FILENAME_PATTERN}|Dockerfile|Justfile|Makefile|\.(?:env|gitignore|npmrc|prettierignore)(?:\.[A-Za-z0-9_-]+)?)`;
 const LINE_SUFFIX_PATTERN = String.raw`(?::\d+(?:-\d+)?(?::\d+)?)?`;
+const BARE_EXTENSION_FILEPATH_REGEX = new RegExp(
+    String.raw`^${PATH_FILENAME_PATTERN}${LINE_SUFFIX_PATTERN}$`,
+);
 const FILEPATH_REGEX = new RegExp(
     String.raw`(^|[\s([{<"'\x60])((?:${PREFIXED_PATH_PATTERN}|${RELATIVE_FILE_PATH_PATTERN}|${BARE_FILENAME_PATTERN})${LINE_SUFFIX_PATTERN})(?=$|[\s)\]}>"'\x60,.;:!?])`,
     "g",
 );
+const CODE_VALUE_PREFIX_PATTERN = /[:=]\s*$/;
 const TRAILING_URL_PUNCTUATION = /[.,;:!?]+$/;
 const TRAILING_PATH_PUNCTUATION = /[.,;!?]+$/;
 
@@ -245,6 +251,27 @@ function overlapsRange(ranges: readonly HighlightRange[], start: number, end: nu
     return ranges.some((range) => start < range.end && end > range.start);
 }
 
+function getLinePrefix(text: string, end: number): string {
+    const lineStart = text.lastIndexOf("\n", Math.max(0, end - 1)) + 1;
+    return text.slice(lineStart, end);
+}
+
+function isBareExtensionFilepath(text: string): boolean {
+    if (text.includes("/")) return false;
+    return BARE_EXTENSION_FILEPATH_REGEX.test(text);
+}
+
+function isCodeValueContext(plainText: string, start: number): boolean {
+    const prefix = getLinePrefix(plainText, start);
+    if (prefix.trimStart().length === 0) return false;
+    return CODE_VALUE_PREFIX_PATTERN.test(prefix);
+}
+
+function shouldSkipFilepathMatch(plainText: string, start: number, filepath: string): boolean {
+    if (!isBareExtensionFilepath(filepath)) return false;
+    return isCodeValueContext(plainText, start);
+}
+
 function addRange(
     ranges: HighlightRange[],
     start: number,
@@ -273,7 +300,9 @@ function collectHighlightRanges(plainText: string, styles: HighlightStyles): Hig
         const prefix = match[1] ?? "";
         const filepath = match[2];
         if (filepath === undefined) continue;
-        addRange(ranges, match.index + prefix.length, filepath, "filepath", styles.filepath);
+        const start = match.index + prefix.length;
+        if (shouldSkipFilepathMatch(plainText, start, filepath)) continue;
+        addRange(ranges, start, filepath, "filepath", styles.filepath);
     }
 
     return ranges.sort((left, right) => left.start - right.start);
