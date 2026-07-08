@@ -5,7 +5,9 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-const EXTENSION_ID = "pi-run-timer";
+import type { StatusBarConfig } from "./status-bar-api.ts";
+
+const EXTENSION_ID = "pi-status-bar";
 const CONFIG_FILE = "config.json";
 const SCHEMA_FILE = "config.schema.json";
 const RIGHT_MESSAGES_SETTINGS_KEY = "rightMessages";
@@ -25,16 +27,17 @@ export type RightMessagesConfig = {
     readonly messages: readonly string[];
 };
 
-export type RunTimerConfig = {
+export type StatusBarResolvedConfig = {
+    readonly statusBar: StatusBarConfig;
     readonly rightMessages: RightMessagesConfig;
 };
 
-export type LoadedRunTimerConfig = {
-    readonly config: RunTimerConfig;
+export type LoadedStatusBarConfig = {
+    readonly config: StatusBarResolvedConfig;
     readonly errors: readonly string[];
 };
 
-export type RunTimerSettingsSource = {
+export type StatusBarSettingsSource = {
     readonly label: string;
     readonly baseDir: string;
     readonly settings: unknown;
@@ -58,10 +61,70 @@ type RightMessagesSettings = {
     readonly messagesFile?: MessageFileReference;
 };
 
-type RunTimerSettings = {
+type StatusBarSettings = {
     readonly $schema?: string;
+    readonly statusBar?: StatusBarConfig;
     readonly rightMessages?: RightMessagesSettings;
 };
+
+type MutableStatusBarConfig = {
+    active?: {
+        text?: string;
+        spinner?: {
+            frames?: readonly string[];
+        };
+        timer?: {
+            visible?: boolean;
+            paused?: boolean;
+        };
+    };
+    idle?: {
+        text?: string;
+        visible?: boolean;
+        showLastRunSummary?: boolean;
+    };
+};
+
+const StatusBarSpinnerConfigSchema = Type.Object(
+    {
+        frames: Type.Optional(Type.Array(Type.String())),
+    },
+    { additionalProperties: false },
+);
+
+const StatusBarTimerConfigSchema = Type.Object(
+    {
+        visible: Type.Optional(Type.Boolean()),
+        paused: Type.Optional(Type.Boolean()),
+    },
+    { additionalProperties: false },
+);
+
+const StatusBarActiveConfigSchema = Type.Object(
+    {
+        text: Type.Optional(Type.String()),
+        spinner: Type.Optional(StatusBarSpinnerConfigSchema),
+        timer: Type.Optional(StatusBarTimerConfigSchema),
+    },
+    { additionalProperties: false },
+);
+
+const StatusBarIdleConfigSchema = Type.Object(
+    {
+        text: Type.Optional(Type.String()),
+        visible: Type.Optional(Type.Boolean()),
+        showLastRunSummary: Type.Optional(Type.Boolean()),
+    },
+    { additionalProperties: false },
+);
+
+const StatusBarConfigSchema = Type.Object(
+    {
+        active: Type.Optional(StatusBarActiveConfigSchema),
+        idle: Type.Optional(StatusBarIdleConfigSchema),
+    },
+    { additionalProperties: false },
+);
 
 const RightMessagesConfigSchema = Type.Object(
     {
@@ -78,15 +141,16 @@ const RightMessagesConfigSchema = Type.Object(
     { additionalProperties: false },
 );
 
-const RunTimerConfigSchema = Type.Object(
+const StatusBarConfigFileSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
+        statusBar: Type.Optional(StatusBarConfigSchema),
         rightMessages: Type.Optional(RightMessagesConfigSchema),
     },
     { additionalProperties: false },
 );
 
-type ParsedRunTimerConfig = Static<typeof RunTimerConfigSchema>;
+type ParsedStatusBarResolvedConfig = Static<typeof StatusBarConfigFileSchema>;
 
 export const DEFAULT_RIGHT_MESSAGES_CONFIG: RightMessagesConfig = {
     enabled: false,
@@ -99,8 +163,33 @@ export const DEFAULT_RIGHT_MESSAGES_CONFIG: RightMessagesConfig = {
     messages: [],
 };
 
-const DEFAULT_RUN_TIMER_CONFIG_FILE: ParsedRunTimerConfig = {
+export const DEFAULT_STATUS_BAR_CONFIG: StatusBarConfig = {
+    active: {
+        timer: {
+            visible: true,
+            paused: false,
+        },
+    },
+    idle: {
+        visible: true,
+        showLastRunSummary: true,
+    },
+};
+
+const DEFAULT_STATUS_BAR_CONFIG_FILE: ParsedStatusBarResolvedConfig = {
     $schema: `./${SCHEMA_FILE}`,
+    statusBar: {
+        active: {
+            timer: {
+                visible: true,
+                paused: false,
+            },
+        },
+        idle: {
+            visible: true,
+            showLastRunSummary: true,
+        },
+    },
     rightMessages: {
         enabled: DEFAULT_RIGHT_MESSAGES_CONFIG.enabled,
         intervalMs: DEFAULT_RIGHT_MESSAGES_CONFIG.intervalMs,
@@ -112,6 +201,75 @@ const DEFAULT_RUN_TIMER_CONFIG_FILE: ParsedRunTimerConfig = {
         messages: [],
     },
 };
+
+function sanitizeOptionalText(text: string | undefined): string | undefined {
+    if (text === undefined) return undefined;
+    const sanitized = text
+        .replace(/[\r\n\t]/g, " ")
+        .replace(/ +/g, " ")
+        .trim();
+    if (sanitized.length === 0) return undefined;
+    return sanitized;
+}
+
+function sanitizeOptionalFrames(
+    frames: readonly string[] | undefined,
+): readonly string[] | undefined {
+    if (frames === undefined) return undefined;
+
+    const sanitizedFrames: string[] = [];
+    for (const frame of frames) {
+        const sanitized = sanitizeOptionalText(frame);
+        if (sanitized !== undefined) {
+            sanitizedFrames.push(sanitized);
+        }
+    }
+
+    if (sanitizedFrames.length === 0) return undefined;
+    return sanitizedFrames;
+}
+
+function parseStatusBarConfigSettings(
+    settings: Static<typeof StatusBarConfigSchema> | undefined,
+): StatusBarConfig | undefined {
+    if (settings === undefined) return undefined;
+
+    const parsed = settings;
+    const statusBar: MutableStatusBarConfig = {};
+
+    if (parsed.active !== undefined) {
+        const active: NonNullable<MutableStatusBarConfig["active"]> = {};
+        const text = sanitizeOptionalText(parsed.active.text);
+        if (text !== undefined) {
+            active.text = text;
+        }
+        const frames = sanitizeOptionalFrames(parsed.active.spinner?.frames);
+        if (frames !== undefined) {
+            active.spinner = { frames };
+        }
+        if (parsed.active.timer !== undefined) {
+            active.timer = parsed.active.timer;
+        }
+        statusBar.active = active;
+    }
+
+    if (parsed.idle !== undefined) {
+        const idle: NonNullable<MutableStatusBarConfig["idle"]> = {};
+        const text = sanitizeOptionalText(parsed.idle.text);
+        if (text !== undefined) {
+            idle.text = text;
+        }
+        if (parsed.idle.visible !== undefined) {
+            idle.visible = parsed.idle.visible;
+        }
+        if (parsed.idle.showLastRunSummary !== undefined) {
+            idle.showLastRunSummary = parsed.idle.showLastRunSummary;
+        }
+        statusBar.idle = idle;
+    }
+
+    return statusBar;
+}
 
 function formatSchemaPath(instancePath: string): string {
     if (instancePath.length === 0) return "root";
@@ -347,14 +505,14 @@ function parseRightMessagesSettings(
     return { settings: parsed, errors };
 }
 
-function parseRunTimerSettings(
+function parseStatusBarSettings(
     settings: unknown,
     label: string,
     baseDir: string,
-): { settings: RunTimerSettings; errors: string[] } {
-    let parsedConfig: ParsedRunTimerConfig;
+): { settings: StatusBarSettings; errors: string[] } {
+    let parsedConfig: ParsedStatusBarResolvedConfig;
     try {
-        parsedConfig = parseSchema(RunTimerConfigSchema, settings, label);
+        parsedConfig = parseSchema(StatusBarConfigFileSchema, settings, label);
     } catch (error: unknown) {
         let message: string;
         if (error instanceof Error) {
@@ -367,8 +525,38 @@ function parseRunTimerSettings(
 
     const parsed = parseRightMessagesSettings(parsedConfig.rightMessages, label, baseDir);
     return {
-        settings: { rightMessages: parsed.settings },
+        settings: {
+            statusBar: parseStatusBarConfigSettings(parsedConfig.statusBar),
+            rightMessages: parsed.settings,
+        },
         errors: parsed.errors,
+    };
+}
+
+function mergeStatusBarConfig(
+    current: StatusBarConfig | undefined,
+    next: StatusBarConfig | undefined,
+): StatusBarConfig | undefined {
+    if (current === undefined) return next;
+    if (next === undefined) return current;
+
+    return {
+        active: {
+            ...current.active,
+            ...next.active,
+            spinner: {
+                ...current.active?.spinner,
+                ...next.active?.spinner,
+            },
+            timer: {
+                ...current.active?.timer,
+                ...next.active?.timer,
+            },
+        },
+        idle: {
+            ...current.idle,
+            ...next.idle,
+        },
     };
 }
 
@@ -419,7 +607,7 @@ function readMessagesFile(reference: MessageFileReference): { messages: string[]
     }
 }
 
-function buildRunTimerConfig(settings: RunTimerSettings): LoadedRunTimerConfig {
+function buildStatusBarResolvedConfig(settings: StatusBarSettings): LoadedStatusBarConfig {
     const rightMessages = settings.rightMessages ?? {};
     const errors: string[] = [];
     const messages: string[] = [];
@@ -427,6 +615,7 @@ function buildRunTimerConfig(settings: RunTimerSettings): LoadedRunTimerConfig {
     if (rightMessages.enabled === false) {
         return {
             config: {
+                statusBar: settings.statusBar ?? DEFAULT_STATUS_BAR_CONFIG,
                 rightMessages: {
                     enabled: false,
                     intervalMs:
@@ -466,6 +655,7 @@ function buildRunTimerConfig(settings: RunTimerSettings): LoadedRunTimerConfig {
 
     return {
         config: {
+            statusBar: settings.statusBar ?? DEFAULT_STATUS_BAR_CONFIG,
             rightMessages: {
                 enabled,
                 intervalMs: rightMessages.intervalMs ?? DEFAULT_RIGHT_MESSAGES_CONFIG.intervalMs,
@@ -485,16 +675,20 @@ function buildRunTimerConfig(settings: RunTimerSettings): LoadedRunTimerConfig {
 }
 
 /**
- * Resolves run timer settings from already-parsed Pi settings objects in precedence order.
+ * Resolves status bar settings from already-parsed Pi settings objects in precedence order.
  */
-export function resolveRunTimerConfig(
-    settingsSources: readonly RunTimerSettingsSource[],
-): LoadedRunTimerConfig {
-    let mergedSettings: RunTimerSettings = {};
+export function resolveStatusBarResolvedConfig(
+    settingsSources: readonly StatusBarSettingsSource[],
+): LoadedStatusBarConfig {
+    let mergedSettings: StatusBarSettings = {};
     const errors: string[] = [];
 
     for (const source of settingsSources) {
-        const parsed = parseRunTimerSettings(source.settings, source.label, source.baseDir);
+        const parsed = parseStatusBarSettings(source.settings, source.label, source.baseDir);
+        mergedSettings = {
+            ...mergedSettings,
+            statusBar: mergeStatusBarConfig(mergedSettings.statusBar, parsed.settings.statusBar),
+        };
         if (parsed.settings.rightMessages !== undefined) {
             mergedSettings = {
                 ...mergedSettings,
@@ -507,7 +701,7 @@ export function resolveRunTimerConfig(
         errors.push(...parsed.errors);
     }
 
-    const loaded = buildRunTimerConfig(mergedSettings);
+    const loaded = buildStatusBarResolvedConfig(mergedSettings);
     return {
         config: loaded.config,
         errors: [...errors, ...loaded.errors],
@@ -581,7 +775,10 @@ function scaffoldGlobalConfig(): void {
     if (schema !== undefined) {
         refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
     }
-    writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_RUN_TIMER_CONFIG_FILE, null, 2)}\n`);
+    writeIfMissing(
+        globalConfigPath,
+        `${JSON.stringify(DEFAULT_STATUS_BAR_CONFIG_FILE, null, 2)}\n`,
+    );
 }
 
 function readConfigFile(path: string, label: string): { settings?: unknown; error?: string } {
@@ -609,13 +806,16 @@ function readConfigFile(path: string, label: string): { settings?: unknown; erro
 }
 
 /**
- * Loads run timer settings from extension global config and trusted project config.
+ * Loads status bar settings from extension global config and trusted project config.
  */
-export function loadRunTimerConfig(cwd: string, projectTrusted: boolean): LoadedRunTimerConfig {
+export function loadStatusBarResolvedConfig(
+    cwd: string,
+    projectTrusted: boolean,
+): LoadedStatusBarConfig {
     scaffoldGlobalConfig();
     const globalConfigPath = getGlobalConfigPath();
     const globalConfig = readConfigFile(globalConfigPath, globalConfigPath);
-    const settingsSources: RunTimerSettingsSource[] = [];
+    const settingsSources: StatusBarSettingsSource[] = [];
     const errors: string[] = [];
 
     if (globalConfig.settings !== undefined) {
@@ -644,7 +844,7 @@ export function loadRunTimerConfig(cwd: string, projectTrusted: boolean): Loaded
         }
     }
 
-    const loaded = resolveRunTimerConfig(settingsSources);
+    const loaded = resolveStatusBarResolvedConfig(settingsSources);
     return {
         config: loaded.config,
         errors: [...errors, ...loaded.errors],

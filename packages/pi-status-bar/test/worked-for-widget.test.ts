@@ -3,7 +3,9 @@ import { beforeEach, test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { WIDGET_KEY } from "../src/constants.ts";
+import { configureStatusBar, resetStatusBarStateForTests } from "../src/status-bar-api.ts";
 import {
+    clearWorkedForWidget,
     formatDuration,
     resetWorkedForWidgetCache,
     setWorkedForWidget,
@@ -12,6 +14,7 @@ import {
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 beforeEach(() => {
+    resetStatusBarStateForTests();
     resetWorkedForWidgetCache();
 });
 
@@ -95,4 +98,42 @@ test("setWorkedForWidget renders duration and token rate within the provided wid
     const narrowLine = component.render(12)[0] ?? "";
     assert.equal(stripAnsi(narrowLine), "[dim] Worked for ");
     assert.deepEqual(component.render(0), [""]);
+});
+
+test("setWorkedForWidget renders idle status bar overrides with the last-run summary", () => {
+    configureStatusBar({
+        idle: {
+            text: "Ready",
+            showLastRunSummary: true,
+        },
+    });
+    const { ctx, currentWidget } = widgetContext();
+
+    setWorkedForWidget(ctx, "9s", 3);
+
+    const widget = currentWidget();
+    assert.equal(typeof widget, "function");
+    const factory = widget as WidgetFactory;
+    const component = factory({}, { fg: (_role, text) => `[dim]${text}` });
+
+    assert.deepEqual(component.render(80), ["[dim] Ready · Worked for 9s. [3 tok/s]"]);
+});
+
+test("clearWorkedForWidget removes configured idle status during active runs", () => {
+    configureStatusBar({
+        idle: {
+            text: "Ready",
+            showLastRunSummary: true,
+        },
+    });
+    const { ctx, currentWidget, updateCount } = widgetContext();
+
+    setWorkedForWidget(ctx, undefined);
+    assert.equal(typeof currentWidget(), "function");
+    assert.equal(updateCount(), 1);
+
+    clearWorkedForWidget(ctx);
+
+    assert.equal(currentWidget(), undefined);
+    assert.equal(updateCount(), 2);
 });

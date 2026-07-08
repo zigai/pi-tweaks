@@ -1,7 +1,7 @@
 {
-  "name": "@zigai/pi-run-timer",
+  "name": "@zigai/pi-status-bar",
   "version": "0.4.0",
-  "description": "Pi package that shows live loader elapsed time, optional rotating working-bar messages, and post-run agent timing stats.",
+  "description": "Pi package that provides a programmable active and idle status bar with timing stats.",
   "keywords": [
     "loader",
     "pi",
@@ -13,7 +13,7 @@
     "timer",
     "tips"
   ],
-  "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-run-timer#readme",
+  "homepage": "https://github.com/zigai/pi-tweaks/tree/main/packages/pi-status-bar#readme",
   "bugs": {
     "url": "https://github.com/zigai/pi-tweaks/issues"
   },
@@ -22,7 +22,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zigai/pi-tweaks.git",
-    "directory": "packages/pi-run-timer"
+    "directory": "packages/pi-status-bar"
   },
   "files": [
     "src",
@@ -30,6 +30,10 @@
     "*.json"
   ],
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api.ts"
+  },
   "publishConfig": {
     "access": "public"
   },

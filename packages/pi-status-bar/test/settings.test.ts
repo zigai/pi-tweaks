@@ -5,23 +5,47 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 
-import { loadRunTimerConfig, resolveRunTimerConfig } from "../src/settings.ts";
+import { loadStatusBarResolvedConfig, resolveStatusBarResolvedConfig } from "../src/settings.ts";
 
-test("loadRunTimerConfig scaffolds missing global config and schema", async () => {
+test("loadStatusBarResolvedConfig scaffolds missing global config and schema", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
-    const agentDir = mkdtempSync(join(tmpdir(), "pi-run-timer-agent-"));
-    const cwd = mkdtempSync(join(tmpdir(), "pi-run-timer-cwd-"));
+    const agentDir = mkdtempSync(join(tmpdir(), "pi-status-bar-agent-"));
+    const cwd = mkdtempSync(join(tmpdir(), "pi-status-bar-cwd-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = join(agentDir, "pi-run-timer", "config.json");
-        const schemaPath = join(agentDir, "pi-run-timer", "config.schema.json");
-        const loaded = loadRunTimerConfig(cwd, false);
+        const configPath = join(agentDir, "pi-status-bar", "config.json");
+        const schemaPath = join(agentDir, "pi-status-bar", "config.schema.json");
+        const loaded = loadStatusBarResolvedConfig(cwd, false);
 
         assert.deepEqual(loaded.errors, []);
         assert.equal(loaded.config.rightMessages.enabled, false);
+        assert.deepEqual(loaded.config.statusBar, {
+            active: {
+                timer: {
+                    visible: true,
+                    paused: false,
+                },
+            },
+            idle: {
+                visible: true,
+                showLastRunSummary: true,
+            },
+        });
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
             $schema: "./config.schema.json",
+            statusBar: {
+                active: {
+                    timer: {
+                        visible: true,
+                        paused: false,
+                    },
+                },
+                idle: {
+                    visible: true,
+                    showLastRunSummary: true,
+                },
+            },
             rightMessages: {
                 enabled: false,
                 intervalMs: 10000,
@@ -33,16 +57,16 @@ test("loadRunTimerConfig scaffolds missing global config and schema", async () =
                 messages: [],
             },
         });
-        assert.match(await readFile(schemaPath, "utf8"), /Pi run timer config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi status bar config/);
 
         const customConfig = JSON.stringify({ rightMessages: { messages: ["hello"] } });
         writeFileSync(configPath, customConfig, "utf8");
         writeFileSync(schemaPath, "stale schema", "utf8");
-        const loadedAgain = loadRunTimerConfig(cwd, false);
+        const loadedAgain = loadStatusBarResolvedConfig(cwd, false);
 
         assert.deepEqual(loadedAgain.config.rightMessages.messages, ["hello"]);
         assert.equal(await readFile(configPath, "utf8"), customConfig);
-        assert.match(await readFile(schemaPath, "utf8"), /Pi run timer config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi status bar config/);
     } finally {
         rmSync(agentDir, { recursive: true, force: true });
         rmSync(cwd, { recursive: true, force: true });
@@ -54,18 +78,67 @@ test("loadRunTimerConfig scaffolds missing global config and schema", async () =
     }
 });
 
-test("run timer right messages default to disabled", () => {
-    const loaded = resolveRunTimerConfig([]);
+test("status bar right messages default to disabled", () => {
+    const loaded = resolveStatusBarResolvedConfig([]);
 
     assert.equal(loaded.config.rightMessages.enabled, false);
+    assert.equal(loaded.config.statusBar.active?.timer?.visible, true);
+    assert.equal(loaded.config.statusBar.idle?.showLastRunSummary, true);
     assert.equal(loaded.config.rightMessages.dimmed, true);
     assert.equal(loaded.config.rightMessages.italic, true);
     assert.deepEqual(loaded.config.rightMessages.messages, []);
     assert.deepEqual(loaded.errors, []);
 });
 
-test("run timer right messages use inline configured messages", () => {
-    const loaded = resolveRunTimerConfig([
+test("status bar status bar parses active and idle config", () => {
+    const loaded = resolveStatusBarResolvedConfig([
+        {
+            label: "global",
+            baseDir: ".",
+            settings: {
+                statusBar: {
+                    active: {
+                        text: " Working\nnow ",
+                        spinner: {
+                            frames: [" ◐ ", "", "◓"],
+                        },
+                        timer: {
+                            visible: false,
+                            paused: true,
+                        },
+                    },
+                    idle: {
+                        text: " Ready\tnow ",
+                        visible: true,
+                        showLastRunSummary: false,
+                    },
+                },
+            },
+        },
+    ]);
+
+    assert.deepEqual(loaded.errors, []);
+    assert.deepEqual(loaded.config.statusBar, {
+        active: {
+            text: "Working now",
+            spinner: {
+                frames: ["◐", "◓"],
+            },
+            timer: {
+                visible: false,
+                paused: true,
+            },
+        },
+        idle: {
+            text: "Ready now",
+            visible: true,
+            showLastRunSummary: false,
+        },
+    });
+});
+
+test("status bar right messages use inline configured messages", () => {
+    const loaded = resolveStatusBarResolvedConfig([
         {
             label: "global",
             baseDir: ".",
@@ -93,8 +166,8 @@ test("run timer right messages use inline configured messages", () => {
     assert.deepEqual(loaded.config.rightMessages.messages, ["Tip one", "Tip two"]);
 });
 
-test("run timer right messages load messages from a text file", () => {
-    const directory = mkdtempSync(join(tmpdir(), "pi-run-timer-"));
+test("status bar right messages load messages from a text file", () => {
+    const directory = mkdtempSync(join(tmpdir(), "pi-status-bar-"));
     try {
         writeFileSync(
             join(directory, "tips.txt"),
@@ -102,7 +175,7 @@ test("run timer right messages load messages from a text file", () => {
             "utf8",
         );
 
-        const loaded = resolveRunTimerConfig([
+        const loaded = resolveStatusBarResolvedConfig([
             {
                 label: "global",
                 baseDir: directory,
@@ -127,8 +200,8 @@ test("run timer right messages load messages from a text file", () => {
     }
 });
 
-test("run timer right messages merge sources in precedence order", () => {
-    const loaded = resolveRunTimerConfig([
+test("status bar right messages merge sources in precedence order", () => {
+    const loaded = resolveStatusBarResolvedConfig([
         {
             label: "global",
             baseDir: ".",
@@ -154,8 +227,8 @@ test("run timer right messages merge sources in precedence order", () => {
     assert.deepEqual(loaded.config.rightMessages.messages, ["global tip"]);
 });
 
-test("run timer right messages enabled false skips configured files", () => {
-    const loaded = resolveRunTimerConfig([
+test("status bar right messages enabled false skips configured files", () => {
+    const loaded = resolveStatusBarResolvedConfig([
         {
             label: "global",
             baseDir: ".",
@@ -174,8 +247,8 @@ test("run timer right messages enabled false skips configured files", () => {
     assert.deepEqual(loaded.errors, []);
 });
 
-test("run timer right messages report invalid values", () => {
-    const loaded = resolveRunTimerConfig([
+test("status bar right messages report invalid values", () => {
+    const loaded = resolveStatusBarResolvedConfig([
         {
             label: "global",
             baseDir: ".",
@@ -203,8 +276,8 @@ test("run timer right messages report invalid values", () => {
     assert.match(loaded.errors[0] ?? "", /messages/);
 });
 
-test("run timer right messages reject unknown config keys", () => {
-    const loaded = resolveRunTimerConfig([
+test("status bar right messages reject unknown config keys", () => {
+    const loaded = resolveStatusBarResolvedConfig([
         {
             label: "global",
             baseDir: ".",

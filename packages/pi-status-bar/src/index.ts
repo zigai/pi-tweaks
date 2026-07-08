@@ -3,20 +3,27 @@ import { Loader, sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
 
 import {
     DEFAULT_RIGHT_MESSAGES_CONFIG,
-    loadRunTimerConfig,
-    type LoadedRunTimerConfig,
+    loadStatusBarResolvedConfig,
+    type LoadedStatusBarConfig,
     type RightMessagesConfig,
 } from "./settings.ts";
-import { formatDuration, setWorkedForWidget } from "./worked-for-widget.ts";
+import {
+    getStatusBarSnapshot,
+    setStatusBarBaseConfig,
+    subscribeStatusBarUpdates,
+    type StatusBarSegmentSnapshot,
+} from "./status-bar-api.ts";
+import { clearWorkedForWidget, formatDuration, setWorkedForWidget } from "./worked-for-widget.ts";
 
-const LOADER_TIME_PATCH_KEY = Symbol.for("zigai.pi-run-timer.loader-time-patched");
-const LOADER_TIME_PATCH_VERSION_KEY = Symbol.for("zigai.pi-run-timer.loader-time-patch-version");
-const RIGHT_MESSAGES_CONFIG_KEY = Symbol.for("zigai.pi-run-timer.right-messages-config");
+const LOADER_TIME_PATCH_KEY = Symbol.for("zigai.pi-status-bar.loader-time-patched");
+const LOADER_TIME_PATCH_VERSION_KEY = Symbol.for("zigai.pi-status-bar.loader-time-patch-version");
+const RIGHT_MESSAGES_CONFIG_KEY = Symbol.for("zigai.pi-status-bar.right-messages-config");
 const LOADER_TIME_PATCH_VERSION = 3;
 const MIN_VISIBLE_RIGHT_MESSAGE_WIDTH = 4;
 
-const loaderStartTimes = new WeakMap<object, number>();
+const loaderTimers = new WeakMap<object, LoaderTimer>();
 const loaderDisplays = new WeakMap<object, LoaderDisplay>();
+const activeLoaders = new Set<Loader>();
 const reportedConfigErrors = new Set<string>();
 
 type PatchState = typeof globalThis & {
@@ -29,6 +36,13 @@ type LoaderDisplay = {
     readonly leftText: string;
     readonly messageColorFn: (text: string) => string;
     readonly startedAt: number;
+};
+
+type LoaderTimer = {
+    startedAt: number;
+    accumulatedPausedMs: number;
+    resetVersion: number;
+    pausedAt?: number;
 };
 
 function getPatchState(): PatchState {
@@ -183,6 +197,27 @@ function renderRightMessageSegment(
     return sliceByColumn(selected.message, offset, viewportWidth);
 }
 
+function applySegmentStyle(segment: StatusBarSegmentSnapshot): string {
+    let styled = segment.text;
+    if (segment.dimmed) {
+        styled = `\x1b[2m${styled}\x1b[22m`;
+    }
+    if (segment.italic) {
+        styled = `\x1b[3m${styled}\x1b[23m`;
+    }
+    return styled;
+}
+
+function selectRightStatusSegment(): string | undefined {
+    const snapshot = getStatusBarSnapshot();
+    for (const segment of snapshot.segments) {
+        if (segment.side !== "right") continue;
+        if (!segment.states.includes("active")) continue;
+        return applySegmentStyle(segment);
+    }
+    return undefined;
+}
+
 function renderDisplayWithRightMessage(
     loader: Loader,
     display: LoaderDisplay,
@@ -209,23 +244,67 @@ function renderDisplayWithRightMessage(
     }
 
     const elapsedMs = Math.max(0, Date.now() - display.startedAt);
-    const selected = selectRightMessage(config, elapsedMs, availableRightWidth);
-    if (selected === undefined) {
-        return originalRender.call(loader, width);
-    }
+    const rightStatusSegment = selectRightStatusSegment();
+    let rightMessageSegment: string | undefined;
+    if (rightStatusSegment !== undefined) {
+        rightMessageSegment = sliceByColumn(rightStatusSegment, 0, availableRightWidth);
+    } else {
+        const selected = selectRightMessage(config, elapsedMs, availableRightWidth);
+        if (selected === undefined) {
+            return originalRender.call(loader, width);
+        }
 
-    const rightMessageSegment = renderRightMessageSegment(selected, availableRightWidth, config);
+        rightMessageSegment = renderRightMessageSegment(selected, availableRightWidth, config);
+    }
     const rightWidth = visibleWidth(rightMessageSegment);
     if (rightWidth === 0) {
         return originalRender.call(loader, width);
     }
 
-    const styledRightMessageSegment = applyRightMessageStyle(rightMessageSegment, config);
+    let styledRightMessageSegment = rightMessageSegment;
+    if (rightStatusSegment === undefined) {
+        styledRightMessageSegment = applyRightMessageStyle(rightMessageSegment, config);
+    }
     const rightText = display.messageColorFn(styledRightMessageSegment);
     const gapWidth = Math.max(minGap, contentWidth - leftWidth - rightWidth);
     const content = `${display.leftText}${" ".repeat(gapWidth)}${rightText}`;
     const line = padLineToWidth(`${" ".repeat(paddingX)}${content}`, width);
     return ["", line];
+}
+
+function getLoaderTimer(loader: Loader, now: number): LoaderTimer {
+    let timer = loaderTimers.get(loader);
+    if (timer === undefined) {
+        timer = {
+            startedAt: now,
+            accumulatedPausedMs: 0,
+            resetVersion: getStatusBarSnapshot().active.timerResetVersion,
+        };
+        loaderTimers.set(loader, timer);
+    }
+    return timer;
+}
+
+function getElapsedMs(loader: Loader, now: number): { elapsedMs: number; startedAt: number } {
+    const snapshot = getStatusBarSnapshot();
+    const timer = getLoaderTimer(loader, now);
+    if (timer.resetVersion !== snapshot.active.timerResetVersion) {
+        timer.startedAt = now;
+        timer.accumulatedPausedMs = 0;
+        delete timer.pausedAt;
+        timer.resetVersion = snapshot.active.timerResetVersion;
+    }
+
+    if (snapshot.active.timerPaused) {
+        timer.pausedAt ??= now;
+    } else if (timer.pausedAt !== undefined) {
+        timer.accumulatedPausedMs += Math.max(0, now - timer.pausedAt);
+        delete timer.pausedAt;
+    }
+
+    const effectiveNow = timer.pausedAt ?? now;
+    const elapsedMs = Math.max(0, effectiveNow - timer.startedAt - timer.accumulatedPausedMs);
+    return { elapsedMs, startedAt: timer.startedAt + timer.accumulatedPausedMs };
 }
 
 function formatElapsed(seconds: number): string {
@@ -257,7 +336,9 @@ type LoaderInternals = {
 
 function updateDisplay(loader: Loader): void {
     const l = loader as unknown as LoaderInternals;
-    const frame = l.frames[l.currentFrame] ?? "";
+    const snapshot = getStatusBarSnapshot();
+    const frames = snapshot.active.spinnerFrames ?? l.frames;
+    const frame = frames[l.currentFrame % Math.max(1, frames.length)] ?? "";
     let renderedFrame = l.spinnerColorFn(frame);
     if (l.renderIndicatorVerbatim === true) {
         renderedFrame = frame;
@@ -268,22 +349,29 @@ function updateDisplay(loader: Loader): void {
         indicator = `${renderedFrame} `;
     }
 
-    let startedAt = loaderStartTimes.get(loader);
-    if (startedAt === undefined) {
-        startedAt = Date.now();
-        loaderStartTimes.set(loader, startedAt);
+    const now = Date.now();
+    const elapsed = getElapsedMs(loader, now);
+    const elapsedSeconds = Math.floor(elapsed.elapsedMs / 1000);
+    const baseMessage = snapshot.active.text ?? l.message;
+    let message = baseMessage;
+    if (snapshot.active.timerVisible) {
+        message = `${baseMessage} (${formatElapsed(elapsedSeconds)})`;
     }
-    const elapsedSeconds = Math.floor(Math.max(0, Date.now() - startedAt) / 1000);
-    const message = `${l.message} (${formatElapsed(elapsedSeconds)})`;
     const leftText = `${indicator}${l.messageColorFn(message)}`;
 
     loaderDisplays.set(loader, {
         leftText,
         messageColorFn: (text: string) => l.messageColorFn(text),
-        startedAt,
+        startedAt: elapsed.startedAt,
     });
     l.setText(leftText);
     l.ui?.requestRender();
+}
+
+function requestActiveLoaderRenders(): void {
+    for (const loader of activeLoaders) {
+        updateDisplay(loader);
+    }
 }
 
 function patchLoaderTime(): void {
@@ -315,12 +403,18 @@ function patchLoaderTime(): void {
     }
 
     prototype.start = function patchedStart(this: Loader): void {
-        loaderStartTimes.set(this, Date.now());
+        activeLoaders.add(this);
+        loaderTimers.set(this, {
+            startedAt: Date.now(),
+            accumulatedPausedMs: 0,
+            resetVersion: getStatusBarSnapshot().active.timerResetVersion,
+        });
         originalStart.call(this);
     };
 
     prototype.stop = function patchedStop(this: Loader): void {
-        loaderStartTimes.delete(this);
+        activeLoaders.delete(this);
+        loaderTimers.delete(this);
         loaderDisplays.delete(this);
         originalStop.call(this);
     };
@@ -339,25 +433,27 @@ function patchLoaderTime(): void {
 
     state[LOADER_TIME_PATCH_KEY] = true;
     state[LOADER_TIME_PATCH_VERSION_KEY] = LOADER_TIME_PATCH_VERSION;
+    subscribeStatusBarUpdates(requestActiveLoaderRenders);
 }
 
-function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedRunTimerConfig): void {
+function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedStatusBarConfig): void {
     for (const error of loaded.errors) {
         if (reportedConfigErrors.has(error)) {
             continue;
         }
         reportedConfigErrors.add(error);
-        ctx.ui.notify(`[pi-run-timer] ${error}`, "error");
+        ctx.ui.notify(`[pi-status-bar] ${error}`, "error");
     }
 }
 
-function applyRunTimerConfig(ctx: ExtensionContext): void {
-    const loaded = loadRunTimerConfig(ctx.cwd, ctx.isProjectTrusted());
+function applyStatusBarResolvedConfig(ctx: ExtensionContext): void {
+    const loaded = loadStatusBarResolvedConfig(ctx.cwd, ctx.isProjectTrusted());
+    setStatusBarBaseConfig(loaded.config.statusBar);
     setRightMessagesConfig(loaded.config.rightMessages);
     reportConfigErrors(ctx, loaded);
 }
 
-export default function runTimerExtension(pi: ExtensionAPI): void {
+export default function statusBarExtension(pi: ExtensionAPI): void {
     patchLoaderTime();
 
     let agentStartedAt: number | undefined;
@@ -365,9 +461,23 @@ export default function runTimerExtension(pi: ExtensionAPI): void {
     let streamStart: number | undefined;
     let totalOutputTokens = 0;
     let totalStreamMs = 0;
+    let idleWidgetContext: ExtensionContext | undefined;
+    let idleWorkedForText: string | undefined;
+    let idleTokensPerSecond: number | undefined;
+    let agentRunning = false;
+
+    subscribeStatusBarUpdates(() => {
+        if (agentRunning) return;
+        if (idleWidgetContext === undefined) return;
+        setWorkedForWidget(idleWidgetContext, idleWorkedForText, idleTokensPerSecond);
+    });
 
     pi.on("session_start", async (_event, ctx) => {
-        applyRunTimerConfig(ctx);
+        applyStatusBarResolvedConfig(ctx);
+        agentRunning = false;
+        idleWidgetContext = ctx;
+        idleWorkedForText = undefined;
+        idleTokensPerSecond = undefined;
         setWorkedForWidget(ctx, undefined);
     });
 
@@ -377,7 +487,11 @@ export default function runTimerExtension(pi: ExtensionAPI): void {
         streamStart = undefined;
         totalOutputTokens = 0;
         totalStreamMs = 0;
-        setWorkedForWidget(ctx, undefined);
+        agentRunning = true;
+        idleWidgetContext = ctx;
+        idleWorkedForText = undefined;
+        idleTokensPerSecond = undefined;
+        clearWorkedForWidget(ctx);
     });
 
     pi.on("message_start", async (event) => {
@@ -426,7 +540,11 @@ export default function runTimerExtension(pi: ExtensionAPI): void {
             tokensPerSecond = Math.round(totalOutputTokens / elapsedSeconds);
         }
         agentStartedAt = undefined;
-        setWorkedForWidget(ctx, formatDuration(duration), tokensPerSecond);
+        agentRunning = false;
+        idleWidgetContext = ctx;
+        idleWorkedForText = formatDuration(duration);
+        idleTokensPerSecond = tokensPerSecond;
+        setWorkedForWidget(ctx, idleWorkedForText, idleTokensPerSecond);
     });
 
     pi.on("session_shutdown", async (_event, ctx) => {
@@ -435,7 +553,11 @@ export default function runTimerExtension(pi: ExtensionAPI): void {
         streamStart = undefined;
         totalOutputTokens = 0;
         totalStreamMs = 0;
+        agentRunning = false;
+        idleWidgetContext = undefined;
+        idleWorkedForText = undefined;
+        idleTokensPerSecond = undefined;
         setRightMessagesConfig(DEFAULT_RIGHT_MESSAGES_CONFIG);
-        setWorkedForWidget(ctx, undefined);
+        clearWorkedForWidget(ctx);
     });
 }
