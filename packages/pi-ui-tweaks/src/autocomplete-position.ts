@@ -97,7 +97,7 @@ export function installAutocompletePositionPatch(
             if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
                 this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
                 if (patchState.restoreContentAfterAutocompleteClose) {
-                    this.tui?.requestRender();
+                    this.tui?.requestRender(true);
                 }
             }
             return result;

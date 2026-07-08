@@ -8,6 +8,7 @@ type AutocompletePositionPatchTarget = {
     autocompleteState?: unknown;
     autocompleteList?: { render(width: number): string[] };
     paddingX?: number;
+    tui?: { requestRender(force?: boolean): void };
 };
 
 async function importAutocompletePositionModule(
@@ -60,5 +61,51 @@ test("autocomplete position patch reads config state updated by a reloaded modul
     } finally {
         secondModule.setAutocompleteAboveInput(true);
         secondModule.setRestoreContentAfterAutocompleteClose(true);
+    }
+});
+
+test("autocomplete position patch forces redraw after above-input autocomplete closes", async () => {
+    const autocompletePosition = await importAutocompletePositionModule("close-redraw");
+    const requestedForces: Array<boolean | undefined> = [];
+    const prototype: AutocompletePositionPatchTarget = {
+        render(this: AutocompletePositionPatchTarget) {
+            if (this.autocompleteState === null) {
+                return ["input"];
+            }
+            return ["input", "suggestion"];
+        },
+    };
+    const target: AutocompletePositionPatchTarget = Object.assign(
+        Object.create(prototype) as AutocompletePositionPatchTarget,
+        {
+            autocompleteState: {},
+            autocompleteList: {
+                render() {
+                    return ["suggestion"];
+                },
+            },
+            paddingX: 0,
+            tui: {
+                requestRender(force?: boolean): void {
+                    requestedForces.push(force);
+                },
+            },
+        },
+    );
+
+    try {
+        autocompletePosition.setAutocompleteAboveInput(true);
+        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.installAutocompletePositionPatch(prototype);
+
+        prototype.render.call(target, 20);
+        target.autocompleteState = null;
+        target.autocompleteList = undefined;
+        prototype.render.call(target, 20);
+
+        assert.deepEqual(requestedForces, [true]);
+    } finally {
+        autocompletePosition.setAutocompleteAboveInput(true);
+        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
     }
 });
