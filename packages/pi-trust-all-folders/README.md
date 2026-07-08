@@ -12,12 +12,6 @@ This Pi extension automatically approves project trust prompts for project-local
 pi install npm:@zigai/pi-trust-all-folders
 ```
 
-Or install the full tweak bundle:
-
-```sh
-pi install git:github.com/zigai/pi-tweaks
-```
-
 ## License
 
 MIT

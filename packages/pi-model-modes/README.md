@@ -20,7 +20,7 @@ pi install npm:@zigai/pi-model-modes
 - Can show the current mode in the prompt editor border when enabled.
 - Colors the prompt editor border from the active mode, with an opt-in setting for thinking-derived border colors.
 
-Modes can store a provider, model, thinking level, and optional color. By default, Pi Model Modes hides Pi's transient `Thinking level: …` status message because the active thinking level is already visible in the footer.
+Modes can store a provider, model, thinking level, and optional color.
 
 ## Configuration
 

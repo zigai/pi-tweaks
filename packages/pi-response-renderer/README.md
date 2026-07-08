@@ -12,8 +12,6 @@ It applies a few small rendering tweaks:
 - collapses paragraph gaps without squeezing tables or headings
 - removes italic ANSI styling from assistant message output
 
-The goal is a cleaner transcript with less visual noise while keeping the message content itself unchanged.
-
 ## Install
 
 ```sh

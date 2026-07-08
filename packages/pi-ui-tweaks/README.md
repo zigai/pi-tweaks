@@ -12,28 +12,6 @@ This Pi extension collects small configurable UI tweaks that are too tiny to des
 pi install npm:@zigai/pi-ui-tweaks
 ```
 
-Or install the full tweak bundle:
-
-```sh
-pi install git:github.com/zigai/pi-tweaks
-```
-
-## Tweaks
-
-- `autocompleteAboveInput` renders editor autocomplete menus above the input box, keeping the input box anchored while slash-command suggestions are open.
-- `bashExecPromptSpacing` inserts a space after `!` when starting bash exec mode from an empty prompt, so commands appear as `! code .`.
-- `anchorInputToBottom` pads short Pi screens with blank rows above the input/footer area, keeping the input at the terminal bottom.
-- `compactModelSelector` removes extra blank spacer rows from the model picker.
-- `hideAutocompleteScrollInfo` hides autocomplete count footers like `(1/38)`.
-- `hideModelChangeStatus` hides redundant `Model: <id>` status lines after changing models.
-- `hideModelProviderHint` hides Pi's built-in `Only showing models from configured providers. Use /login to add providers.` model picker hint.
-- `hideSlashCommandSourceTags` hides source tags like `[u:npm:@plannotator/pi-extension]` from slash command autocomplete descriptions.
-- `highlightSelectedModelProvider` highlights the selected model row's provider badge in the model picker.
-- `inputPromptPrefix` changes the marker used by single-line input boxes. A trailing space is added automatically when omitted.
-- `neutralBorderColor` renders Pi border lines with the normal text color instead of the theme border color.
-- `restoreContentAfterAutocompleteClose` forces a clean redraw after above-input autocomplete closes, so content moves back down instead of leaving blank rows.
-- `selectedOptionPrefix` changes the marker used for selected rows in selector UIs. A trailing space is added automatically when omitted.
-
 ## Settings
 
 Configure global settings at `~/.pi/agent/pi-ui-tweaks/config.json`.

@@ -6,8 +6,6 @@
 
 This Pi extension improves `/tree` with timestamps on every entry, a cleaner help/status line, and an optional right-side preview.
 
-The preview helps when scanning a long session because you can inspect message content without opening each branch.
-
 ## Install
 
 ```sh

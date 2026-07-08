@@ -10,7 +10,7 @@ Adds a coherent programmable status bar to Pi:
 - idle post-run status, such as `Worked for 1m 12s. [45 tok/s]`
 - an extension API for changing active text, spinner frames, timer state, idle text, and custom status segments
 
-This package intentionally stays single-line and status-focused. For multiline panels, dashboards, todo lists, or richer UI above the editor, use Pi's built-in `ctx.ui.setWidget(...)` API directly.
+This package intentionally stays single-line and status-focused. For richer UI above the editor, use Pi's built-in API's.
 
 ## Install
 
