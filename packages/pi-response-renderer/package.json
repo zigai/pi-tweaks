@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-response-renderer",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Pi package that makes assistant responses more compact.",
   "keywords": [
     "pi",

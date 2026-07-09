@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-prompt-history",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Pi package that adds cross-session prompt history to the prompt editor.",
   "keywords": [
     "history",
