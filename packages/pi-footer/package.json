@@ -23,6 +23,7 @@
   },
   "files": [
     "src",
+    "assets",
     "README.md",
     "*.json"
   ],
@@ -42,6 +43,7 @@
     "@earendil-works/pi-tui": "*"
   },
   "pi": {
+    "image": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-footer/assets/footer.png",
     "extensions": [
       "./src/index.ts"
     ]

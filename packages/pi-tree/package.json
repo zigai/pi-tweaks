@@ -24,6 +24,7 @@
   },
   "files": [
     "src",
+    "assets",
     "README.md",
     "*.json"
   ],
@@ -39,6 +40,7 @@
     "@earendil-works/pi-tui": "*"
   },
   "pi": {
+    "image": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-tree/assets/tree-preview-demo.png",
     "extensions": [
       "./src/index.ts"
     ]

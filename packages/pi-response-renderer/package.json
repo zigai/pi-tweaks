@@ -23,6 +23,7 @@
   },
   "files": [
     "src",
+    "assets",
     "README.md",
     "*.json"
   ],
@@ -35,6 +36,7 @@
     "@earendil-works/pi-tui": "*"
   },
   "pi": {
+    "image": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-response-renderer/assets/response-renderer-after.png",
     "extensions": [
       "./src/index.ts"
     ]
