@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-mention-skill.svg)](https://www.npmjs.com/package/@zigai/pi-mention-skill)
 [![license](https://img.shields.io/npm/l/@zigai/pi-mention-skill.svg)](../../LICENSE)
 
-This Pi extension moves skill selection out of the regular slash autocomplete menu and into configurable mentions that default to `$`.
+Move Pi skill selection from slash autocomplete to `$` mentions.
 
 ## Install
 

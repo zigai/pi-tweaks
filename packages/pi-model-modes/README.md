@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-model-modes.svg)](https://www.npmjs.com/package/@zigai/pi-model-modes)
 [![license](https://img.shields.io/npm/l/@zigai/pi-model-modes.svg)](../../LICENSE)
 
-This Pi extension adds prompt modes for model and thinking-level switching.
+Mode presets for switching models and thinking levels in Pi.
 
 ## Install
 

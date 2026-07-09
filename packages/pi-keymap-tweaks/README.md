@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-keymap-tweaks.svg)](https://www.npmjs.com/package/@zigai/pi-keymap-tweaks)
 [![license](https://img.shields.io/npm/l/@zigai/pi-keymap-tweaks.svg)](../../LICENSE)
 
-This Pi extension collects opinionated editor and message-submit key tweaks.
+Opinionated editor and message-submit key tweaks for Pi.
 
 ## Features
 

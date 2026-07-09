@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-ui-tweaks.svg)](https://www.npmjs.com/package/@zigai/pi-ui-tweaks)
 [![license](https://img.shields.io/npm/l/@zigai/pi-ui-tweaks.svg)](../../LICENSE)
 
-This Pi extension collects small configurable UI tweaks that are too tiny to deserve standalone packages.
+Small configurable UI tweaks for polishing Pi's interface.
 
 ## Install
 

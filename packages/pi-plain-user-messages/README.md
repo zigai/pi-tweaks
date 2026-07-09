@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-plain-user-messages.svg)](https://www.npmjs.com/package/@zigai/pi-plain-user-messages)
 [![license](https://img.shields.io/npm/l/@zigai/pi-plain-user-messages.svg)](../../LICENSE)
 
-This Pi extension renders user-submitted messages in the transcript as plain text instead of Markdown.
+Plain-text rendering for user-submitted messages in Pi.
 
 ## Install
 

@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-footer.svg)](https://www.npmjs.com/package/@zigai/pi-footer)
 [![license](https://img.shields.io/npm/l/@zigai/pi-footer.svg)](../../LICENSE)
 
-This Pi extension replaces Pi's footer with a single compact plain-text status line.
+A minimalistic, single-line replacement for Pi's footer.
 
 ![Pi Footer screenshot](assets/footer.png)
 

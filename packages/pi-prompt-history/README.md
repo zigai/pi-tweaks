@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-prompt-history.svg)](https://www.npmjs.com/package/@zigai/pi-prompt-history)
 [![license](https://img.shields.io/npm/l/@zigai/pi-prompt-history.svg)](../../LICENSE)
 
-This Pi extension adds cross-session prompt history to the prompt editor.
+Cross-session prompt history for Pi's prompt editor.
 
 ## Install
 

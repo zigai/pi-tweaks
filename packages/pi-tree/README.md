@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-tree.svg)](https://www.npmjs.com/package/@zigai/pi-tree)
 [![license](https://img.shields.io/npm/l/@zigai/pi-tree.svg)](../../LICENSE)
 
-This Pi extension improves `/tree` with timestamps on every entry, a cleaner help/status line, and an optional right-side preview.
+A cleaner, more informative `/tree` for Pi.
 
 ## Install
 

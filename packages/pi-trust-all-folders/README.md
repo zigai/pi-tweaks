@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-trust-all-folders.svg)](https://www.npmjs.com/package/@zigai/pi-trust-all-folders)
 [![license](https://img.shields.io/npm/l/@zigai/pi-trust-all-folders.svg)](../../LICENSE)
 
-This Pi extension automatically approves project trust prompts for project-local inputs.
+Automatically trust all folders in Pi.
 
 ## Install
 

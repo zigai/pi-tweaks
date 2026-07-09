@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-model-filter.svg)](https://www.npmjs.com/package/@zigai/pi-model-filter)
 [![license](https://img.shields.io/npm/l/@zigai/pi-model-filter.svg)](../../LICENSE)
 
-This Pi extension filters visible models.
+Focused model lists for Pi, showing only the models you want.
 
 ## Install
 
