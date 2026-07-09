@@ -1,6 +1,6 @@
 # Pi Tree
 
-<a href="https://www.npmjs.com/package/@zigai/pi-tree"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-tree.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-tree"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-tree.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-tree.svg" style="display:inline-block;border:0" /></a>
+<a href="https://www.npmjs.com/package/@zigai/pi-tree"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-tree.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-tree"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-tree.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-tree.svg" style="display:inline-block;border:0" /></a>
 
 A cleaner, more informative `/tree` for Pi.
 
