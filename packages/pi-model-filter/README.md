@@ -1,8 +1,6 @@
 # Pi Model Filter
 
-[![npm version](https://img.shields.io/npm/v/@zigai/pi-model-filter.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-model-filter)
-[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-model-filter.svg)](https://www.npmjs.com/package/@zigai/pi-model-filter)
-[![license](https://img.shields.io/npm/l/@zigai/pi-model-filter.svg)](../../LICENSE)
+<a href="https://www.npmjs.com/package/@zigai/pi-model-filter"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-model-filter.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-model-filter"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-model-filter.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-model-filter.svg" style="display:inline-block;border:0" /></a>
 
 Focused model lists for Pi, showing only the models you want.
 

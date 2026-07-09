@@ -1,8 +1,6 @@
 # Pi Mention Project
 
-[![npm version](https://img.shields.io/npm/v/@zigai/pi-mention-project.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-mention-project)
-[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-mention-project.svg)](https://www.npmjs.com/package/@zigai/pi-mention-project)
-[![license](https://img.shields.io/npm/l/@zigai/pi-mention-project.svg)](../../LICENSE)
+<a href="https://www.npmjs.com/package/@zigai/pi-mention-project"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-mention-project.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-mention-project"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-mention-project.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-mention-project.svg" style="display:inline-block;border:0" /></a>
 
 Use short `#project` mentions in Pi while the model receives the matching absolute project path.
 

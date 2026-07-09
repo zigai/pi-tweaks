@@ -1,8 +1,6 @@
 # Pi Status Bar
 
-[![npm version](https://img.shields.io/npm/v/@zigai/pi-status-bar.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-status-bar)
-[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-status-bar.svg)](https://www.npmjs.com/package/@zigai/pi-status-bar)
-[![license](https://img.shields.io/npm/l/@zigai/pi-status-bar.svg)](../../LICENSE)
+<a href="https://www.npmjs.com/package/@zigai/pi-status-bar"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-status-bar.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-status-bar"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-status-bar.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-status-bar.svg" style="display:inline-block;border:0" /></a>
 
 Adds a coherent programmable status bar to Pi:
 

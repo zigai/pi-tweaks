@@ -1,8 +1,6 @@
 # Pi Keymap Tweaks
 
-[![npm version](https://img.shields.io/npm/v/@zigai/pi-keymap-tweaks.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-keymap-tweaks)
-[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-keymap-tweaks.svg)](https://www.npmjs.com/package/@zigai/pi-keymap-tweaks)
-[![license](https://img.shields.io/npm/l/@zigai/pi-keymap-tweaks.svg)](../../LICENSE)
+<a href="https://www.npmjs.com/package/@zigai/pi-keymap-tweaks"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-keymap-tweaks.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-keymap-tweaks"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-keymap-tweaks.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-keymap-tweaks.svg" style="display:inline-block;border:0" /></a>
 
 Opinionated editor and message-submit key tweaks for Pi.
 

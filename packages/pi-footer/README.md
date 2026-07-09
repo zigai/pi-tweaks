@@ -1,8 +1,6 @@
 # Pi Footer
 
-[![npm version](https://img.shields.io/npm/v/@zigai/pi-footer.svg?color=blue)](https://www.npmjs.com/package/@zigai/pi-footer)
-[![npm downloads](https://img.shields.io/npm/dm/@zigai/pi-footer.svg)](https://www.npmjs.com/package/@zigai/pi-footer)
-[![license](https://img.shields.io/npm/l/@zigai/pi-footer.svg)](../../LICENSE)
+<a href="https://www.npmjs.com/package/@zigai/pi-footer"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-footer.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-footer"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-footer.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-footer.svg" style="display:inline-block;border:0" /></a>
 
 A minimalistic, single-line replacement for Pi's footer.
 
