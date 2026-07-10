@@ -7,7 +7,6 @@ export const MAX_VISIBLE_LINES_SETTINGS_KEY = "treeMaxVisibleLines";
 export const PREVIEW_FULL_HEIGHT_SETTINGS_KEY = "treePreviewFullHeight";
 export const MIN_VISIBLE_LINES = 5;
 export const PATCH_KEY = Symbol.for("zigai.pi.tree-timestamps.patched");
-export const TREE_HELP_PATCH_KEY = Symbol.for("zigai.pi.tree-timestamps.help-patched");
 export const TREE_TITLE_PATCH_KEY = Symbol.for("zigai.pi.tree-timestamps.title-patched");
 export const PREVIEW_TOGGLE_KEY = "P";
 export const PREVIEW_TOGGLE_HINT = "shift+p";

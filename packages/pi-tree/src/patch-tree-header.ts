@@ -1,8 +1,31 @@
 import { keyText } from "@earendil-works/pi-coding-agent";
-import { Text, TruncatedText } from "@earendil-works/pi-tui";
 
-import { PREVIEW_TOGGLE_HINT, TREE_HELP_PATCH_KEY, TREE_TITLE_PATCH_KEY } from "./constants.ts";
+import { PREVIEW_TOGGLE_HINT, TREE_TITLE_PATCH_KEY } from "./constants.ts";
 import { warnInternalPatchUnavailable } from "./internal-imports.ts";
+
+const TREE_TITLE_TEXT = "  Session Tree";
+const LEGACY_TREE_HELP_TEXT = "↑/↓: move.";
+
+type ComponentLike = {
+    invalidate(): void;
+    render(width: number): string[];
+};
+
+type AddChild = (this: TreeHeaderPatchTarget, component: ComponentLike) => void;
+
+export type TreeHeaderPatchTarget = {
+    addChild: AddChild;
+};
+
+type TreeHeaderPatchRecord = {
+    readonly originalAddChild: AddChild;
+    readonly patchedAddChild: AddChild;
+    readonly prototype: TreeHeaderPatchTarget;
+};
+
+type TreeHeaderPatchState = typeof globalThis & {
+    [TREE_TITLE_PATCH_KEY]?: TreeHeaderPatchRecord | true;
+};
 
 function formatTreeHelpKey(key: string): string {
     return key
@@ -31,52 +54,51 @@ function getTreeHelpText(): string {
     ].join("  •  ");
 }
 
-export function patchTreeHeaderText(): void {
-    const globalState = globalThis as typeof globalThis & {
-        [TREE_HELP_PATCH_KEY]?: boolean;
-        [TREE_TITLE_PATCH_KEY]?: boolean;
-    };
+function componentText(component: ComponentLike): string | undefined {
+    const text: unknown = Reflect.get(component, "text");
+    if (typeof text !== "string") return undefined;
+    return text;
+}
 
-    if (globalState[TREE_TITLE_PATCH_KEY] !== true) {
-        const textPrototype = Text.prototype as unknown as {
-            render?: (width: number) => string[];
-            text?: string;
-        };
-        const originalTextRender = textPrototype.render;
-        if (typeof originalTextRender === "function") {
-            textPrototype.render = function patchedTextRender(
-                this: { text?: string },
-                width: number,
-            ) {
-                if (this.text?.includes("  Session Tree") === true) {
-                    return [];
-                }
-                return originalTextRender.call(this, width);
-            };
-            globalState[TREE_TITLE_PATCH_KEY] = true;
-        } else {
-            warnInternalPatchUnavailable("tree title patch");
-        }
-    }
+function isTreeTitle(component: ComponentLike): boolean {
+    return componentText(component)?.includes(TREE_TITLE_TEXT) === true;
+}
 
-    if (globalState[TREE_HELP_PATCH_KEY] === true) return;
+function updateLegacyTreeHelp(component: ComponentLike): void {
+    if (componentText(component)?.includes(LEGACY_TREE_HELP_TEXT) !== true) return;
+    Reflect.set(component, "text", `  ${getTreeHelpText()}`);
+}
 
-    const truncatedTextPrototype = TruncatedText.prototype as unknown as {
-        render?: (width: number) => string[];
-        text?: string;
-    };
-    const originalRender = truncatedTextPrototype.render;
-    if (typeof originalRender !== "function") {
-        warnInternalPatchUnavailable("tree help patch");
+/** Patches only TreeSelectorComponent children, leaving global Text rendering untouched. */
+export function patchTreeHeaderText(prototype: TreeHeaderPatchTarget): void {
+    const globalState = globalThis as TreeHeaderPatchState;
+    if (globalState[TREE_TITLE_PATCH_KEY] !== undefined) return;
+
+    const originalAddChildValue: unknown = Reflect.get(prototype, "addChild");
+    if (typeof originalAddChildValue !== "function") {
+        warnInternalPatchUnavailable("tree header patch");
         return;
     }
-
-    truncatedTextPrototype.render = function patchedRender(this: { text?: string }, width: number) {
-        if (this.text?.includes("↑/↓: move.") === true) {
-            this.text = `  ${getTreeHelpText()}`;
-        }
-        return originalRender.call(this, width);
+    // SAFETY: The runtime guard verifies TreeSelectorComponent's inherited addChild method.
+    const originalAddChild = originalAddChildValue as AddChild;
+    const patchedAddChild: AddChild = function patchedTreeSelectorAddChild(component): void {
+        if (isTreeTitle(component)) return;
+        updateLegacyTreeHelp(component);
+        originalAddChild.call(this, component);
     };
 
-    globalState[TREE_HELP_PATCH_KEY] = true;
+    prototype.addChild = patchedAddChild;
+    globalState[TREE_TITLE_PATCH_KEY] = { originalAddChild, patchedAddChild, prototype };
+}
+
+/** Restores the TreeSelectorComponent child renderer when the extension unloads. */
+export function restoreTreeHeaderText(): void {
+    const globalState = globalThis as TreeHeaderPatchState;
+    const patch = globalState[TREE_TITLE_PATCH_KEY];
+    if (patch === undefined || patch === true) return;
+
+    if (patch.prototype.addChild === patch.patchedAddChild) {
+        patch.prototype.addChild = patch.originalAddChild;
+    }
+    delete globalState[TREE_TITLE_PATCH_KEY];
 }

@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { restoreTreeHeaderText } from "./patch-tree-header.ts";
 import { patchTreeSelector } from "./patch-tree-selector.ts";
 import { getPersistedMode, setSettingsContext } from "./settings.ts";
 
@@ -8,5 +9,8 @@ export default function treeTimestampsExtension(pi: ExtensionAPI): void {
         setSettingsContext(ctx);
         getPersistedMode();
         await patchTreeSelector();
+    });
+    pi.on("session_shutdown", () => {
+        restoreTreeHeaderText();
     });
 }

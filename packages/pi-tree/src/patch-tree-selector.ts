@@ -7,7 +7,7 @@ import {
     TREE_TIMESTAMP_MODE_KEY,
 } from "./constants.ts";
 import { loadTreeInternals } from "./internal-imports.ts";
-import { patchTreeHeaderText } from "./patch-tree-header.ts";
+import { patchTreeHeaderText, type TreeHeaderPatchTarget } from "./patch-tree-header.ts";
 import { calculatePreviewLayout, getPreviewText, padToWidth } from "./preview.ts";
 import {
     getConfiguredThemeName,
@@ -45,7 +45,7 @@ type TreePatchSettings = TreePatchState;
 
 type PatchTreeSelectorOptions = {
     readonly loadTreeInternals?: () => Promise<[TreeSelectorModule, ThemeModule] | undefined>;
-    readonly patchTreeHeaderText?: () => void;
+    readonly patchTreeHeaderText?: (prototype: TreeHeaderPatchTarget) => void;
     readonly settings?: TreePatchSettings;
 };
 
@@ -122,7 +122,6 @@ function getTreePreviewEnabledFromState(
 export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}): Promise<void> {
     const patchState = setTreePatchState(options.settings ?? defaultTreePatchSettings());
     const patchHeaderText = options.patchTreeHeaderText ?? patchTreeHeaderText;
-    patchHeaderText();
 
     const loadInternals = options.loadTreeInternals ?? loadTreeInternals;
     const internals = await loadInternals();
@@ -148,8 +147,12 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
         undefined,
     );
     const selectorPrototype = Object.getPrototypeOf(selector) as {
+        addChild?: TreeHeaderPatchTarget["addChild"];
         getTreeList?: () => TreeListInstance | undefined;
     } | null;
+    if (selectorPrototype !== null && typeof selectorPrototype.addChild === "function") {
+        patchHeaderText(selectorPrototype as TreeHeaderPatchTarget);
+    }
     const originalGetTreeList = selectorPrototype?.getTreeList;
     if (selectorPrototype !== null && typeof originalGetTreeList === "function") {
         selectorPrototype.getTreeList = function patchedGetTreeList(this: unknown) {
