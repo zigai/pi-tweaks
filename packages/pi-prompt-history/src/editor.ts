@@ -2,7 +2,6 @@ import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-a
 import {
     buildHistoryList,
     collectUserPromptsFromEntries,
-    historiesMatch,
     loadPromptHistoryForCwd,
 } from "./prompt-history.ts";
 import type { PromptEntry } from "./types.ts";
@@ -19,8 +18,6 @@ type EditorLike = CustomEditor & {
 type WrappedEditorFactory = EditorFactory & {
     [HISTORY_FACTORY_BASE]?: EditorFactory | undefined;
 };
-
-let loadCounter = 0;
 
 function enhanceEditor(editor: EditorLike, history: PromptEntry[]): EditorLike {
     for (const prompt of history) {
@@ -42,24 +39,24 @@ function setEditor(ctx: ExtensionContext, history: PromptEntry[]): void {
     ctx.ui.setEditorComponent(factory);
 }
 
-export function applyPromptHistoryEditor(ctx: ExtensionContext): void {
+export type PromptHistoryLoader = (
+    cwd: string,
+    excludeSessionFile?: string,
+) => Promise<PromptEntry[]>;
+
+/** Loads prompt history before installing the session editor exactly once. */
+export async function applyPromptHistoryEditor(
+    ctx: ExtensionContext,
+    loadHistory: PromptHistoryLoader = loadPromptHistoryForCwd,
+): Promise<void> {
     if (!ctx.hasUI) return;
 
     const sessionFile = ctx.sessionManager.getSessionFile();
     const currentEntries = ctx.sessionManager.getBranch();
     const currentPrompts = collectUserPromptsFromEntries(currentEntries);
-    const immediateHistory = buildHistoryList(currentPrompts, []);
-
-    const currentLoad = ++loadCounter;
     const initialText = ctx.ui.getEditorText();
-    setEditor(ctx, immediateHistory);
+    const previousPrompts = await loadHistory(ctx.cwd, sessionFile ?? undefined);
+    if (ctx.ui.getEditorText() !== initialText) return;
 
-    void (async () => {
-        const previousPrompts = await loadPromptHistoryForCwd(ctx.cwd, sessionFile ?? undefined);
-        if (currentLoad !== loadCounter) return;
-        if (ctx.ui.getEditorText() !== initialText) return;
-        const history = buildHistoryList(currentPrompts, previousPrompts);
-        if (historiesMatch(history, immediateHistory)) return;
-        setEditor(ctx, history);
-    })();
+    setEditor(ctx, buildHistoryList(currentPrompts, previousPrompts));
 }

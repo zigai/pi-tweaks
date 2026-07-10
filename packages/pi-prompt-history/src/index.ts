@@ -3,6 +3,6 @@ import { applyPromptHistoryEditor } from "./editor.ts";
 
 export default function (pi: ExtensionAPI) {
     pi.on("session_start", async (_event, ctx) => {
-        applyPromptHistoryEditor(ctx);
+        await applyPromptHistoryEditor(ctx);
     });
 }
