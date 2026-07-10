@@ -9,6 +9,7 @@ type ShowStatus = (this: InteractiveModeStatusTarget, message: string) => void;
 type InteractiveModeStatusTarget = {
     [MODEL_STATUS_PATCH_KEY]?: true;
     showStatus: ShowStatus;
+    ui: { requestRender(force?: boolean): void };
 };
 
 function warnModelStatusPatchUnavailable(reason?: string): void {
@@ -58,6 +59,9 @@ export function installModelStatusPatch(
         message: string,
     ): void {
         if (getUiTweaksPatchState().hideModelChangeStatus && isModelChangeStatus(message)) {
+            // Model selection restores the editor immediately before this call. Preserve the
+            // original method's repaint even though the status line itself is suppressed.
+            this.ui.requestRender();
             return;
         }
 

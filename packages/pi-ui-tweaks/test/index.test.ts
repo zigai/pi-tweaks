@@ -62,8 +62,10 @@ type TestInteractiveMode = {
 };
 
 type TestStatusMode = {
+    renderRequests: Array<boolean | undefined>;
     statuses: string[];
     showStatus(message: string): void;
+    ui: { requestRender(force?: boolean): void };
 };
 
 type TestModelSelectorProviderBadge = {
@@ -205,10 +207,17 @@ function createTestInteractiveMode(): TestInteractiveMode {
 }
 
 function createTestStatusMode(): TestStatusMode {
+    const renderRequests: Array<boolean | undefined> = [];
     return {
+        renderRequests,
         statuses: [],
         showStatus(message: string) {
             this.statuses.push(message);
+        },
+        ui: {
+            requestRender(force?: boolean): void {
+                renderRequests.push(force);
+            },
         },
     };
 }
@@ -562,6 +571,7 @@ test("model status patch removes model change status", () => {
     statusMode.showStatus("Switched to GPT-5");
 
     assert.deepEqual(statusMode.statuses, ["Switched to GPT-5"]);
+    assert.deepEqual(statusMode.renderRequests, [undefined]);
 });
 
 test("model status patch leaves model change status visible when disabled", () => {
