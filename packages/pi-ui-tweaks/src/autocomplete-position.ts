@@ -135,10 +135,15 @@ export function installAutocompletePositionPatch(
             if (isConfirmedSlashCommand(this, data)) {
                 this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = true;
             }
+            let completed = false;
             try {
                 originalHandleInput.call(this, data);
+                completed = true;
             } finally {
-                if (this.autocompleteState !== null && this.autocompleteState !== undefined) {
+                if (
+                    !completed ||
+                    (this.autocompleteState !== null && this.autocompleteState !== undefined)
+                ) {
                     this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = undefined;
                 }
             }
@@ -151,7 +156,12 @@ export function installAutocompletePositionPatch(
         const result = originalRender.call(this, width);
         const patchState = getUiTweaksPatchState();
         if (!patchState.autocompleteAboveInput) {
-            this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
+            if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
+                this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
+                if (patchState.restoreContentAfterAutocompleteClose) {
+                    requestDeferredForceRender(this);
+                }
+            }
             return result;
         }
 
