@@ -200,34 +200,42 @@ function renderWithChildLineRanges(
         return render.call(tui, width);
     }
 
-    const originals: Array<{ child: Component; render: Component["render"] }> = [];
+    const originals: Array<{
+        child: Component;
+        ownDescriptor: PropertyDescriptor | undefined;
+    }> = [];
     const ranges: ChildLineRange[] = [];
     let start = 0;
     frame.recording = true;
     frame.ranges = ranges;
 
-    for (let index = 0; index < tui.children.length; index += 1) {
-        const child = tui.children[index];
-        if (child === undefined) continue;
-
-        const originalRenderValue: unknown = Reflect.get(child, "render");
-        if (typeof originalRenderValue !== "function") continue;
-
-        const originalRender = originalRenderValue as Component["render"];
-        originals.push({ child, render: originalRender });
-        child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
-            const lines = originalRender.call(this, childWidth);
-            ranges.push({ index, start, end: start + lines.length });
-            start += lines.length;
-            return lines;
-        };
-    }
-
     try {
+        for (let index = 0; index < tui.children.length; index += 1) {
+            const child = tui.children[index];
+            if (child === undefined) continue;
+
+            const originalRenderValue: unknown = Reflect.get(child, "render");
+            if (typeof originalRenderValue !== "function") continue;
+
+            const originalRender = originalRenderValue as Component["render"];
+            const ownDescriptor = Object.getOwnPropertyDescriptor(child, "render");
+            originals.push({ child, ownDescriptor });
+            child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
+                const lines = originalRender.call(this, childWidth);
+                ranges.push({ index, start, end: start + lines.length });
+                start += lines.length;
+                return lines;
+            };
+        }
+
         return render.call(tui, width);
     } finally {
         for (const original of originals) {
-            original.child.render = original.render;
+            if (original.ownDescriptor === undefined) {
+                Reflect.deleteProperty(original.child, "render");
+            } else {
+                Object.defineProperty(original.child, "render", original.ownDescriptor);
+            }
         }
         frame.recording = false;
     }

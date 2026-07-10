@@ -145,6 +145,18 @@ class TestEditor implements Component {
     invalidate(): void {}
 }
 
+class VariableEditor implements Component {
+    focused = false;
+
+    constructor(public lineCount: number) {}
+
+    render(): string[] {
+        return Array.from({ length: this.lineCount }, (_value, index) => `EDITOR ${index}`);
+    }
+
+    invalidate(): void {}
+}
+
 class TestFooter implements Component {
     render(): string[] {
         return ["FOOTER"];
@@ -154,8 +166,8 @@ class TestFooter implements Component {
 }
 
 test("footer and anchor patches record child line ranges during one render frame", () => {
-    installFooterShrinkPaddingPatch();
     installAnchorInputToBottomPatch();
+    installFooterShrinkPaddingPatch();
     setAnchorInputToBottom(true);
 
     const terminal = new FakeTerminal();
@@ -176,6 +188,7 @@ test("footer and anchor patches record child line ranges during one render frame
         tui.addChild(markFooterComponent(footer, "live"));
         tui.setFocus(editor);
 
+        assert.equal(Object.hasOwn(message, "render"), false);
         tui.render(30);
 
         assert.equal(message.renderCount, 1);
@@ -183,6 +196,50 @@ test("footer and anchor patches record child line ranges during one render frame
         assert.equal(spacer.renderCount, 1);
         assert.equal(editorContainer.renderCount, 1);
         assert.equal(footer.renderCount, 1);
+        assert.equal(Object.hasOwn(message, "render"), false);
+    } finally {
+        setAnchorInputToBottom(false);
+    }
+});
+
+test("footer shrink padding keeps the final chat row attached when anchor compacts chrome", () => {
+    installAnchorInputToBottomPatch();
+    installFooterShrinkPaddingPatch();
+    setAnchorInputToBottom(true);
+
+    const terminal = new FakeTerminal();
+    const chatLines = [
+        ...Array.from({ length: 16 }, (_value, index) => `chat ${index}`),
+        "USER MESSAGE BOTTOM",
+    ];
+    const chat = new FixedLines(chatLines);
+    const status = new FixedLines(["", "⠴ Working... (4s)"]);
+    const spacer = new FixedLines([""]);
+    const editorContainer = new Container();
+    const editor = new VariableEditor(5);
+    const tui = new TUI(terminal);
+    const tuiInternals = tui as unknown as TuiInternals;
+
+    try {
+        editorContainer.addChild(editor);
+        tui.addChild(chat);
+        tui.addChild(status);
+        tui.addChild(spacer);
+        tui.addChild(editorContainer);
+        tui.addChild(markFooterComponent(new TestFooter(), "live"));
+        tui.setFocus(editor);
+
+        tuiInternals.doRender();
+        editor.lineCount = 3;
+        tuiInternals.doRender();
+
+        const visibleLines = tuiInternals.previousLines
+            .slice(tuiInternals.previousViewportTop)
+            .map(stripTestAnsi);
+        const finalChatRowIndex = visibleLines.indexOf("USER MESSAGE BOTTOM");
+
+        assert.notEqual(finalChatRowIndex, -1);
+        assert.equal(visibleLines[finalChatRowIndex - 1], "chat 15");
     } finally {
         setAnchorInputToBottom(false);
     }
