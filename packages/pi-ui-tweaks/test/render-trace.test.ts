@@ -122,3 +122,33 @@ test("render trace stays disabled without the opt-in environment flag", () => {
     const trace = installRenderTracePatch({ env: {}, prototype });
     assert.equal(trace, undefined);
 });
+
+test("render trace preserves inherited terminal write methods", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "pi-ui-tweaks-render-trace-"));
+    const filePath = join(temporaryDirectory, "trace.jsonl");
+    const prototype = createFakeTuiPrototype();
+    const terminalPrototype: RecordingTerminal = {
+        rows: 3,
+        writes: [],
+        write(data: string): void {
+            this.writes.push(data);
+        },
+    };
+    const terminal = Object.assign(Object.create(terminalPrototype) as RecordingTerminal, {
+        rows: 3,
+        writes: [] as string[],
+    });
+    const instance = Object.assign(Object.create(prototype) as FakeTui, { terminal });
+
+    try {
+        const trace = installRenderTracePatch({ enabled: true, filePath, prototype });
+        if (trace === undefined) assert.fail("expected render trace to be installed");
+
+        assert.equal(Object.hasOwn(terminal, "write"), false);
+        instance.doRender();
+        assert.equal(Object.hasOwn(terminal, "write"), false);
+        trace.stop();
+    } finally {
+        rmSync(temporaryDirectory, { force: true, recursive: true });
+    }
+});

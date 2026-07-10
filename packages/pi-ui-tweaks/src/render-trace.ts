@@ -574,10 +574,12 @@ export function installRenderTracePatch(
 
         const terminal = this.terminal;
         let originalWrite: PatchableTerminal["write"] | undefined;
+        let originalWriteOwnDescriptor: PropertyDescriptor | undefined;
         if (terminal !== undefined) {
             const originalWriteValue: unknown = Reflect.get(terminal, "write");
             if (typeof originalWriteValue === "function") {
                 originalWrite = originalWriteValue as PatchableTerminal["write"];
+                originalWriteOwnDescriptor = Object.getOwnPropertyDescriptor(terminal, "write");
             }
         }
         let patchedWrite: PatchableTerminal["write"] | undefined;
@@ -607,7 +609,11 @@ export function installRenderTracePatch(
                 terminal.write === patchedWrite &&
                 originalWrite !== undefined
             ) {
-                terminal.write = originalWrite;
+                if (originalWriteOwnDescriptor === undefined) {
+                    Reflect.deleteProperty(terminal, "write");
+                } else {
+                    Object.defineProperty(terminal, "write", originalWriteOwnDescriptor);
+                }
             }
             recorder.record({
                 type: "do-render",
