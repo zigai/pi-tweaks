@@ -10,11 +10,49 @@ import {
 } from "../src/expand-mentions.ts";
 import type { ProjectDirectory } from "../src/types.ts";
 
+type AssistantContextMessage = Extract<ContextEvent["messages"][number], { role: "assistant" }>;
+
 function project(name: string, root = "/tmp/projects"): ProjectDirectory {
     return {
         name,
         root,
         path: `${root}/${name}`,
+    };
+}
+
+function assistantMessage(
+    stopReason: AssistantContextMessage["stopReason"],
+    timestamp: number,
+): AssistantContextMessage {
+    let content: AssistantContextMessage["content"];
+    if (stopReason === "toolUse") {
+        content = [{ type: "toolCall", id: "tool-1", name: "read", arguments: {} }];
+    } else {
+        content = [{ type: "text", text: "Done." }];
+    }
+
+    return {
+        role: "assistant",
+        content,
+        api: "test",
+        provider: "test",
+        model: "test",
+        usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+            },
+        },
+        stopReason,
+        timestamp,
     };
 }
 
@@ -128,29 +166,7 @@ test("expandProjectMentionsInMessages ignores stale mentions before the latest a
             content: [{ type: "text", text: "Earlier inspect #pi-tweaks" }],
             timestamp: 1,
         },
-        {
-            role: "assistant",
-            content: [{ type: "text", text: "Done." }],
-            api: "test",
-            provider: "test",
-            model: "test",
-            usage: {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                totalTokens: 0,
-                cost: {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    total: 0,
-                },
-            },
-            stopReason: "stop",
-            timestamp: 2,
-        },
+        assistantMessage("stop", 2),
         {
             role: "user",
             content: [{ type: "text", text: "Continue without project mentions." }],
@@ -163,4 +179,39 @@ test("expandProjectMentionsInMessages ignores stale mentions before the latest a
     const expanded = expandProjectMentionsInMessages(messages, [project("pi-tweaks")], "#");
 
     assert.equal(expanded, messages);
+});
+
+test("expandProjectMentionsInMessages keeps active mentions across tool continuations", () => {
+    const messages: ContextEvent["messages"] = [
+        {
+            role: "user",
+            content: [{ type: "text", text: "Please inspect #pi-tweaks before reading." }],
+            timestamp: 1,
+        },
+        assistantMessage("toolUse", 2),
+        {
+            role: "toolResult",
+            toolCallId: "tool-1",
+            toolName: "read",
+            content: [{ type: "text", text: "file contents" }],
+            isError: false,
+            timestamp: 3,
+        },
+    ];
+
+    assert.equal(contextContainsProjectMentionTrigger(messages, "#"), true);
+
+    const expanded = expandProjectMentionsInMessages(messages, [project("pi-tweaks")], "#");
+
+    assert.notEqual(expanded, messages);
+    const message = expanded[0];
+    assert.equal(message?.role, "user");
+    if (message?.role !== "user" || !Array.isArray(message.content)) {
+        assert.fail("expected expanded user text message");
+    }
+
+    const text = message.content[0];
+    assert.equal(text?.type, "text");
+    if (text?.type !== "text") assert.fail("expected text content");
+    assert.equal(text.text, "Please inspect /tmp/projects/pi-tweaks before reading.");
 });
