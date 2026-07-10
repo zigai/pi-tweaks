@@ -1,6 +1,7 @@
-import { Editor } from "@earendil-works/pi-tui";
+import { Editor, getKeybindings } from "@earendil-works/pi-tui";
 
 import { getUiTweaksPatchState } from "./patch-state.ts";
+import { recordRenderTraceMarker } from "./render-trace.ts";
 
 const AUTOCOMPLETE_POSITION_PATCHED = Symbol.for(
     "zigai.pi-ui-tweaks.autocomplete-position-patched",
@@ -8,6 +9,9 @@ const AUTOCOMPLETE_POSITION_PATCHED = Symbol.for(
 const AUTOCOMPLETE_RENDERED_ABOVE = Symbol.for("zigai.pi-ui-tweaks.autocomplete-rendered-above");
 const AUTOCOMPLETE_RESTORE_RENDER_PENDING = Symbol.for(
     "zigai.pi-ui-tweaks.autocomplete-restore-render-pending",
+);
+const AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE = Symbol.for(
+    "zigai.pi-ui-tweaks.autocomplete-skip-restore-on-close",
 );
 
 function blankSpacerLine(width: number): string {
@@ -19,6 +23,7 @@ function blankSpacerLine(width: number): string {
 }
 
 type AutocompleteListLike = {
+    getSelectedItem?(): unknown;
     render(width: number): string[];
 };
 
@@ -26,11 +31,15 @@ type AutocompletePositionPatchTarget = {
     render(width: number): string[];
     autocompleteState?: unknown;
     autocompleteList?: AutocompleteListLike;
+    autocompletePrefix?: string;
+    autocompleteProvider?: unknown;
+    handleInput?(data: string): void;
     paddingX?: number;
     tui?: { requestRender(force?: boolean): void };
     [AUTOCOMPLETE_POSITION_PATCHED]?: true;
     [AUTOCOMPLETE_RENDERED_ABOVE]?: true;
     [AUTOCOMPLETE_RESTORE_RENDER_PENDING]?: true;
+    [AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE]?: true;
 };
 
 function warnAutocompletePositionPatchUnavailable(reason?: string): void {
@@ -64,8 +73,24 @@ function requestDeferredForceRender(target: AutocompletePositionPatchTarget): vo
     target[AUTOCOMPLETE_RESTORE_RENDER_PENDING] = true;
     setImmediate(() => {
         target[AUTOCOMPLETE_RESTORE_RENDER_PENDING] = undefined;
+        recordRenderTraceMarker("autocomplete-force-render-requested", tui);
         tui.requestRender(true);
     });
+}
+
+function isConfirmedSlashCommand(target: AutocompletePositionPatchTarget, data: string): boolean {
+    if (!getUiTweaksPatchState().autocompleteAboveInput) return false;
+    if (target.autocompleteState === null || target.autocompleteState === undefined) return false;
+    if (target.autocompleteProvider === undefined) return false;
+    if (target.autocompletePrefix?.startsWith("/") !== true) return false;
+    if (!getKeybindings().matches(data, "tui.select.confirm")) return false;
+
+    const autocompleteList = target.autocompleteList;
+    if (autocompleteList === undefined) return false;
+    const getSelectedItem: unknown = Reflect.get(autocompleteList, "getSelectedItem");
+    if (typeof getSelectedItem !== "function") return false;
+    const selectedItem: unknown = Reflect.apply(getSelectedItem, autocompleteList, []);
+    return selectedItem !== undefined && selectedItem !== null;
 }
 
 /**
@@ -97,6 +122,28 @@ export function installAutocompletePositionPatch(
     }
 
     const originalRender = originalRenderValue as AutocompletePositionPatchTarget["render"];
+    const originalHandleInputValue: unknown = Reflect.get(prototype, "handleInput");
+    if (typeof originalHandleInputValue === "function") {
+        const originalHandleInput = originalHandleInputValue as (
+            this: AutocompletePositionPatchTarget,
+            data: string,
+        ) => void;
+        prototype.handleInput = function autocompletePositionHandleInput(
+            this: AutocompletePositionPatchTarget,
+            data: string,
+        ): void {
+            if (isConfirmedSlashCommand(this, data)) {
+                this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = true;
+            }
+            try {
+                originalHandleInput.call(this, data);
+            } finally {
+                if (this.autocompleteState !== null && this.autocompleteState !== undefined) {
+                    this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = undefined;
+                }
+            }
+        };
+    }
     prototype.render = function autocompletePositionRender(
         this: AutocompletePositionPatchTarget,
         width: number,
@@ -112,7 +159,10 @@ export function installAutocompletePositionPatch(
         if (autocompleteLineCount === 0 || autocompleteLineCount >= result.length) {
             if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
                 this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
-                if (patchState.restoreContentAfterAutocompleteClose) {
+                recordRenderTraceMarker("autocomplete-close-detected", this.tui);
+                const skipRestore = this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] === true;
+                this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = undefined;
+                if (patchState.restoreContentAfterAutocompleteClose && !skipRestore) {
                     requestDeferredForceRender(this);
                 }
             }

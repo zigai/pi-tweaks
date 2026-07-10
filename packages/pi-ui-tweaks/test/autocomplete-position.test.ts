@@ -6,7 +6,10 @@ import type * as AutocompletePositionModule from "../src/autocomplete-position.t
 type AutocompletePositionPatchTarget = {
     render(width: number): string[];
     autocompleteState?: unknown;
-    autocompleteList?: { render(width: number): string[] };
+    autocompleteList?: { getSelectedItem?(): unknown; render(width: number): string[] };
+    autocompletePrefix?: string;
+    autocompleteProvider?: unknown;
+    handleInput?(data: string): void;
     paddingX?: number;
     tui?: { requestRender(force?: boolean): void };
 };
@@ -113,6 +116,59 @@ test("autocomplete position patch defers forced redraw after above-input autocom
         await waitForImmediate();
 
         assert.deepEqual(requestedForces, [true]);
+    } finally {
+        autocompletePosition.setAutocompleteAboveInput(true);
+        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+    }
+});
+
+test("autocomplete position patch does not force redraw when a slash command is confirmed", async () => {
+    const autocompletePosition = await importAutocompletePositionModule("command-confirm-redraw");
+    const requestedForces: Array<boolean | undefined> = [];
+    const prototype: AutocompletePositionPatchTarget = {
+        render(this: AutocompletePositionPatchTarget) {
+            if (this.autocompleteState === null) return ["input"];
+            return ["input", "suggestion"];
+        },
+        handleInput(this: AutocompletePositionPatchTarget): void {
+            this.autocompleteState = null;
+            this.autocompleteList = undefined;
+        },
+    };
+    const target: AutocompletePositionPatchTarget = Object.assign(
+        Object.create(prototype) as AutocompletePositionPatchTarget,
+        {
+            autocompleteState: {},
+            autocompleteList: {
+                getSelectedItem() {
+                    return { value: "model" };
+                },
+                render() {
+                    return ["suggestion"];
+                },
+            },
+            autocompletePrefix: "/mod",
+            autocompleteProvider: {},
+            paddingX: 0,
+            tui: {
+                requestRender(force?: boolean): void {
+                    requestedForces.push(force);
+                },
+            },
+        },
+    );
+
+    try {
+        autocompletePosition.setAutocompleteAboveInput(true);
+        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.installAutocompletePositionPatch(prototype);
+
+        prototype.render.call(target, 20);
+        prototype.handleInput?.call(target, "\r");
+        prototype.render.call(target, 20);
+        await waitForImmediate();
+
+        assert.deepEqual(requestedForces, []);
     } finally {
         autocompletePosition.setAutocompleteAboveInput(true);
         autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
