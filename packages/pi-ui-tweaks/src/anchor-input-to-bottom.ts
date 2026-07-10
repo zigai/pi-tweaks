@@ -39,6 +39,7 @@ type ChildLineRangesFrame = {
 type BottomChromeSpacing = {
     lines: string[];
     bottomChromeStartLine: number;
+    removedLineIndex?: number;
 };
 
 type PatchableTuiPrototype = {
@@ -121,34 +122,42 @@ function renderWithChildLineRanges(
         return render.call(tui, width);
     }
 
-    const originals: Array<{ child: Component; render: Component["render"] }> = [];
+    const originals: Array<{
+        child: Component;
+        ownDescriptor: PropertyDescriptor | undefined;
+    }> = [];
     const ranges: ChildLineRange[] = [];
     let start = 0;
     frame.recording = true;
     frame.ranges = ranges;
 
-    for (let index = 0; index < tui.children.length; index += 1) {
-        const child = tui.children[index];
-        if (child === undefined) continue;
-
-        const originalRenderValue: unknown = Reflect.get(child, "render");
-        if (typeof originalRenderValue !== "function") continue;
-
-        const originalRender = originalRenderValue as Component["render"];
-        originals.push({ child, render: originalRender });
-        child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
-            const lines = originalRender.call(this, childWidth);
-            ranges.push({ index, start, end: start + lines.length });
-            start += lines.length;
-            return lines;
-        };
-    }
-
     try {
+        for (let index = 0; index < tui.children.length; index += 1) {
+            const child = tui.children[index];
+            if (child === undefined) continue;
+
+            const originalRenderValue: unknown = Reflect.get(child, "render");
+            if (typeof originalRenderValue !== "function") continue;
+
+            const originalRender = originalRenderValue as Component["render"];
+            const ownDescriptor = Object.getOwnPropertyDescriptor(child, "render");
+            originals.push({ child, ownDescriptor });
+            child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
+                const lines = originalRender.call(this, childWidth);
+                ranges.push({ index, start, end: start + lines.length });
+                start += lines.length;
+                return lines;
+            };
+        }
+
         return render.call(tui, width);
     } finally {
         for (const original of originals) {
-            original.child.render = original.render;
+            if (original.ownDescriptor === undefined) {
+                Reflect.deleteProperty(original.child, "render");
+            } else {
+                Object.defineProperty(original.child, "render", original.ownDescriptor);
+            }
         }
         frame.recording = false;
     }
@@ -206,7 +215,35 @@ function compactBottomChromeSpacing(
     return {
         lines: [...lines.slice(0, gapIndex), ...lines.slice(gapIndex + 1)],
         bottomChromeStartLine: bottomChromeStartRange.start,
+        removedLineIndex: gapIndex,
     };
+}
+
+function updateChildLineRangesAfterLayout(
+    tui: PatchableTuiInstance,
+    removedLineIndex: number | undefined,
+    insertedLineIndex: number,
+    insertedLineCount: number,
+): void {
+    const ranges = tui[CHILD_LINE_RANGES_FRAME_KEY]?.ranges;
+    if (ranges === undefined) return;
+
+    if (removedLineIndex !== undefined) {
+        for (const range of ranges) {
+            if (range.end <= removedLineIndex) continue;
+            if (range.start > removedLineIndex) {
+                range.start -= 1;
+            }
+            range.end -= 1;
+        }
+    }
+
+    if (insertedLineCount <= 0) return;
+    for (const range of ranges) {
+        if (range.start < insertedLineIndex) continue;
+        range.start += insertedLineCount;
+        range.end += insertedLineCount;
+    }
 }
 
 function appendBlankRows(result: string[], count: number): void {
@@ -234,11 +271,20 @@ function anchorInputToBottomLines(
     if (compacted === undefined) return [...lines];
 
     const terminalRows = getTerminalRows(tui);
-    if (terminalRows === undefined) return compacted.lines;
-    if (compacted.lines.length >= terminalRows) return compacted.lines;
+    let blankRowCount = 0;
+    if (terminalRows !== undefined && compacted.lines.length < terminalRows) {
+        blankRowCount = terminalRows - compacted.lines.length;
+    }
+
+    updateChildLineRangesAfterLayout(
+        tui,
+        compacted.removedLineIndex,
+        compacted.bottomChromeStartLine,
+        blankRowCount,
+    );
+    if (blankRowCount === 0) return compacted.lines;
 
     const bottomChromeStartLine = Math.min(compacted.lines.length, compacted.bottomChromeStartLine);
-    const blankRowCount = terminalRows - compacted.lines.length;
     const result = compacted.lines.slice(0, bottomChromeStartLine);
     appendBlankRows(result, blankRowCount);
     result.push(...compacted.lines.slice(bottomChromeStartLine));

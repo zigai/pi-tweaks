@@ -110,6 +110,20 @@ test("anchor input to bottom leaves short screens unchanged when disabled", () =
     assert.deepEqual(tui.render(30), ["message", "EDITOR TOP", "EDITOR BODY", "EDITOR BOTTOM"]);
 });
 
+test("anchor input range recording preserves inherited child render methods", () => {
+    installAnchorInputToBottomPatch();
+    setAnchorInputToBottom(false);
+
+    const terminal = new FakeTerminal();
+    const tui = new TUI(terminal);
+    const child = new FixedLines(["message"]);
+    tui.addChild(child);
+
+    assert.equal(Object.hasOwn(child, "render"), false);
+    tui.render(30);
+    assert.equal(Object.hasOwn(child, "render"), false);
+});
+
 test("anchor input to bottom leaves full-height screens unchanged", () => {
     installAnchorInputToBottomPatch();
     setAnchorInputToBottom(true);
