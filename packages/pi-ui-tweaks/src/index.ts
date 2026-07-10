@@ -31,6 +31,7 @@ import {
     installPasteCollapsePatch,
     setPasteCollapseSettings,
 } from "./paste-collapse.ts";
+import { installRenderTracePatch } from "./render-trace.ts";
 import {
     installSelectedOptionPrefixSelectListPatch,
     installSelectedOptionPrefixThemePatch,
@@ -95,10 +96,20 @@ export default function uiTweaksExtension(pi: ExtensionAPI): void {
     installSlashCommandSourcePatch();
     void installNeutralBorderColorPatch();
     void installSelectedOptionPrefixThemePatch();
+    let renderTrace: ReturnType<typeof installRenderTracePatch>;
 
     pi.on("session_start", (_event, ctx) => {
+        renderTrace = installRenderTracePatch();
         applyUiTweaksConfig(ctx);
         applyBashExecSpacingEditor(ctx);
         applyPasteCollapseEditor(ctx);
+        if (renderTrace !== undefined) {
+            ctx.ui.notify(`[pi-ui-tweaks] render trace: ${renderTrace.filePath}`, "info");
+        }
+    });
+
+    pi.on("session_shutdown", () => {
+        renderTrace?.stop();
+        renderTrace = undefined;
     });
 }

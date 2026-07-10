@@ -61,6 +61,16 @@ Configure global settings at `~/.pi/agent/pi-ui-tweaks/config.json`.
 }
 ```
 
+## Render tracing
+
+For intermittent repaint problems, start Pi with render tracing enabled:
+
+```sh
+PI_UI_TWEAKS_RENDER_TRACE=1 pi
+```
+
+The trace is written to `~/.pi/agent/pi-ui-tweaks/render-trace-<pid>.jsonl`. It records row styles and terminal control operations without recording visible message text. Set `PI_UI_TWEAKS_RENDER_TRACE_FILE` to use a specific output path.
+
 ## License
 
 MIT
