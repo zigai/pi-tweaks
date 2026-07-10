@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const MARKDOWN_FENCES_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.markdown-fences-patched");
+const RENDER_PATCH_PREDECESSOR_KEY = Symbol.for("zigai.pi-tweaks.render-patch-predecessor");
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
 const ANSI_OSC_REGEX = new RegExp(`${ESC}\\][^${BEL}]*${BEL}`, "g");
@@ -32,6 +33,48 @@ type AssistantMessageComponentPrototype = {
     render(this: AssistantMessageComponentInstance, width: number): string[];
     updateContent(this: AssistantMessageComponentInstance, message: unknown): void;
 };
+
+type RenderMethod<Instance extends object> = (this: Instance, width: number) => string[];
+
+type LinkedRenderMethod<Instance extends object> = RenderMethod<Instance> & {
+    [RENDER_PATCH_PREDECESSOR_KEY]?: RenderMethod<Instance>;
+};
+
+function getRenderPredecessor<Instance extends object>(
+    render: RenderMethod<Instance>,
+): RenderMethod<Instance> | undefined {
+    const predecessor: unknown = Reflect.get(render, RENDER_PATCH_PREDECESSOR_KEY);
+    if (typeof predecessor !== "function") return undefined;
+    // SAFETY: Render wrappers in this repository store only the same prototype method
+    // signature under this private symbol; the runtime check verifies it is callable.
+    return predecessor as RenderMethod<Instance>;
+}
+
+function removeLinkedRenderPatch<Instance extends object>(
+    prototype: { render: RenderMethod<Instance> },
+    patchedRender: LinkedRenderMethod<Instance>,
+): void {
+    const predecessor = getRenderPredecessor(patchedRender);
+    if (predecessor === undefined) return;
+
+    if (prototype.render === patchedRender) {
+        prototype.render = predecessor;
+        return;
+    }
+
+    const visited = new Set<RenderMethod<Instance>>();
+    let current = prototype.render;
+    while (!visited.has(current)) {
+        visited.add(current);
+        const next = getRenderPredecessor(current);
+        if (next === undefined) return;
+        if (next === patchedRender) {
+            Reflect.set(current, RENDER_PATCH_PREDECESSOR_KEY, predecessor);
+            return;
+        }
+        current = next;
+    }
+}
 
 function stripAnsi(text: string): string {
     return text.replace(ANSI_OSC_REGEX, "").replace(ANSI_CSI_REGEX, "");
@@ -98,7 +141,7 @@ type MarkdownFencesPatchRecord = {
     patchedMarkdownRender: MarkdownRender;
     assistantPrototype?: AssistantMessageComponentPrototype;
     originalAssistantRender?: AssistantMessageComponentPrototype["render"];
-    patchedAssistantRender?: AssistantMessageComponentPrototype["render"];
+    patchedAssistantRender?: LinkedRenderMethod<AssistantMessageComponentInstance>;
     originalAssistantUpdateContent?: AssistantMessageComponentPrototype["updateContent"];
     patchedAssistantUpdateContent?: AssistantMessageComponentPrototype["updateContent"];
 };
@@ -415,13 +458,8 @@ function restoreMarkdownFencesPatch(): void {
         patch.markdownPrototype.render = patch.originalMarkdownRender;
     }
 
-    if (
-        patch.assistantPrototype !== undefined &&
-        patch.originalAssistantRender !== undefined &&
-        patch.patchedAssistantRender !== undefined &&
-        patch.assistantPrototype.render === patch.patchedAssistantRender
-    ) {
-        patch.assistantPrototype.render = patch.originalAssistantRender;
+    if (patch.assistantPrototype !== undefined && patch.patchedAssistantRender !== undefined) {
+        removeLinkedRenderPatch(patch.assistantPrototype, patch.patchedAssistantRender);
     }
 
     if (
@@ -516,12 +554,15 @@ async function patchMarkdownFences(): Promise<void> {
         warnInternalPatchUnavailable("assistant render patch");
         return;
     }
-    const patchedAssistantRender = function patchedAssistantRender(
-        this: AssistantMessageComponentInstance,
-        width: number,
-    ): string[] {
-        return originalRender.call(this, width).map(stripItalicAnsi);
-    };
+    const patchedAssistantRender: LinkedRenderMethod<AssistantMessageComponentInstance> =
+        function patchedAssistantRender(
+            this: AssistantMessageComponentInstance,
+            width: number,
+        ): string[] {
+            const predecessor = getRenderPredecessor(patchedAssistantRender) ?? originalRender;
+            return predecessor.call(this, width).map(stripItalicAnsi);
+        };
+    patchedAssistantRender[RENDER_PATCH_PREDECESSOR_KEY] = originalRender;
     assistantPrototype.render = patchedAssistantRender;
     patch.assistantPrototype = assistantPrototype;
     patch.originalAssistantRender = originalRender;

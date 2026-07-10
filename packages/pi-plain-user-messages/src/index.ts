@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const USER_MESSAGE_PLAINTEXT_PATCH_KEY = Symbol.for(
     "zigai.pi-plain-user-messages.user-message-patched",
 );
+const RENDER_PATCH_PREDECESSOR_KEY = Symbol.for("zigai.pi-tweaks.render-patch-predecessor");
 
 const plainTextUserMessages = new WeakSet<object>();
 
@@ -34,10 +35,52 @@ type UserMessageComponentPrototype = {
     render(this: UserMessageComponentInstance, width: number): string[];
 };
 
+type RenderMethod<Instance extends object> = (this: Instance, width: number) => string[];
+
+type LinkedRenderMethod<Instance extends object> = RenderMethod<Instance> & {
+    [RENDER_PATCH_PREDECESSOR_KEY]?: RenderMethod<Instance>;
+};
+
+function getRenderPredecessor<Instance extends object>(
+    render: RenderMethod<Instance>,
+): RenderMethod<Instance> | undefined {
+    const predecessor: unknown = Reflect.get(render, RENDER_PATCH_PREDECESSOR_KEY);
+    if (typeof predecessor !== "function") return undefined;
+    // SAFETY: Render wrappers in this repository store only the same prototype method
+    // signature under this private symbol; the runtime check verifies it is callable.
+    return predecessor as RenderMethod<Instance>;
+}
+
+function removeLinkedRenderPatch<Instance extends object>(
+    prototype: { render: RenderMethod<Instance> },
+    patchedRender: LinkedRenderMethod<Instance>,
+): void {
+    const predecessor = getRenderPredecessor(patchedRender);
+    if (predecessor === undefined) return;
+
+    if (prototype.render === patchedRender) {
+        prototype.render = predecessor;
+        return;
+    }
+
+    const visited = new Set<RenderMethod<Instance>>();
+    let current = prototype.render;
+    while (!visited.has(current)) {
+        visited.add(current);
+        const next = getRenderPredecessor(current);
+        if (next === undefined) return;
+        if (next === patchedRender) {
+            Reflect.set(current, RENDER_PATCH_PREDECESSOR_KEY, predecessor);
+            return;
+        }
+        current = next;
+    }
+}
+
 type UserMessagePatchRecord = {
     userMessagePrototype: UserMessageComponentPrototype;
     originalRender: UserMessageComponentPrototype["render"];
-    patchedRender: UserMessageComponentPrototype["render"];
+    patchedRender: LinkedRenderMethod<UserMessageComponentInstance>;
 };
 
 type BoxLike = {
@@ -175,9 +218,7 @@ function restoreUserMessageRenderingPatch(): void {
         return;
     }
 
-    if (patch.userMessagePrototype.render === patch.patchedRender) {
-        patch.userMessagePrototype.render = patch.originalRender;
-    }
+    removeLinkedRenderPatch(patch.userMessagePrototype, patch.patchedRender);
     delete state[USER_MESSAGE_PLAINTEXT_PATCH_KEY];
 }
 
@@ -275,13 +316,16 @@ async function patchUserMessageRendering(): Promise<void> {
         return;
     }
 
-    const patchedRender = function patchedUserMessageRender(
-        this: UserMessageComponentInstance,
-        width: number,
-    ): string[] {
-        ensurePlainTextUserMessage(this);
-        return originalRender.call(this, width);
-    };
+    const patchedRender: LinkedRenderMethod<UserMessageComponentInstance> =
+        function patchedUserMessageRender(
+            this: UserMessageComponentInstance,
+            width: number,
+        ): string[] {
+            ensurePlainTextUserMessage(this);
+            const predecessor = getRenderPredecessor(patchedRender) ?? originalRender;
+            return predecessor.call(this, width);
+        };
+    patchedRender[RENDER_PATCH_PREDECESSOR_KEY] = originalRender;
     userMessagePrototype.render = patchedRender;
 
     state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] = {

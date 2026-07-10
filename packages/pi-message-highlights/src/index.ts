@@ -13,6 +13,7 @@ import {
 } from "./settings.ts";
 
 const MESSAGE_HIGHLIGHTS_PATCH_KEY = Symbol.for("zigai.pi-message-highlights.patched");
+const RENDER_PATCH_PREDECESSOR_KEY = Symbol.for("zigai.pi-tweaks.render-patch-predecessor");
 
 type PatchState = typeof globalThis & {
     [MESSAGE_HIGHLIGHTS_PATCH_KEY]?: MessageHighlightsPatchRecord | true;
@@ -24,10 +25,54 @@ type RenderablePrototype = {
     render(this: object, width: number): string[];
 };
 
+type LinkedRenderMethod = RenderablePrototype["render"] & {
+    [RENDER_PATCH_PREDECESSOR_KEY]?: RenderablePrototype["render"];
+};
+
+function getRenderPredecessor(
+    render: RenderablePrototype["render"],
+): RenderablePrototype["render"] | undefined {
+    const predecessor: unknown = Reflect.get(render, RENDER_PATCH_PREDECESSOR_KEY);
+    if (typeof predecessor !== "function") return undefined;
+    // SAFETY: Render wrappers in this repository store only RenderablePrototype.render
+    // under this private symbol; the runtime check verifies it is callable.
+    return predecessor as RenderablePrototype["render"];
+}
+
+function removeLinkedRenderPatch(
+    prototype: RenderablePrototype,
+    patchedRender: LinkedRenderMethod,
+): void {
+    const predecessor = getRenderPredecessor(patchedRender);
+    if (predecessor === undefined) return;
+
+    const currentRenderValue: unknown = Reflect.get(prototype, "render");
+    if (typeof currentRenderValue !== "function") return;
+    // SAFETY: The runtime guard verifies the render method required by RenderablePrototype.
+    const currentRender = currentRenderValue as RenderablePrototype["render"];
+    if (currentRender === patchedRender) {
+        prototype.render = predecessor;
+        return;
+    }
+
+    const visited = new Set<RenderablePrototype["render"]>();
+    let current = currentRender;
+    while (!visited.has(current)) {
+        visited.add(current);
+        const next = getRenderPredecessor(current);
+        if (next === undefined) return;
+        if (next === patchedRender) {
+            Reflect.set(current, RENDER_PATCH_PREDECESSOR_KEY, predecessor);
+            return;
+        }
+        current = next;
+    }
+}
+
 type RenderPatchRecord = {
     prototype: RenderablePrototype;
     originalRender: RenderablePrototype["render"];
-    patchedRender: RenderablePrototype["render"];
+    patchedRender: LinkedRenderMethod;
 };
 
 type MessageHighlightsPatchRecord = {
@@ -49,9 +94,7 @@ function restoreMessageHighlightPatch(): void {
     }
 
     for (const renderPatch of patch.patches) {
-        if (renderPatch.prototype.render === renderPatch.patchedRender) {
-            renderPatch.prototype.render = renderPatch.originalRender;
-        }
+        removeLinkedRenderPatch(renderPatch.prototype, renderPatch.patchedRender);
     }
     delete state[MESSAGE_HIGHLIGHTS_PATCH_KEY];
 }
@@ -172,9 +215,14 @@ function patchRenderablePrototype(
         | undefined;
     if (typeof originalRender !== "function") return undefined;
 
-    const patchedRender = function highlightedRender(this: object, width: number): string[] {
-        return highlightMessageLines(originalRender.call(this, width), getStyles());
+    const patchedRender: LinkedRenderMethod = function highlightedRender(
+        this: object,
+        width: number,
+    ): string[] {
+        const predecessor = getRenderPredecessor(patchedRender) ?? originalRender;
+        return highlightMessageLines(predecessor.call(this, width), getStyles());
     };
+    patchedRender[RENDER_PATCH_PREDECESSOR_KEY] = originalRender;
     prototype.render = patchedRender;
 
     return {
@@ -209,13 +257,18 @@ function patchEditorPrototype(
         | undefined;
     if (typeof originalRender !== "function") return undefined;
 
-    const patchedRender = function highlightedEditorRender(this: object, width: number): string[] {
-        const renderedLines = originalRender.call(this, width);
+    const patchedRender: LinkedRenderMethod = function highlightedEditorRender(
+        this: object,
+        width: number,
+    ): string[] {
+        const predecessor = getRenderPredecessor(patchedRender) ?? originalRender;
+        const renderedLines = predecessor.call(this, width);
         if (isEditorHighlightTarget(this)) {
             return highlightEditorRenderLines(this, width, renderedLines, getStyles());
         }
         return highlightMessageLines(renderedLines, getStyles());
     };
+    patchedRender[RENDER_PATCH_PREDECESSOR_KEY] = originalRender;
     prototype.render = patchedRender;
 
     return {
