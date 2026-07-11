@@ -7,6 +7,7 @@ import { applyKeymapEditor } from "../src/index.ts";
 
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";
+const CTRL_X = "\x18";
 
 class FakeTerminal implements Terminal {
     columns = 80;
@@ -62,11 +63,15 @@ const editorTheme: EditorTheme = {
 
 const keybindings = {
     matches(data: string, action: string): boolean {
-        return action === "tui.editor.cursorUp" && data === UP;
+        if (action === "tui.editor.cursorUp") return data === UP;
+        if (action === "app.models.clearAll") return data === CTRL_X;
+        return false;
     },
 } as unknown as KeybindingsManager;
 
-function createKeymapEditor(): TestEditor {
+type ClipboardWriter = (text: string) => Promise<void>;
+
+function createKeymapEditor(writeClipboard?: ClipboardWriter): TestEditor {
     let editorFactory: EditorFactory | undefined;
     const context = {
         hasUI: true,
@@ -80,7 +85,7 @@ function createKeymapEditor(): TestEditor {
         },
     } as unknown as ExtensionContext;
 
-    applyKeymapEditor(context);
+    applyKeymapEditor(context, { writeClipboard });
 
     if (editorFactory === undefined) {
         assert.fail("expected editor factory");
@@ -93,6 +98,24 @@ function createKeymapEditor(): TestEditor {
 function renderEditor(editor: TestEditor): void {
     editor.render(80);
 }
+
+test("ctrl+x copies and deletes the current line", async () => {
+    const copiedLines: string[] = [];
+    const editor = createKeymapEditor(async (text) => {
+        copiedLines.push(text);
+    });
+    editor.setText("first\nsecond\nthird");
+    renderEditor(editor);
+
+    editor.handleInput(UP);
+    renderEditor(editor);
+    editor.handleInput(CTRL_X);
+    renderEditor(editor);
+
+    assert.equal(editor.getText(), "first\nthird");
+    assert.deepEqual(editor.getCursor(), { line: 1, col: 0 });
+    assert.deepEqual(copiedLines, ["second"]);
+});
 
 test("up arrow does not recall prompt history from a non-empty draft", () => {
     const editor = createKeymapEditor();

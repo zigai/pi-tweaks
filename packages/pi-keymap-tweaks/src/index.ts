@@ -1,5 +1,6 @@
 import {
     AgentSession,
+    copyToClipboard,
     CustomEditor,
     type ExtensionAPI,
     type ExtensionContext,
@@ -27,6 +28,16 @@ type EditorInternals = {
     historyIndex?: unknown;
     lastAction: unknown;
     setCursorCol(column: number): void;
+    pushUndoSnapshot?: () => void;
+    exitHistoryBrowsing?: () => void;
+};
+
+type ClipboardWriter = (text: string) => Promise<void>;
+type Notifier = (message: string, type?: "info" | "warning" | "error") => void;
+
+type KeymapEditorOptions = {
+    readonly writeClipboard?: ClipboardWriter;
+    readonly notify?: Notifier;
 };
 
 type EditorLike = CustomEditor & {
@@ -151,16 +162,57 @@ function shouldBlockPromptHistoryUp(editor: EditorLike): boolean {
     return cursor.line === 0 && cursor.col === 0;
 }
 
+function deleteCurrentLine(
+    editor: EditorLike,
+    writeClipboard: ClipboardWriter,
+    notify: Notifier,
+): void {
+    const internals = editor as unknown as EditorInternals;
+    const currentLine = internals.state.lines[internals.state.cursorLine] ?? "";
+    if (internals.pushUndoSnapshot === undefined) return;
+
+    internals.pushUndoSnapshot();
+    internals.exitHistoryBrowsing?.();
+    internals.lastAction = null;
+
+    if (internals.state.lines.length === 1) {
+        internals.state.lines[0] = "";
+        internals.state.cursorLine = 0;
+    } else {
+        internals.state.lines.splice(internals.state.cursorLine, 1);
+        internals.state.cursorLine = Math.min(
+            internals.state.cursorLine,
+            internals.state.lines.length - 1,
+        );
+    }
+
+    internals.setCursorCol(0);
+    editor.onChange?.(editor.getText());
+    editor.requestRenderNow?.();
+
+    void writeClipboard(currentLine).catch(() => {
+        notify("Could not copy the deleted line to the clipboard", "error");
+    });
+}
+
 function enhanceEditor(
     editor: EditorLike,
     keybindings: ConstructorParameters<typeof CustomEditor>[2],
     requestRender: () => void,
+    options: KeymapEditorOptions = {},
 ): EditorLike {
+    const writeClipboard = options.writeClipboard ?? copyToClipboard;
+    const notify = options.notify ?? (() => undefined);
     editor.requestRenderNow ??= requestRender;
 
     const originalHandleInput = editor.handleInput.bind(editor);
     editor.handleInput = (data: string) => {
         if (editor.onExtensionShortcut?.(data) === true) return;
+
+        if (keybindings.matches(data, "app.models.clearAll")) {
+            deleteCurrentLine(editor, writeClipboard, notify);
+            return;
+        }
 
         if (
             keybindings.matches(data, "tui.editor.cursorUp") &&
@@ -191,7 +243,7 @@ export function applySubmitModeKeymap(): void {
     patchTerminalLfEnterSubmit();
 }
 
-export function applyKeymapEditor(ctx: ExtensionContext): void {
+export function applyKeymapEditor(ctx: ExtensionContext, options: KeymapEditorOptions = {}): void {
     if (!ctx.hasUI) return;
 
     const existing = ctx.ui.getEditorComponent() as WrappedEditorFactory | undefined;
@@ -199,7 +251,7 @@ export function applyKeymapEditor(ctx: ExtensionContext): void {
     const factory = ((tui, theme, keybindings) => {
         const editor = (baseFactory?.(tui, theme, keybindings) ??
             new CustomEditor(tui, theme, keybindings)) as EditorLike;
-        return enhanceEditor(editor, keybindings, () => tui.requestRender());
+        return enhanceEditor(editor, keybindings, () => tui.requestRender(), options);
     }) as WrappedEditorFactory;
     factory[KEYMAP_FACTORY_BASE] = baseFactory;
 
@@ -210,6 +262,7 @@ export default function piKeymap(pi: ExtensionAPI): void {
     applySubmitModeKeymap();
 
     pi.on("session_start", async (_event, ctx) => {
-        applyKeymapEditor(ctx);
+        const notify: Notifier = (message, type) => ctx.ui.notify(message, type);
+        applyKeymapEditor(ctx, { notify });
     });
 }

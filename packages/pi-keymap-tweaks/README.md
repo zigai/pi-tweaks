@@ -9,6 +9,7 @@ Opinionated editor and message-submit key tweaks for Pi.
 - Makes `Enter` queue a follow-up and `Alt+Enter` steer the current run.
 - Normalizes terminal `LF` Enter input to submit correctly in SSH/TMUX sessions.
 - Prevents `Up` from recalling prompt history while a non-empty draft is open.
+- Uses Pi's configured `app.models.clearAll` key (recommended as `Ctrl+X`) to copy and delete the current editor line.
 - Adds Codex-style line start/end behavior for Pi's configured `tui.editor.cursorLineStart` and `tui.editor.cursorLineEnd` actions:
   - line start moves to the previous line when already at column 0
   - line end moves to the next line when already at the current line end
@@ -23,7 +24,8 @@ This extension provides behavior; key assignments still live in your Pi keybindi
   "tui.editor.cursorWordRight": ["ctrl+d", "ctrl+right", "alt+right", "alt+f"],
   "tui.editor.cursorLineStart": ["home", "ctrl+q"],
   "tui.editor.cursorLineEnd": ["end", "ctrl+e"],
-  "tui.editor.deleteCharForward": ["delete"]
+  "tui.editor.deleteCharForward": ["delete"],
+  "app.models.clearAll": ["ctrl+x"]
 }
 ```
 
