@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-import { setShowModeName } from "../src/settings.ts";
+import { getConfiguredModeShortcuts, setUseThinkingBorderColors } from "../src/settings.ts";
 import { atomicWriteUtf8, scaffoldGlobalModesConfig, withFileLock } from "../src/storage.ts";
 
 async function exists(filePath: string): Promise<boolean> {
@@ -30,7 +30,6 @@ test("scaffoldGlobalModesConfig creates missing global config and schema", async
             $schema: "./config.schema.json",
             version: 1,
             currentMode: "default",
-            modeShowName: false,
             modeUseThinkingBorderColors: false,
             modeShowThinkingLevelStatus: false,
             modes: {},
@@ -53,6 +52,40 @@ test("scaffoldGlobalModesConfig creates missing global config and schema", async
     }
 });
 
+test("mode cycle shortcuts are optional and read from global config", async () => {
+    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    try {
+        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        await scaffoldGlobalModesConfig();
+        assert.deepEqual(getConfiguredModeShortcuts(), {});
+
+        await writeFile(
+            configPath,
+            JSON.stringify({
+                shortcuts: {
+                    forward: "ctrl+space",
+                    backward: "shift+ctrl+space",
+                },
+            }),
+            "utf8",
+        );
+        assert.deepEqual(getConfiguredModeShortcuts(), {
+            forward: "ctrl+space",
+            backward: "shift+ctrl+space",
+        });
+    } finally {
+        await rm(agentDir, { recursive: true, force: true });
+        if (originalAgentDir === undefined) {
+            delete process.env.PI_CODING_AGENT_DIR;
+        } else {
+            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+        }
+    }
+});
+
 test("scaffoldGlobalModesConfig copies legacy global config when new config is missing", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
@@ -64,7 +97,6 @@ test("scaffoldGlobalModesConfig copies legacy global config when new config is m
         const legacyConfig = {
             version: 1,
             currentMode: "deep",
-            modeShowName: true,
             modes: {
                 deep: {
                     provider: "openai",
@@ -102,7 +134,6 @@ test("setting writes copy legacy global config before updating new config", asyn
         const legacyConfig = {
             version: 1,
             currentMode: "default",
-            modeShowName: false,
             modes: {
                 default: {
                     provider: "openai",
@@ -114,10 +145,10 @@ test("setting writes copy legacy global config before updating new config", asyn
         await mkdir(path.dirname(legacyConfigPath), { recursive: true });
         await writeFile(legacyConfigPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, "utf8");
 
-        setShowModeName(true);
+        setUseThinkingBorderColors(true);
 
         const migratedConfig = JSON.parse(await readFile(configPath, "utf8"));
-        assert.equal(migratedConfig.modeShowName, true);
+        assert.equal(migratedConfig.modeUseThinkingBorderColors, true);
         assert.equal(migratedConfig.currentMode, "default");
         assert.deepEqual(migratedConfig.modes, legacyConfig.modes);
         assert.deepEqual(JSON.parse(await readFile(legacyConfigPath, "utf8")), legacyConfig);
@@ -152,7 +183,7 @@ test("mode config writes reject unknown config keys", async () => {
         });
         await writeFile(configPath, invalidConfig, "utf8");
 
-        assert.throws(() => setShowModeName(true), /additional properties/);
+        assert.throws(() => setUseThinkingBorderColors(true), /additional properties/);
         assert.equal(await readFile(configPath, "utf8"), invalidConfig);
     } finally {
         await rm(agentDir, { recursive: true, force: true });

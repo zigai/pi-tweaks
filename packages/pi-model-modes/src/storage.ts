@@ -15,7 +15,6 @@ const DEFAULT_MODES_CONFIG_FILE = {
     $schema: `./${SCHEMA_FILE}`,
     version: 1,
     currentMode: "default",
-    modeShowName: false,
     modeUseThinkingBorderColors: false,
     modeShowThinkingLevelStatus: false,
     modes: {},

@@ -7,11 +7,31 @@ import {
     handleSessionActivated,
     selectModeUI,
 } from "./mode-state.ts";
-import { setSettingsContext } from "./settings.ts";
+import { getConfiguredModeShortcuts, setSettingsContext } from "./settings.ts";
 import { applyThinkingLevelStatusPatch, restoreThinkingLevelStatusPatch } from "./status.ts";
+
+type ShortcutId = Parameters<ExtensionAPI["registerShortcut"]>[0];
 
 export default function (pi: ExtensionAPI) {
     void applyThinkingLevelStatusPatch();
+
+    const shortcuts = getConfiguredModeShortcuts();
+    if (shortcuts.forward !== undefined) {
+        pi.registerShortcut(shortcuts.forward as ShortcutId, {
+            description: "Cycle to the next configured mode",
+            handler: async (ctx) => {
+                await cycleMode(pi, ctx, 1);
+            },
+        });
+    }
+    if (shortcuts.backward !== undefined) {
+        pi.registerShortcut(shortcuts.backward as ShortcutId, {
+            description: "Cycle to the previous configured mode",
+            handler: async (ctx) => {
+                await cycleMode(pi, ctx, -1);
+            },
+        });
+    }
 
     pi.registerCommand("mode", {
         description: "Select prompt mode",
@@ -24,13 +44,6 @@ export default function (pi: ExtensionAPI) {
         description: "Select prompt mode",
         handler: async (ctx) => {
             await selectModeUI(pi, ctx);
-        },
-    });
-
-    pi.registerShortcut("ctrl+space", {
-        description: "Cycle prompt mode",
-        handler: async (ctx) => {
-            await cycleMode(pi, ctx, 1);
         },
     });
 

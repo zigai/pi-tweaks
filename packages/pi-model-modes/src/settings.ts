@@ -14,10 +14,9 @@ import {
     writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { Type, type TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-export const SHOW_MODE_NAME_SETTINGS_KEY = "modeShowName";
 export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
 export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelStatus";
 
@@ -36,15 +35,23 @@ const ModeSpecJsonSchema = Type.Object(
     },
     { additionalProperties: false },
 );
+const ModeShortcutsJsonSchema = Type.Object(
+    {
+        forward: Type.Optional(Type.String({ minLength: 1 })),
+        backward: Type.Optional(Type.String({ minLength: 1 })),
+    },
+    { additionalProperties: false },
+);
+export type ModeShortcuts = Static<typeof ModeShortcutsJsonSchema>;
 
 const SettingsObjectSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
         version: Type.Optional(Type.Number()),
         currentMode: Type.Optional(Type.String()),
-        [SHOW_MODE_NAME_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
         [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
         [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
+        shortcuts: Type.Optional(ModeShortcutsJsonSchema),
         modes: Type.Optional(Type.Record(Type.String(), ModeSpecJsonSchema)),
     },
     { additionalProperties: false },
@@ -60,7 +67,6 @@ const DEFAULT_MODE_CONFIG_FILE = {
     $schema: `./${SCHEMA_FILE}`,
     version: 1,
     currentMode: "default",
-    [SHOW_MODE_NAME_SETTINGS_KEY]: false,
     [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: false,
     [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: false,
     modes: {},
@@ -69,7 +75,6 @@ const DEFAULT_MODE_CONFIG_FILE = {
 let settingsReadContext: SettingsReadContext | undefined;
 let cachedSettings:
     | {
-          showModeName: boolean;
           useThinkingBorderColors: boolean;
           showThinkingLevelStatus: boolean;
       }
@@ -376,6 +381,18 @@ function updateSettingsObject(update: (settings: Record<string, unknown>) => voi
     });
 }
 
+function parseModeShortcuts(value: unknown): ModeShortcuts {
+    if (!Value.Check(ModeShortcutsJsonSchema, value)) return {};
+    const parsed: unknown = Value.Parse(ModeShortcutsJsonSchema, value);
+    // SAFETY: Value.Check succeeded against the same schema, so this parse result has the schema's static type.
+    return parsed as ModeShortcuts;
+}
+
+export function getConfiguredModeShortcuts(): ModeShortcuts {
+    const globalSettings = readSettingsObject(getSettingsPath());
+    return parseModeShortcuts(globalSettings.shortcuts);
+}
+
 function applyBooleanSetting(
     settings: Record<string, unknown>,
     key: string,
@@ -387,7 +404,6 @@ function applyBooleanSetting(
 }
 
 function readModeSettings(): {
-    showModeName: boolean;
     useThinkingBorderColors: boolean;
     showThinkingLevelStatus: boolean;
 } {
@@ -395,12 +411,10 @@ function readModeSettings(): {
         return cachedSettings;
     }
 
-    let showModeName = false;
     let useThinkingBorderColors = false;
     let showThinkingLevelStatus = false;
 
     const globalSettings = readSettingsObject(getSettingsPath());
-    showModeName = applyBooleanSetting(globalSettings, SHOW_MODE_NAME_SETTINGS_KEY, showModeName);
     useThinkingBorderColors = applyBooleanSetting(
         globalSettings,
         USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
@@ -415,11 +429,6 @@ function readModeSettings(): {
     const projectSettingsPath = getProjectSettingsPath();
     if (projectSettingsPath !== undefined) {
         const projectSettings = readSettingsObject(projectSettingsPath);
-        showModeName = applyBooleanSetting(
-            projectSettings,
-            SHOW_MODE_NAME_SETTINGS_KEY,
-            showModeName,
-        );
         useThinkingBorderColors = applyBooleanSetting(
             projectSettings,
             USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
@@ -433,15 +442,10 @@ function readModeSettings(): {
     }
 
     cachedSettings = {
-        showModeName,
         useThinkingBorderColors,
         showThinkingLevelStatus,
     };
     return cachedSettings;
-}
-
-export function shouldShowModeName(): boolean {
-    return readModeSettings().showModeName;
 }
 
 export function shouldUseThinkingBorderColors(): boolean {
@@ -450,14 +454,6 @@ export function shouldUseThinkingBorderColors(): boolean {
 
 export function shouldShowThinkingLevelStatus(): boolean {
     return readModeSettings().showThinkingLevelStatus;
-}
-
-export function setShowModeName(show: boolean): void {
-    updateSettingsObject((settings) => {
-        settings[SHOW_MODE_NAME_SETTINGS_KEY] = show;
-    });
-
-    cachedSettings = undefined;
 }
 
 export function setUseThinkingBorderColors(useThinkingBorderColors: boolean): void {

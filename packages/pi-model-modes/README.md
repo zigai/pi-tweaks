@@ -14,11 +14,10 @@ pi install npm:@zigai/pi-model-modes
 
 - Adds `/mode` for selecting and configuring prompt modes.
 - Adds `Ctrl+Shift+M` to select a mode.
-- Adds `Ctrl+Space` to cycle modes.
-- Can show the current mode in the prompt editor border when enabled.
+- Supports optional forward and backward keyboard shortcuts for cycling modes.
 - Colors the prompt editor border from the active mode, with an opt-in setting for thinking-derived border colors.
 
-Modes can store a provider, model, thinking level, and optional color.
+Modes can store a provider, model, thinking level, and optional color. Mode cycling wraps from the last mode to the first and vice versa. No cycling shortcut is configured by default.
 
 ## Configuration
 
@@ -28,9 +27,10 @@ Configure global settings at `~/.pi/agent/pi-model-modes/config.json`.
 | ----------------------------- | --------- | ----------- | -------------------------------------------------------------------------- |
 | `version`                     | `number`  | `1`         | Config format version.                                                     |
 | `currentMode`                 | `string`  | `"default"` | Mode selected at startup.                                                  |
-| `modeShowName`                | `boolean` | `false`     | Shows the current mode name in the prompt editor border.                   |
 | `modeUseThinkingBorderColors` | `boolean` | `false`     | Uses thinking-derived border colors when a mode has no explicit color.     |
 | `modeShowThinkingLevelStatus` | `boolean` | `false`     | Shows Pi's transient thinking-level status message.                        |
+| `shortcuts.forward`           | `string`  | —           | Optional key for cycling to the next configured mode.                      |
+| `shortcuts.backward`          | `string`  | —           | Optional key for cycling to the previous configured mode.                  |
 | `modes`                       | `object`  | `{}`        | Named modes with optional `provider`, `modelId`, `thinkingLevel`, `color`. |
 
 ```json
@@ -38,7 +38,6 @@ Configure global settings at `~/.pi/agent/pi-model-modes/config.json`.
   "$schema": "./config.schema.json",
   "version": 1,
   "currentMode": "default",
-  "modeShowName": false,
   "modeUseThinkingBorderColors": false,
   "modeShowThinkingLevelStatus": false,
   "modes": {}

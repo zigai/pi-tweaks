@@ -16,8 +16,6 @@ import {
     MODE_UI_ADD,
     MODE_UI_BACK,
     MODE_UI_CONFIGURE,
-    MODE_UI_SHOW_NAME_OFF,
-    MODE_UI_SHOW_NAME_ON,
     MODE_UI_THINKING_COLORS_OFF,
     MODE_UI_THINKING_COLORS_ON,
     MODE_UI_THINKING_STATUS_OFF,
@@ -35,10 +33,8 @@ import {
     withFileLock,
 } from "./storage.ts";
 import {
-    setShowModeName,
     setShowThinkingLevelStatus,
     setUseThinkingBorderColors,
-    shouldShowModeName,
     shouldShowThinkingLevelStatus,
     shouldUseThinkingBorderColors,
 } from "./settings.ts";
@@ -64,9 +60,17 @@ const ModesFileJsonSchema = Type.Object(
         $schema: Type.Optional(Type.String()),
         version: Type.Optional(Type.Number()),
         currentMode: Type.Optional(Type.String()),
-        modeShowName: Type.Optional(Type.Boolean()),
         modeUseThinkingBorderColors: Type.Optional(Type.Boolean()),
         modeShowThinkingLevelStatus: Type.Optional(Type.Boolean()),
+        shortcuts: Type.Optional(
+            Type.Object(
+                {
+                    forward: Type.Optional(Type.String({ minLength: 1 })),
+                    backward: Type.Optional(Type.String({ minLength: 1 })),
+                },
+                { additionalProperties: false },
+            ),
+        ),
         modes: Type.Optional(Type.Record(Type.String(), ModeSpecJsonSchema)),
     },
     { additionalProperties: false },
@@ -943,10 +947,6 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
     while (true) {
         await ensureRuntime(pi, ctx);
         const names = orderedModeNames(runtime.data.modes);
-        let showModeNameChoice = MODE_UI_SHOW_NAME_OFF;
-        if (shouldShowModeName()) {
-            showModeNameChoice = MODE_UI_SHOW_NAME_ON;
-        }
         let thinkingColorsChoice = MODE_UI_THINKING_COLORS_OFF;
         if (shouldUseThinkingBorderColors()) {
             thinkingColorsChoice = MODE_UI_THINKING_COLORS_ON;
@@ -958,7 +958,6 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
         const choice = await ctx.ui.select("Configure modes", [
             ...names,
             MODE_UI_ADD,
-            showModeNameChoice,
             thinkingColorsChoice,
             thinkingStatusChoice,
             MODE_UI_BACK,
@@ -970,23 +969,6 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
             if (created !== undefined && created.length > 0) {
                 await editModeUI(pi, ctx, created);
             }
-            continue;
-        }
-
-        if (choice === MODE_UI_SHOW_NAME_ON || choice === MODE_UI_SHOW_NAME_OFF) {
-            const next = !shouldShowModeName();
-            try {
-                setShowModeName(next);
-            } catch (error: unknown) {
-                ctx.ui.notify(`Mode name display was not saved: ${errorMessage(error)}`, "error");
-                continue;
-            }
-            requestEditorRender?.();
-            let displayState = "disabled";
-            if (next) {
-                displayState = "enabled";
-            }
-            ctx.ui.notify(`Mode name display ${displayState}`, "info");
             continue;
         }
 
