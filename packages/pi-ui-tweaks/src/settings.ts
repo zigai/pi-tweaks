@@ -258,7 +258,7 @@ export function resolveUiTweaksConfig(
 
     for (const source of settingsSources) {
         const parsed = parseUiTweaksSettings(source.settings, source.label);
-        mergedSettings = { ...mergedSettings, ...parsed.settings };
+        Object.assign(mergedSettings, parsed.settings);
         errors.push(...parsed.errors);
     }
 

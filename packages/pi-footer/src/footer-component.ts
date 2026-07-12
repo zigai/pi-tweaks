@@ -26,16 +26,23 @@ export function markFooterComponent<T extends object>(
         enumerable: false,
         value: kind,
     });
+    if (
+        Reflect.get(component, FOOTER_COMPONENT_MARKER) !== true ||
+        Reflect.get(component, FOOTER_COMPONENT_KIND) !== kind
+    ) {
+        throw new Error("Failed to mark footer component.");
+    }
+    // SAFETY: The two non-configurable symbol properties were just installed and
+    // verified through this module's marker parser; callers cannot construct the marker.
     return component as T & MarkedFooterComponent;
 }
 
 export function getFooterComponentKind(value: unknown): FooterComponentKind | undefined {
     if (!isObject(value)) return undefined;
 
-    const candidate = value as Partial<MarkedFooterComponent>;
-    if (candidate[FOOTER_COMPONENT_MARKER] !== true) return undefined;
+    if (Reflect.get(value, FOOTER_COMPONENT_MARKER) !== true) return undefined;
 
-    const kind = candidate[FOOTER_COMPONENT_KIND];
+    const kind: unknown = Reflect.get(value, FOOTER_COMPONENT_KIND) as unknown;
     if (kind === "live" || kind === "bridge") return kind;
     return undefined;
 }

@@ -106,13 +106,20 @@ function isObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if (!isObject(value)) {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
 function hasConstructorName(value: object, name: string): boolean {
-    const constructorValue = Reflect.get(value, "constructor");
+    const constructorValue = getUnknownProperty(value, "constructor");
     if (!isObject(constructorValue)) {
         return false;
     }
 
-    return Reflect.get(constructorValue, "name") === name;
+    return getUnknownProperty(constructorValue, "name") === name;
 }
 
 function isBoxLike(value: unknown): value is BoxLike {
@@ -120,8 +127,8 @@ function isBoxLike(value: unknown): value is BoxLike {
         return false;
     }
 
-    const children = Reflect.get(value, "children");
-    const invalidate = Reflect.get(value, "invalidate");
+    const children = getUnknownProperty(value, "children");
+    const invalidate = getUnknownProperty(value, "invalidate");
     return Array.isArray(children) && typeof invalidate === "function";
 }
 
@@ -130,7 +137,7 @@ function isMarkdownLike(value: unknown): value is MarkdownInternals {
         return false;
     }
 
-    if (typeof Reflect.get(value, "text") !== "string") {
+    if (typeof getUnknownProperty(value, "text") !== "string") {
         return false;
     }
 
@@ -138,7 +145,7 @@ function isMarkdownLike(value: unknown): value is MarkdownInternals {
         return true;
     }
 
-    return typeof Reflect.get(value, "renderToken") === "function";
+    return typeof getUnknownProperty(value, "renderToken") === "function";
 }
 
 class PlainMarkdownText implements Component {
@@ -251,10 +258,9 @@ async function loadUserMessagePrototype(): Promise<UserMessageComponentPrototype
         const userMessagePath = pathToFileURL(
             join(distDir, "modes/interactive/components/user-message.js"),
         ).href;
-        const userMessageModule = (await import(userMessagePath)) as {
-            UserMessageComponent?: { prototype?: unknown };
-        };
-        const prototype = userMessageModule.UserMessageComponent?.prototype;
+        const userMessageModule: unknown = (await import(userMessagePath)) as unknown;
+        const component = getUnknownProperty(userMessageModule, "UserMessageComponent");
+        const prototype = getUnknownProperty(component, "prototype");
         if (isUserMessagePrototype(prototype)) {
             return prototype;
         }

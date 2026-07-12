@@ -71,6 +71,17 @@ const FooterConfigSchema = Type.Object(
 
 type ParsedFooterConfig = Static<typeof FooterConfigSchema>;
 
+const BUILTIN_FOOTER_SLOT_IDS = new Set([
+    "path",
+    "branch",
+    "provider",
+    "model",
+    "thinking",
+    "mcp",
+    "context",
+]);
+const FOOTER_CUSTOM_SLOT_ID_REGEX = new RegExp(FOOTER_CUSTOM_SLOT_ID_PATTERN);
+
 export const DEFAULT_FOOTER_CONFIG: FooterConfig = {
     separator: "·",
     layout: {
@@ -133,11 +144,16 @@ function cloneSlotIds(values: readonly FooterSlotId[]): FooterSlotId[] {
     return [...values];
 }
 
+function isFooterSlotId(value: string): value is FooterSlotId {
+    return BUILTIN_FOOTER_SLOT_IDS.has(value) || FOOTER_CUSTOM_SLOT_ID_REGEX.test(value);
+}
+
 function parseSlotIds(values: readonly string[]): FooterSlotId[] {
     const slotIds: FooterSlotId[] = [];
     for (const value of values) {
-        // SAFETY: FooterConfigSchema accepted either a built-in slot literal or a namespaced custom slot id.
-        slotIds.push(value as FooterSlotId);
+        if (isFooterSlotId(value)) {
+            slotIds.push(value);
+        }
     }
     return slotIds;
 }

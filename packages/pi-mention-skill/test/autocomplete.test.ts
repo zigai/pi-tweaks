@@ -12,8 +12,11 @@ function skillCommand(name: string, description = "test skill"): SkillCommand {
         description,
         sourceInfo: {
             path: `/tmp/${name}.md`,
+            source: "skill",
+            scope: "project",
+            origin: "top-level",
         },
-    } as unknown as SkillCommand;
+    };
 }
 
 function fallbackProvider(items: AutocompleteItem[]): AutocompleteProvider {

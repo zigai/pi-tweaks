@@ -37,16 +37,24 @@ export function setHideModelChangeStatus(enabled: boolean): void {
 /**
  * Installs an idempotent patch that suppresses Pi's redundant model-change status line.
  */
-export function installModelStatusPatch(
-    prototype: InteractiveModeStatusTarget = InteractiveMode.prototype as unknown as InteractiveModeStatusTarget,
-): void {
-    if (prototype[MODEL_STATUS_PATCH_KEY] === true) {
+export function installModelStatusPatch(prototype?: InteractiveModeStatusTarget): void {
+    const prototypeValue: unknown = prototype ?? InteractiveMode.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        warnModelStatusPatchUnavailable();
         return;
     }
-
-    const originalShowStatusValue: unknown = Reflect.get(prototype, "showStatus");
+    const originalShowStatusValue: unknown = Reflect.get(prototypeValue, "showStatus") as unknown;
     if (typeof originalShowStatusValue !== "function") {
         warnModelStatusPatchUnavailable("missing showStatus");
+        return;
+    }
+    // SAFETY: The guarded Pi InteractiveMode adapter verifies the private method
+    // before exposing the smallest model-status patch target.
+    prototype = prototypeValue as InteractiveModeStatusTarget;
+    if (prototype[MODEL_STATUS_PATCH_KEY] === true) {
         return;
     }
 

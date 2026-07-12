@@ -32,7 +32,8 @@ function createLifecycleApi(): LifecycleApi {
     };
 
     // SAFETY: These extensions use only ExtensionAPI.on during this lifecycle test.
-    return { api: api as unknown as ExtensionAPI, shutdownHandlers };
+    const untypedApi: unknown = api;
+    return { api: untypedApi as ExtensionAPI, shutdownHandlers };
 }
 
 async function loadComponentPrototype<T extends RenderPrototype>(
@@ -43,8 +44,14 @@ async function loadComponentPrototype<T extends RenderPrototype>(
     const componentUrl = pathToFileURL(
         join(dirname(codingAgentEntry), "modes/interactive/components", fileName),
     ).href;
-    const componentModule = (await import(componentUrl)) as Record<string, unknown>;
-    const component = componentModule[exportName];
+    const componentModule: unknown = (await import(componentUrl)) as unknown;
+    if (
+        (typeof componentModule !== "object" || componentModule === null) &&
+        typeof componentModule !== "function"
+    ) {
+        assert.fail(`missing ${exportName}`);
+    }
+    const component: unknown = Reflect.get(componentModule, exportName) as unknown;
     if (typeof component !== "function") assert.fail(`missing ${exportName}`);
     const prototype: unknown = Reflect.get(component, "prototype");
     if (

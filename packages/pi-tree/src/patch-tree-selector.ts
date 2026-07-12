@@ -43,6 +43,13 @@ type TreePatchState = {
 
 type TreePatchSettings = TreePatchState;
 
+type TreeListPrototype = {
+    getEntryDisplayText?: NonNullable<TreeListInstance["getEntryDisplayText"]>;
+    getStatusLabels: NonNullable<TreeListInstance["getStatusLabels"]>;
+    handleInput: NonNullable<TreeListInstance["handleInput"]>;
+    render?: (width: number) => string[];
+};
+
 type PatchTreeSelectorOptions = {
     readonly loadTreeInternals?: () => Promise<[TreeSelectorModule, ThemeModule] | undefined>;
     readonly patchTreeHeaderText?: (prototype: TreeHeaderPatchTarget) => void;
@@ -61,10 +68,41 @@ function defaultTreePatchSettings(): TreePatchSettings {
     };
 }
 
+function isObject(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if (!isObject(value)) return undefined;
+    return Reflect.get(value, key) as unknown;
+}
+
+function isTreeListInstance(value: unknown): value is TreeListInstance {
+    return (
+        isObject(value) &&
+        typeof getUnknownProperty(value, "handleInput") === "function" &&
+        typeof getUnknownProperty(value, "getStatusLabels") === "function"
+    );
+}
+
+function isTreeListPrototype(value: unknown): value is TreeListPrototype {
+    if (!isObject(value)) return false;
+    const getEntryDisplayText = getUnknownProperty(value, "getEntryDisplayText");
+    const render = getUnknownProperty(value, "render");
+    return (
+        typeof getUnknownProperty(value, "handleInput") === "function" &&
+        typeof getUnknownProperty(value, "getStatusLabels") === "function" &&
+        (getEntryDisplayText === undefined || typeof getEntryDisplayText === "function") &&
+        (render === undefined || typeof render === "function")
+    );
+}
+
 function setTreePatchState(settings: TreePatchSettings): TreePatchState {
-    const existing = Reflect.get(globalThis, TREE_PATCH_STATE);
+    const existing: unknown = Reflect.get(globalThis, TREE_PATCH_STATE) as unknown;
     if (typeof existing === "object" && existing !== null) {
         Object.assign(existing, settings);
+        // SAFETY: The private global-symbol slot is written only by this function with
+        // the complete settings shape; TypeScript cannot represent that symbol invariant.
         return existing as TreePatchState;
     }
 
@@ -88,9 +126,7 @@ function getTreeTimestampModeFromState(
     treeList: TreeListInstance,
     patchState: TreePatchState,
 ): TreeTimestampMode {
-    const current = (treeList as TreeListInstance & { [TREE_TIMESTAMP_MODE_KEY]?: unknown })[
-        TREE_TIMESTAMP_MODE_KEY
-    ];
+    const current: unknown = Reflect.get(treeList, TREE_TIMESTAMP_MODE_KEY) as unknown;
 
     if (isTreeTimestampMode(current)) {
         treeList.showLabelTimestamps = false;
@@ -106,9 +142,7 @@ function getTreePreviewEnabledFromState(
     treeList: TreeListInstance,
     patchState: TreePatchState,
 ): boolean {
-    const current = (treeList as TreeListInstance & { [TREE_PREVIEW_ENABLED_KEY]?: unknown })[
-        TREE_PREVIEW_ENABLED_KEY
-    ];
+    const current: unknown = Reflect.get(treeList, TREE_PREVIEW_ENABLED_KEY) as unknown;
 
     if (typeof current === "boolean") {
         return current;
@@ -131,10 +165,7 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
 
     initTheme(patchState.getConfiguredThemeName(), false);
 
-    const globalState = globalThis as typeof globalThis & {
-        [PATCH_KEY]?: boolean;
-    };
-    if (globalState[PATCH_KEY] === true) return;
+    if (Reflect.get(globalThis, PATCH_KEY) === true) return;
 
     const selector = new TreeSelectorComponent(
         [],
@@ -146,46 +177,36 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
         undefined,
         undefined,
     );
-    const selectorPrototype = Object.getPrototypeOf(selector) as {
-        addChild?: TreeHeaderPatchTarget["addChild"];
-        getTreeList?: () => TreeListInstance | undefined;
-    } | null;
-    if (selectorPrototype !== null && typeof selectorPrototype.addChild === "function") {
+    const selectorPrototype: unknown = Object.getPrototypeOf(selector);
+    if (!isObject(selectorPrototype)) return;
+
+    const originalGetTreeList = getUnknownProperty(selectorPrototype, "getTreeList");
+    if (typeof originalGetTreeList !== "function") return;
+    const treeListValue: unknown = Reflect.apply(originalGetTreeList, selector, []);
+    if (!isTreeListInstance(treeListValue)) return;
+    const treeList = treeListValue;
+    const treeListPrototypeValue: unknown = Object.getPrototypeOf(treeList);
+    if (!isTreeListPrototype(treeListPrototypeValue)) return;
+    const treeListPrototype = treeListPrototypeValue;
+
+    const addChild = getUnknownProperty(selectorPrototype, "addChild");
+    if (typeof addChild === "function") {
+        // SAFETY: The dynamic selector prototype adapter verifies the addChild method
+        // required by the header patch before passing the smallest patch target onward.
         patchHeaderText(selectorPrototype as TreeHeaderPatchTarget);
     }
-    const originalGetTreeList = selectorPrototype?.getTreeList;
-    if (selectorPrototype !== null && typeof originalGetTreeList === "function") {
-        selectorPrototype.getTreeList = function patchedGetTreeList(this: unknown) {
-            const treeListInstance = originalGetTreeList.call(this);
-            if (treeListInstance !== undefined) {
-                applyConfiguredMaxVisibleLinesFromState(treeListInstance, patchState);
-            }
-            return treeListInstance;
-        };
-    }
+    Reflect.set(selectorPrototype, "getTreeList", function patchedGetTreeList(this: unknown) {
+        const treeListInstance: unknown = Reflect.apply(originalGetTreeList, this, []);
+        if (isTreeListInstance(treeListInstance)) {
+            applyConfiguredMaxVisibleLinesFromState(treeListInstance, patchState);
+        }
+        return treeListInstance;
+    });
 
-    const treeList = selector.getTreeList?.() as TreeListInstance | undefined;
-    let treeListPrototype = null;
-    if (treeList) {
-        treeListPrototype = Object.getPrototypeOf(treeList);
-    }
-    if (treeListPrototype === null) return;
-
-    const originalHandleInput = treeListPrototype.handleInput as
-        | ((keyData: string) => void)
-        | undefined;
-    const originalGetStatusLabels = treeListPrototype.getStatusLabels as (() => string) | undefined;
-    const originalGetEntryDisplayText = treeListPrototype.getEntryDisplayText as
-        | ((node: TreeNode, isSelected: boolean) => string)
-        | undefined;
-    const originalRender = treeListPrototype.render as ((width: number) => string[]) | undefined;
-
-    if (
-        typeof originalHandleInput !== "function" ||
-        typeof originalGetStatusLabels !== "function"
-    ) {
-        return;
-    }
+    const originalHandleInput = treeListPrototype.handleInput;
+    const originalGetStatusLabels = treeListPrototype.getStatusLabels;
+    const originalGetEntryDisplayText = treeListPrototype.getEntryDisplayText;
+    const originalRender = treeListPrototype.render;
 
     treeListPrototype.handleInput = function patchedHandleInput(
         this: TreeListInstance,
@@ -434,5 +455,5 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
         };
     }
 
-    globalState[PATCH_KEY] = true;
+    Reflect.set(globalThis, PATCH_KEY, true);
 }

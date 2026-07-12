@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { installLiveFooter } from "../src/footer-transition.ts";
+import type { PlainFooterTheme } from "../src/footer-rendering.ts";
 import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
 import type { FooterData } from "../src/types.ts";
 
@@ -11,7 +11,11 @@ type TestTui = {
     setClearOnShrink(enabled: boolean): void;
 };
 
-type CapturedFooterFactory = (tui: TestTui, theme: unknown, footerData: FooterData) => unknown;
+type CapturedFooterFactory = (
+    tui: TestTui,
+    theme: PlainFooterTheme,
+    footerData: FooterData,
+) => unknown;
 
 test("live footer leaves native clear-on-shrink disabled", () => {
     let capturedFactory: CapturedFooterFactory | undefined;
@@ -31,7 +35,7 @@ test("live footer leaves native clear-on-shrink disabled", () => {
                 capturedFactory = factory;
             },
         },
-    } as unknown as ExtensionContext;
+    };
 
     installLiveFooter(ctx, () => "medium", DEFAULT_FOOTER_CONFIG);
 
@@ -58,7 +62,15 @@ test("live footer leaves native clear-on-shrink disabled", () => {
         },
     };
 
-    capturedFactory(tui, {}, footerData);
+    capturedFactory(
+        tui,
+        {
+            fg(_role, text) {
+                return text;
+            },
+        },
+        footerData,
+    );
 
     assert.equal(clearOnShrinkEnabled, false);
 });

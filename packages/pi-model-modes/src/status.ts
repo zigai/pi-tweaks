@@ -22,33 +22,52 @@ type StatusPatchState = {
     patch?: StatusPatchRecord;
 };
 
-type InteractiveModeClass = {
-    prototype: InteractiveModePrototype;
-};
-
-type InteractiveModeModule = {
-    InteractiveMode?: InteractiveModeClass;
-};
-
 type ShowStatus = (this: InteractiveModePrototype, message: string) => void;
 
 type ThinkingLevelStatusPatchOptions = {
-    readonly loadInteractiveModeModule?: () => Promise<InteractiveModeModule | undefined>;
+    readonly loadInteractiveModeModule?: () => Promise<unknown>;
     readonly shouldShowThinkingLevelStatus?: () => boolean;
 };
 
-function isShowStatus(value: unknown): value is ShowStatus {
-    return typeof value === "function";
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
+function isInteractiveModePrototype(value: unknown): value is InteractiveModePrototype {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return false;
+    }
+    return typeof getUnknownProperty(value, "showStatus") === "function";
+}
+
+function isStatusPatchRecord(value: unknown): value is StatusPatchRecord {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return false;
+    }
+    return (
+        isInteractiveModePrototype(getUnknownProperty(value, "prototype")) &&
+        typeof getUnknownProperty(value, "originalShowStatus") === "function" &&
+        typeof getUnknownProperty(value, "patchedShowStatus") === "function"
+    );
+}
+
+function isStatusPatchState(value: unknown): value is StatusPatchState {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return false;
+    }
+    if (typeof getUnknownProperty(value, "shouldShowThinkingLevelStatus") !== "function") {
+        return false;
+    }
+    const patch = getUnknownProperty(value, "patch");
+    return patch === undefined || isStatusPatchRecord(patch);
 }
 
 function getStatusPatchState(): StatusPatchState {
-    const existing = Reflect.get(globalThis, STATUS_PATCH_STATE);
-    if (typeof existing === "object" && existing !== null) {
-        const reader = Reflect.get(existing, "shouldShowThinkingLevelStatus");
-        if (typeof reader === "function") {
-            return existing as StatusPatchState;
-        }
-    }
+    const existing: unknown = Reflect.get(globalThis, STATUS_PATCH_STATE) as unknown;
+    if (isStatusPatchState(existing)) return existing;
 
     const patchState: StatusPatchState = {
         shouldShowThinkingLevelStatus: () => true,
@@ -81,7 +100,7 @@ export function restoreThinkingLevelStatusPatch(): void {
     patchState.patch = undefined;
 }
 
-async function loadInteractiveModeModule(): Promise<InteractiveModeModule | undefined> {
+async function loadInteractiveModeModule(): Promise<unknown> {
     try {
         const codingAgentEntry = fileURLToPath(
             import.meta.resolve("@earendil-works/pi-coding-agent"),
@@ -90,7 +109,7 @@ async function loadInteractiveModeModule(): Promise<InteractiveModeModule | unde
         const interactiveModePath = pathToFileURL(
             join(distDir, "modes/interactive/interactive-mode.js"),
         ).href;
-        return (await import(interactiveModePath)) as InteractiveModeModule;
+        return (await import(interactiveModePath)) as unknown;
     } catch (error: unknown) {
         warnStatusPatchUnavailable(error);
         return undefined;
@@ -106,24 +125,27 @@ export async function applyThinkingLevelStatusPatch(
 
     const loadModule = options.loadInteractiveModeModule ?? loadInteractiveModeModule;
     const module = await loadModule();
-    const prototype = module?.InteractiveMode?.prototype;
-    if (prototype === undefined) return;
+    const interactiveMode = getUnknownProperty(module, "InteractiveMode");
+    const prototypeValue = getUnknownProperty(interactiveMode, "prototype");
+    if (!isInteractiveModePrototype(prototypeValue)) {
+        warnStatusPatchUnavailable(new Error("InteractiveMode.showStatus is not a function"));
+        return;
+    }
+    const prototype = prototypeValue;
     if (patchState.patch !== undefined && patchState.patch.prototype !== prototype) {
         restoreThinkingLevelStatusPatch();
     }
     if (prototype[STATUS_PATCH_MARKER] === true) return;
-    if (typeof prototype.showStatus !== "function") {
-        warnStatusPatchUnavailable(new Error("InteractiveMode.showStatus is not a function"));
-        return;
-    }
 
     const showStatusDescriptor = Object.getOwnPropertyDescriptor(prototype, "showStatus");
     const showStatus: unknown = showStatusDescriptor?.value;
-    if (!isShowStatus(showStatus)) {
+    if (typeof showStatus !== "function") {
         warnStatusPatchUnavailable(new Error("InteractiveMode.showStatus descriptor is invalid"));
         return;
     }
 
+    // SAFETY: The immediately preceding descriptor check proves the private showStatus seam is callable.
+    const typedShowStatus = showStatus as ShowStatus;
     const patchedShowStatus = function patchedShowStatus(
         this: InteractiveModePrototype,
         message: string,
@@ -134,13 +156,13 @@ export async function applyThinkingLevelStatusPatch(
         ) {
             return;
         }
-        showStatus.call(this, message);
+        typedShowStatus.call(this, message);
     };
     prototype.showStatus = patchedShowStatus;
     prototype[STATUS_PATCH_MARKER] = true;
     patchState.patch = {
         prototype,
-        originalShowStatus: showStatus,
+        originalShowStatus: typedShowStatus,
         patchedShowStatus,
     };
 }

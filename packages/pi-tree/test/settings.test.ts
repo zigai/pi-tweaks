@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
     getPersistedMaxVisibleLines,
     getPersistedMode,
@@ -68,7 +67,7 @@ test("tree settings reject unknown config keys", async () => {
             isProjectTrusted() {
                 return false;
             },
-        } as unknown as ExtensionContext);
+        });
 
         assert.equal(getPersistedMode(), "relative");
     } finally {

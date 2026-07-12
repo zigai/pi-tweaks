@@ -32,7 +32,7 @@ type LinkedRenderMethod = RenderablePrototype["render"] & {
 function getRenderPredecessor(
     render: RenderablePrototype["render"],
 ): RenderablePrototype["render"] | undefined {
-    const predecessor: unknown = Reflect.get(render, RENDER_PATCH_PREDECESSOR_KEY);
+    const predecessor: unknown = Reflect.get(render, RENDER_PATCH_PREDECESSOR_KEY) as unknown;
     if (typeof predecessor !== "function") return undefined;
     // SAFETY: Render wrappers in this repository store only RenderablePrototype.render
     // under this private symbol; the runtime check verifies it is callable.
@@ -114,6 +114,13 @@ function warnInternalPatchUnavailable(feature: string, error?: unknown): void {
     );
 }
 
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
 async function loadPiTheme(): Promise<HighlightTheme | undefined> {
     try {
         const distDir = await resolvePiDistDir();
@@ -121,30 +128,30 @@ async function loadPiTheme(): Promise<HighlightTheme | undefined> {
         // SAFETY: This imports Pi's own interactive theme module. The exported
         // proxy is intentionally stable across Pi module loaders and exposes
         // Theme.fg/getColorMode once the interactive theme is initialized.
-        const themeModule = (await import(themePath)) as { theme?: unknown };
-        const theme = themeModule.theme;
+        const themeModule: unknown = (await import(themePath)) as unknown;
+        const theme = getUnknownProperty(themeModule, "theme");
         if (typeof theme !== "object" || theme === null) {
             warnInternalPatchUnavailable("theme color lookup");
             return undefined;
         }
         return {
             fg(color, text): string {
-                const fg = Reflect.get(theme, "fg");
+                const fg = getUnknownProperty(theme, "fg");
                 if (typeof fg !== "function") {
                     throw new Error("Theme.fg unavailable");
                 }
-                const styled = fg.call(theme, color, text) as unknown;
+                const styled: unknown = Reflect.apply(fg, theme, [color, text]) as unknown;
                 if (typeof styled !== "string") {
                     throw new Error("Theme.fg returned a non-string value");
                 }
                 return styled;
             },
             getColorMode(): "truecolor" | "256color" {
-                const getColorMode = Reflect.get(theme, "getColorMode");
+                const getColorMode = getUnknownProperty(theme, "getColorMode");
                 if (typeof getColorMode !== "function") {
                     throw new Error("Theme.getColorMode unavailable");
                 }
-                const colorMode = getColorMode.call(theme) as unknown;
+                const colorMode: unknown = Reflect.apply(getColorMode, theme, []) as unknown;
                 if (colorMode !== "truecolor" && colorMode !== "256color") {
                     throw new Error("Theme.getColorMode returned an unsupported value");
                 }
@@ -166,14 +173,14 @@ async function loadComponentPrototype(
         const componentPath = pathToFileURL(
             join(distDir, "modes/interactive/components", fileName),
         ).href;
-        const componentModule = (await import(componentPath)) as Record<string, unknown>;
-        const exported = componentModule[exportName];
+        const componentModule: unknown = (await import(componentPath)) as unknown;
+        const exported = getUnknownProperty(componentModule, exportName);
         if (typeof exported !== "function") {
             warnInternalPatchUnavailable(`${exportName} patch`);
             return undefined;
         }
 
-        const prototype = Reflect.get(exported, "prototype");
+        const prototype: unknown = Reflect.get(exported, "prototype") as unknown;
         if (
             typeof prototype === "object" &&
             prototype !== null &&
@@ -191,7 +198,7 @@ async function loadComponentPrototype(
 }
 
 function getEditorPrototype(): RenderablePrototype | undefined {
-    const prototype = Editor.prototype as unknown;
+    const prototype: unknown = Editor.prototype;
     if (
         typeof prototype === "object" &&
         prototype !== null &&

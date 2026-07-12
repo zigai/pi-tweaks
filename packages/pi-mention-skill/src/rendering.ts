@@ -1,6 +1,5 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
 import { escapeRegExp } from "./util.ts";
+import type { EditorEnhancerContext } from "./types.ts";
 
 export function isSkillMentionContext(text: string, trigger: string): boolean {
     return new RegExp(`(?:^|\\s)${escapeRegExp(trigger)}[a-z0-9-]*$`).test(text);
@@ -8,7 +7,7 @@ export function isSkillMentionContext(text: string, trigger: string): boolean {
 
 export function colorSkillMentions(
     line: string,
-    ctx: ExtensionContext,
+    ctx: EditorEnhancerContext,
     trigger: string,
     skillNames: ReadonlySet<string>,
 ): string {

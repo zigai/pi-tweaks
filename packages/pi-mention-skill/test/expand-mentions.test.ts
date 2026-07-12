@@ -24,9 +24,12 @@ function skillCommand(name: string, filePath: string, description = "test skill"
         description,
         sourceInfo: {
             path: filePath,
+            source: "skill",
+            scope: "project",
+            origin: "top-level",
             baseDir: path.dirname(filePath),
         },
-    } as unknown as SkillCommand;
+    };
 }
 
 function assistantMessage(

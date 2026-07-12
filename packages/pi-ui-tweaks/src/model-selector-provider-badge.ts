@@ -38,6 +38,17 @@ type ThemeModule = {
     theme?: ThemeInstance;
 };
 
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+    return Array.isArray(value);
+}
+
 function warnModelSelectorProviderBadgePatchUnavailable(error?: unknown): void {
     let suffix = "";
     if (error instanceof Error && error.message.length > 0) {
@@ -51,16 +62,16 @@ function warnModelSelectorProviderBadgePatchUnavailable(error?: unknown): void {
 function isModelItemLike(value: unknown): value is ModelItemLike {
     if (typeof value !== "object" || value === null) return false;
     return (
-        typeof Reflect.get(value, "id") === "string" &&
-        typeof Reflect.get(value, "provider") === "string"
+        typeof getUnknownProperty(value, "id") === "string" &&
+        typeof getUnknownProperty(value, "provider") === "string"
     );
 }
 
 function isTextLike(value: unknown): value is TextLike {
     if (typeof value !== "object" || value === null) return false;
     return (
-        typeof Reflect.get(value, "text") === "string" &&
-        typeof Reflect.get(value, "setText") === "function"
+        typeof getUnknownProperty(value, "text") === "string" &&
+        typeof getUnknownProperty(value, "setText") === "function"
     );
 }
 
@@ -69,7 +80,7 @@ function getSelectedModelItem(target: ModelSelectorProviderBadgeTarget): ModelIt
     if (typeof selectedIndex !== "number") return undefined;
 
     const filteredModels = target.filteredModels;
-    if (!Array.isArray(filteredModels)) return undefined;
+    if (!isUnknownArray(filteredModels)) return undefined;
 
     const selectedModel = filteredModels[selectedIndex];
     if (!isModelItemLike(selectedModel)) return undefined;
@@ -78,7 +89,7 @@ function getSelectedModelItem(target: ModelSelectorProviderBadgeTarget): ModelIt
 
 function getListChildren(target: ModelSelectorProviderBadgeTarget): readonly unknown[] {
     const children = target.listContainer?.children;
-    if (!Array.isArray(children)) return [];
+    if (!isUnknownArray(children)) return [];
     return children;
 }
 
@@ -110,11 +121,25 @@ async function resolvePiDistDir(): Promise<string> {
     return dirname(codingAgentEntry);
 }
 
-async function loadThemeModule(): Promise<ThemeModule> {
+async function loadThemeModule(): Promise<ThemeModule | undefined> {
     const distDir = await resolvePiDistDir();
     const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
-    const themeModule = (await import(themePath)) as ThemeModule;
-    return themeModule;
+    const themeModule: unknown = (await import(themePath)) as unknown;
+    const theme = getUnknownProperty(themeModule, "theme");
+    if ((typeof theme !== "object" && typeof theme !== "function") || theme === null) {
+        return undefined;
+    }
+    return {
+        theme: {
+            fg(color, text): string {
+                const fg = getUnknownProperty(theme, "fg");
+                if (typeof fg !== "function") return text;
+                const styled: unknown = Reflect.apply(fg, theme, [color, text]) as unknown;
+                if (typeof styled !== "string") return text;
+                return styled;
+            },
+        },
+    };
 }
 
 /**
@@ -128,31 +153,37 @@ export function setHighlightSelectedModelProvider(enabled: boolean): void {
  * Installs an idempotent patch that highlights the selected model row's provider badge.
  */
 export async function installModelSelectorProviderBadgePatch(
-    prototype: ModelSelectorProviderBadgeTarget = ModelSelectorComponent.prototype as unknown as ModelSelectorProviderBadgeTarget,
+    prototype?: ModelSelectorProviderBadgeTarget,
     providedTheme?: ThemeInstance,
 ): Promise<void> {
     try {
+        const target = prototype ?? ModelSelectorComponent.prototype;
+        if ((typeof target !== "object" && typeof target !== "function") || target === null) {
+            warnModelSelectorProviderBadgePatchUnavailable();
+            return;
+        }
         let theme = providedTheme;
-        theme ??= (await loadThemeModule()).theme;
+        theme ??= (await loadThemeModule())?.theme;
         if (theme === undefined) {
             warnModelSelectorProviderBadgePatchUnavailable();
             return;
         }
 
-        if (prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY] === true) return;
-
-        const originalUpdateListValue: unknown = Reflect.get(prototype, "updateList");
+        const originalUpdateListValue: unknown = Reflect.get(target, "updateList") as unknown;
         if (typeof originalUpdateListValue !== "function") {
             warnModelSelectorProviderBadgePatchUnavailable(new Error("missing updateList"));
             return;
         }
 
-        const originalUpdateList =
-            originalUpdateListValue as ModelSelectorProviderBadgeTarget["updateList"];
+        // SAFETY: This adapter checked updateList before patching and consumes only the
+        // optional model-selector members represented by its minimal target type.
+        prototype = target as ModelSelectorProviderBadgeTarget;
+        if (prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY] === true) return;
+
         prototype.updateList = function selectedProviderBadgeUpdateList(
             this: ModelSelectorProviderBadgeTarget,
         ): void {
-            originalUpdateList?.call(this);
+            Reflect.apply(originalUpdateListValue, this, []);
             highlightSelectedProviderBadge(this, theme);
         };
         prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY] = true;

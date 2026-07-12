@@ -1,4 +1,9 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+    ContextEvent,
+    ExtensionAPI,
+    ExtensionHandler,
+    SessionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 
 import { createSkillMentionProvider } from "./autocomplete.ts";
 import { applyMentionSkillEditor } from "./editor.ts";
@@ -6,11 +11,52 @@ import {
     contextContainsSkillMentionTrigger,
     createCachedSkillExpansionLoader,
     expandSkillMentionsInMessages,
+    type SkillExpansionLoader,
 } from "./expand-mentions.ts";
 import { configuredMentionSkillSettings } from "./settings.ts";
-import { createSkillCommandSource } from "./skill-commands.ts";
+import { createSkillCommandSource, type SkillCommandSource } from "./skill-commands.ts";
 
-export default function (pi: ExtensionAPI): void {
+type SkillMentionContextResult = {
+    messages: ContextEvent["messages"];
+};
+
+type SkillMentionContextHandler = (
+    event: ContextEvent,
+    ctx: import("./settings.ts").MentionSkillSettingsContext,
+) => Promise<SkillMentionContextResult | undefined>;
+
+export type MentionSkillHandlerMap = {
+    session_start: ExtensionHandler<SessionStartEvent>;
+    context: SkillMentionContextHandler;
+};
+
+export type MentionSkillExtensionApi = Pick<ExtensionAPI, "getCommands"> & {
+    on<TKey extends keyof MentionSkillHandlerMap>(
+        event: TKey,
+        handler: MentionSkillHandlerMap[TKey],
+    ): void;
+};
+
+export function createSkillMentionContextHandler(
+    skillSource: Pick<SkillCommandSource, "getSkillCommands">,
+    loadSkillExpansion: SkillExpansionLoader,
+): SkillMentionContextHandler {
+    return async (event, ctx) => {
+        const { trigger } = configuredMentionSkillSettings(ctx);
+        if (!contextContainsSkillMentionTrigger(event.messages, trigger)) return;
+
+        const messages = await expandSkillMentionsInMessages(
+            event.messages,
+            skillSource.getSkillCommands(),
+            trigger,
+            loadSkillExpansion,
+        );
+        if (messages === event.messages) return;
+        return { messages };
+    };
+}
+
+export default function (pi: MentionSkillExtensionApi): void {
     const loadSkillExpansion = createCachedSkillExpansionLoader();
     const skillSource = createSkillCommandSource(pi);
 
@@ -24,17 +70,5 @@ export default function (pi: ExtensionAPI): void {
         );
     });
 
-    pi.on("context", async (event, ctx) => {
-        const { trigger } = configuredMentionSkillSettings(ctx);
-        if (!contextContainsSkillMentionTrigger(event.messages, trigger)) return;
-
-        const messages = await expandSkillMentionsInMessages(
-            event.messages,
-            skillSource.getSkillCommands(),
-            trigger,
-            loadSkillExpansion,
-        );
-        if (messages === event.messages) return;
-        return { messages };
-    });
+    pi.on("context", createSkillMentionContextHandler(skillSource, loadSkillExpansion));
 }

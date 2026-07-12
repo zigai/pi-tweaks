@@ -73,12 +73,12 @@ let cachedPreviewFullHeight: boolean | undefined;
 let cachedThemeName: string | undefined;
 let cachedThemeNameLoaded = false;
 
-type ProjectTrustContext = ExtensionContext & {
+export type TreeSettingsContext = Pick<ExtensionContext, "cwd"> & {
     isProjectTrusted?: () => boolean;
 };
 
-function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return (ctx as ProjectTrustContext).isProjectTrusted?.() ?? true;
+function isProjectTrusted(ctx: TreeSettingsContext): boolean {
+    return ctx.isProjectTrusted?.() ?? true;
 }
 
 function clearReadCaches(): void {
@@ -90,7 +90,7 @@ function clearReadCaches(): void {
     cachedThemeNameLoaded = false;
 }
 
-export function setSettingsContext(ctx: ExtensionContext): void {
+export function setSettingsContext(ctx: TreeSettingsContext): void {
     const next: SettingsReadContext = {
         cwd: ctx.cwd,
         projectTrusted: isProjectTrusted(ctx),
@@ -284,8 +284,8 @@ function readMergedPiSettingsObject(): Record<string, unknown> {
         projectTrusted: context.projectTrusted,
     });
     return {
-        ...(manager.getGlobalSettings() as Record<string, unknown>),
-        ...(manager.getProjectSettings() as Record<string, unknown>),
+        ...Object.fromEntries(Object.entries(manager.getGlobalSettings())),
+        ...Object.fromEntries(Object.entries(manager.getProjectSettings())),
     };
 }
 

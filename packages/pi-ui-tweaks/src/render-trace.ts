@@ -132,6 +132,12 @@ type PatchableTuiPrototype = {
     [RENDER_TRACE_PATCHED]?: RenderTracePatchRecord;
 };
 
+type ValidatedTuiPrototype = PatchableTuiPrototype & {
+    render: PatchableTuiRender;
+    requestRender: PatchableTuiRequestRender;
+    doRender: PatchableTuiDoRender;
+};
+
 export type InstallRenderTraceOptions = {
     readonly enabled?: boolean;
     readonly env?: NodeJS.ProcessEnv;
@@ -425,13 +431,15 @@ function defaultTracePath(env: NodeJS.ProcessEnv): string {
     return join(getAgentDir(), "pi-ui-tweaks", `render-trace-${process.pid}.jsonl`);
 }
 
-function getPrototypeMethod<Method>(
-    prototype: PatchableTuiPrototype,
-    name: string,
-): Method | undefined {
-    const value: unknown = Reflect.get(prototype, name);
-    if (typeof value !== "function") return undefined;
-    return value as Method;
+function isValidatedTuiPrototype(value: unknown): value is ValidatedTuiPrototype {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return false;
+    }
+    return (
+        typeof Reflect.get(value, "render") === "function" &&
+        typeof Reflect.get(value, "requestRender") === "function" &&
+        typeof Reflect.get(value, "doRender") === "function"
+    );
 }
 
 function visibleFrameLines(
@@ -491,7 +499,16 @@ export function installRenderTracePatch(
     const enabled = options.enabled ?? traceEnabled(env);
     if (!enabled) return undefined;
 
-    const prototype = options.prototype ?? (TUI.prototype as unknown as PatchableTuiPrototype);
+    const prototypeValue: unknown = options.prototype ?? TUI.prototype;
+    if (!isValidatedTuiPrototype(prototypeValue)) {
+        console.warn("[pi-ui-tweaks] render trace unavailable; Pi TUI internals may have changed");
+        return undefined;
+    }
+    const prototype = prototypeValue;
+    const originalRender = prototype.render;
+    const originalRequestRender = prototype.requestRender;
+    const originalDoRender = prototype.doRender;
+
     const existingPatch = prototype[RENDER_TRACE_PATCHED];
     if (existingPatch !== undefined) {
         activeRecorder = existingPatch.recorder;
@@ -504,21 +521,6 @@ export function installRenderTracePatch(
                 if (activeRecorder === existingPatch.recorder) activeRecorder = undefined;
             },
         };
-    }
-
-    const originalRender = getPrototypeMethod<PatchableTuiRender>(prototype, "render");
-    const originalRequestRender = getPrototypeMethod<PatchableTuiRequestRender>(
-        prototype,
-        "requestRender",
-    );
-    const originalDoRender = getPrototypeMethod<PatchableTuiDoRender>(prototype, "doRender");
-    if (
-        originalRender === undefined ||
-        originalRequestRender === undefined ||
-        originalDoRender === undefined
-    ) {
-        console.warn("[pi-ui-tweaks] render trace unavailable; Pi TUI internals may have changed");
-        return undefined;
     }
 
     const filePath = options.filePath ?? defaultTracePath(env);
@@ -578,6 +580,7 @@ export function installRenderTracePatch(
         if (terminal !== undefined) {
             const originalWriteValue: unknown = Reflect.get(terminal, "write");
             if (typeof originalWriteValue === "function") {
+                // SAFETY: The immediately preceding runtime guard proves the private terminal write seam is callable.
                 originalWrite = originalWriteValue as PatchableTerminal["write"];
                 originalWriteOwnDescriptor = Object.getOwnPropertyDescriptor(terminal, "write");
             }

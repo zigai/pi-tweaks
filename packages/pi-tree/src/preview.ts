@@ -10,6 +10,13 @@ function normalizePreviewText(value: string): string {
         .trim();
 }
 
+function isTextContentBlock(value: unknown): value is { type: "text"; text: string } {
+    if (typeof value !== "object" || value === null) return false;
+    const type: unknown = Object.getOwnPropertyDescriptor(value, "type")?.value as unknown;
+    const text: unknown = Object.getOwnPropertyDescriptor(value, "text")?.value as unknown;
+    return type === "text" && typeof text === "string";
+}
+
 function extractTextContent(content: unknown, maxLength: number): string {
     if (typeof content === "string") {
         return content.slice(0, maxLength);
@@ -21,14 +28,7 @@ function extractTextContent(content: unknown, maxLength: number): string {
 
     let result = "";
     for (const block of content) {
-        if (
-            typeof block === "object" &&
-            block !== null &&
-            "type" in block &&
-            block.type === "text" &&
-            "text" in block &&
-            typeof block.text === "string"
-        ) {
+        if (isTextContentBlock(block)) {
             result += block.text;
             if (result.length >= maxLength) {
                 return result.slice(0, maxLength);

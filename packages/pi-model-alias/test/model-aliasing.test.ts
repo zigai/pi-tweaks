@@ -71,7 +71,7 @@ function textValues(children: unknown[]): string[] {
         if (typeof child !== "object" || child === null) {
             return [];
         }
-        const text = Reflect.get(child, "text");
+        const text: unknown = Reflect.get(child, "text") as unknown;
         if (typeof text !== "string") {
             return [];
         }

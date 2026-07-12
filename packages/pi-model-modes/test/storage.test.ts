@@ -147,10 +147,21 @@ test("setting writes copy legacy global config before updating new config", asyn
 
         setUseThinkingBorderColors(true);
 
-        const migratedConfig = JSON.parse(await readFile(configPath, "utf8"));
-        assert.equal(migratedConfig.modeUseThinkingBorderColors, true);
-        assert.equal(migratedConfig.currentMode, "default");
-        assert.deepEqual(migratedConfig.modes, legacyConfig.modes);
+        const migratedConfig: unknown = JSON.parse(await readFile(configPath, "utf8"));
+        if (typeof migratedConfig !== "object" || migratedConfig === null) {
+            assert.fail("expected migrated configuration object");
+        }
+        const modeUseThinkingBorderColors: unknown = Object.getOwnPropertyDescriptor(
+            migratedConfig,
+            "modeUseThinkingBorderColors",
+        )?.value as unknown;
+        const currentMode: unknown = Object.getOwnPropertyDescriptor(migratedConfig, "currentMode")
+            ?.value as unknown;
+        const modes: unknown = Object.getOwnPropertyDescriptor(migratedConfig, "modes")
+            ?.value as unknown;
+        assert.equal(modeUseThinkingBorderColors, true);
+        assert.equal(currentMode, "default");
+        assert.deepEqual(modes, legacyConfig.modes);
         assert.deepEqual(JSON.parse(await readFile(legacyConfigPath, "utf8")), legacyConfig);
     } finally {
         await rm(agentDir, { recursive: true, force: true });

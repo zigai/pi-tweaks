@@ -28,6 +28,42 @@ function extractText(content: UserMessage["content"]): string {
         .trim();
 }
 
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
+function parseStoredUserPrompt(value: unknown): PromptEntry | undefined {
+    if (getUnknownProperty(value, "type") !== "message") return undefined;
+    const message = getUnknownProperty(value, "message");
+    if (getUnknownProperty(message, "role") !== "user") return undefined;
+
+    const timestamp = getUnknownProperty(message, "timestamp");
+    if (typeof timestamp !== "number") return undefined;
+
+    const content = getUnknownProperty(message, "content");
+    if (typeof content === "string") {
+        const text = content.trim();
+        if (text.length === 0) return undefined;
+        return { text, timestamp };
+    }
+    if (!Array.isArray(content)) return undefined;
+
+    const text = content
+        .flatMap((item) => {
+            if (getUnknownProperty(item, "type") !== "text") return [];
+            const itemText = getUnknownProperty(item, "text");
+            if (typeof itemText !== "string") return [];
+            return [itemText];
+        })
+        .join("")
+        .trim();
+    if (text.length === 0) return undefined;
+    return { text, timestamp };
+}
+
 export function collectUserPromptsFromEntries(entries: SessionEntry[]): PromptEntry[] {
     const prompts: PromptEntry[] = [];
 
@@ -117,16 +153,15 @@ export async function loadPromptHistoryForCwd(
             const line = lines[lineIndex];
             if (line === undefined) continue;
 
-            let entry: SessionEntry;
+            let entry: unknown;
             try {
-                entry = JSON.parse(line) as SessionEntry;
+                entry = JSON.parse(line);
             } catch {
                 continue;
             }
-            if (!isUserMessageEntry(entry)) continue;
-            const text = extractText(entry.message.content);
-            if (text.length === 0) continue;
-            prompts.push({ text, timestamp: entry.message.timestamp });
+            const prompt = parseStoredUserPrompt(entry);
+            if (prompt === undefined) continue;
+            prompts.push(prompt);
             if (prompts.length >= MAX_RECENT_PROMPTS) break;
         }
         if (prompts.length >= MAX_RECENT_PROMPTS) break;

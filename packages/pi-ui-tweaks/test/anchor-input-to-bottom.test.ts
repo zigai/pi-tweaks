@@ -54,6 +54,20 @@ class FixedLines implements Component {
     invalidate(): void {}
 }
 
+class InheritedChildrenContainer implements Component {
+    constructor(private readonly child: Component) {}
+
+    get children(): Component[] {
+        return [this.child];
+    }
+
+    render(width: number): string[] {
+        return this.child.render(width);
+    }
+
+    invalidate(): void {}
+}
+
 class TestEditor implements Component {
     render(): string[] {
         return ["EDITOR TOP", "EDITOR BODY", "EDITOR BOTTOM"];
@@ -68,10 +82,8 @@ test("anchor input to bottom pads short screens above focused bottom chrome", ()
 
     const terminal = new FakeTerminal();
     const tui = new TUI(terminal);
-    const editorContainer = new Container();
     const editor = new TestEditor();
-
-    editorContainer.addChild(editor);
+    const editorContainer = new InheritedChildrenContainer(editor);
     tui.addChild(new FixedLines(["message"]));
     tui.addChild(new FixedLines(["", "⠴ Working... (4s)"]));
     tui.addChild(new FixedLines([""]));

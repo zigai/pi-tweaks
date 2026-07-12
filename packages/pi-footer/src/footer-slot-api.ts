@@ -70,7 +70,8 @@ function parseFooterCustomSlotId(value: string): FooterCustomSlotId {
         );
     }
 
-    // SAFETY: CUSTOM_SLOT_ID_REGEX requires at least one dot-separated namespace segment.
+    // SAFETY: CUSTOM_SLOT_ID_REGEX requires at least one dot-separated namespace segment;
+    // TypeScript cannot represent that regex-established FooterCustomSlotId brand.
     return value as FooterCustomSlotId;
 }
 

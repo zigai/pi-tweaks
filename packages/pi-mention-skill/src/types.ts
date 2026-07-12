@@ -7,12 +7,13 @@ export type SkillCommand = SlashCommandInfo & {
 
 export type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
-export type EditorLike = {
-    getText(): string;
-    handleInput(data: string): void;
-    render(width: number): string[];
-    isShowingAutocomplete?(): boolean;
-    tryTriggerAutocomplete?(explicitTab?: boolean): void;
+export type EditorLike = ReturnType<EditorFactory>;
+
+export type EditorEnhancerContext = {
+    hasUI: boolean;
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent"> & {
+        theme: Pick<ExtensionContext["ui"]["theme"], "fg">;
+    };
 };
 
 export type SkillExpansion = {

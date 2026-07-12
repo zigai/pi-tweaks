@@ -154,6 +154,20 @@ type StyledMarkdownInstance = {
     options?: MarkdownOptions;
 };
 
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
+function getStyledMarkdownInstance(instance: Markdown): StyledMarkdownInstance {
+    // SAFETY: Markdown is the Pi TUI instance this adapter patches; its documented
+    // rendering fields are read only as optional values, but the dependency does not export them.
+    const internals: unknown = instance;
+    return internals as StyledMarkdownInstance;
+}
+
 type HeadingLineTextsCache = {
     readonly text: string;
     readonly width: number;
@@ -283,7 +297,7 @@ function resolveHeadingLineTexts(
     width: number,
     renderMarkdown: MarkdownRender,
 ): ReadonlySet<string> {
-    const markdownInstance = instance as unknown as StyledMarkdownInstance;
+    const markdownInstance = getStyledMarkdownInstance(instance);
     const text = markdownInstance.text;
     if (typeof text !== "string") {
         return EMPTY_HEADING_LINE_TEXTS;
@@ -344,7 +358,7 @@ function resolveHeadingLineTexts(
 
 function resolveHeadingPrefix(instance: Markdown): string {
     // Level 1-2 headings render without `#`, so use their ANSI heading prefix.
-    const theme = (instance as unknown as StyledMarkdownInstance).theme;
+    const theme = getStyledMarkdownInstance(instance).theme;
     if (typeof theme?.heading !== "function") {
         return "";
     }
@@ -497,10 +511,21 @@ async function loadAssistantMessagePrototype(): Promise<
         const assistantMessagePath = pathToFileURL(
             join(distDir, "modes/interactive/components/assistant-message.js"),
         ).href;
-        const assistantModule = (await import(assistantMessagePath)) as {
-            AssistantMessageComponent?: { prototype?: AssistantMessageComponentPrototype };
-        };
-        return assistantModule.AssistantMessageComponent?.prototype;
+        const assistantModule: unknown = (await import(assistantMessagePath)) as unknown;
+        const component = getUnknownProperty(assistantModule, "AssistantMessageComponent");
+        const prototype = getUnknownProperty(component, "prototype");
+        if (
+            (typeof prototype === "object" || typeof prototype === "function") &&
+            prototype !== null &&
+            typeof getUnknownProperty(prototype, "render") === "function" &&
+            typeof getUnknownProperty(prototype, "updateContent") === "function"
+        ) {
+            // SAFETY: This dynamic Pi-module adapter verifies both methods that make up
+            // the narrow assistant-message patch seam before exposing it.
+            return prototype as AssistantMessageComponentPrototype;
+        }
+        warnInternalPatchUnavailable("assistant message patch");
+        return undefined;
     } catch (error: unknown) {
         warnInternalPatchUnavailable("assistant message patch", error);
         return undefined;
@@ -513,7 +538,7 @@ async function patchMarkdownFences(): Promise<void> {
         return;
     }
 
-    const markdownPrototype = Markdown.prototype as MarkdownPrototype;
+    const markdownPrototype: MarkdownPrototype = Markdown.prototype;
     const originalMarkdownRender = Reflect.get(markdownPrototype, "render");
     if (typeof originalMarkdownRender !== "function") {
         warnInternalPatchUnavailable("markdown render patch");
@@ -547,13 +572,16 @@ async function patchMarkdownFences(): Promise<void> {
         return;
     }
 
-    const originalRender = Reflect.get(assistantPrototype, "render") as
-        | ((this: AssistantMessageComponentInstance, width: number) => string[])
-        | undefined;
-    if (typeof originalRender !== "function") {
+    const originalRenderValue: unknown = Reflect.get(assistantPrototype, "render") as unknown;
+    if (typeof originalRenderValue !== "function") {
         warnInternalPatchUnavailable("assistant render patch");
         return;
     }
+    // SAFETY: The immediately preceding guard proves the private assistant render seam is callable.
+    const originalRender = originalRenderValue as (
+        this: AssistantMessageComponentInstance,
+        width: number,
+    ) => string[];
     const patchedAssistantRender: LinkedRenderMethod<AssistantMessageComponentInstance> =
         function patchedAssistantRender(
             this: AssistantMessageComponentInstance,
@@ -568,24 +596,42 @@ async function patchMarkdownFences(): Promise<void> {
     patch.originalAssistantRender = originalRender;
     patch.patchedAssistantRender = patchedAssistantRender;
 
-    const originalUpdateContent = Reflect.get(assistantPrototype, "updateContent") as
-        | ((this: AssistantMessageComponentInstance, message: unknown) => void)
-        | undefined;
-    if (typeof originalUpdateContent !== "function") {
+    const originalUpdateContentValue: unknown = Reflect.get(
+        assistantPrototype,
+        "updateContent",
+    ) as unknown;
+    if (typeof originalUpdateContentValue !== "function") {
         warnInternalPatchUnavailable("assistant content patch");
         return;
     }
+    // SAFETY: The immediately preceding guard proves the private assistant update seam is callable.
+    const originalUpdateContent = originalUpdateContentValue as (
+        this: AssistantMessageComponentInstance,
+        message: unknown,
+    ) => void;
     const patchedAssistantUpdateContent = function patchedUpdateContent(
         this: AssistantMessageComponentInstance,
         message: unknown,
     ): void {
         const contentContainer = this.contentContainer;
-        const originalAddChild = Reflect.get(contentContainer ?? {}, "addChild") as
+        const originalAddChildValue: unknown = Reflect.get(
+            contentContainer ?? {},
+            "addChild",
+        ) as unknown;
+        let originalAddChild:
             | ((
                   this: NonNullable<AssistantMessageComponentInstance["contentContainer"]>,
                   component: Component,
               ) => void)
             | undefined;
+        if (typeof originalAddChildValue === "function") {
+            // SAFETY: The guarded content-container adapter verifies addChild is callable
+            // before restoring it with the narrow method signature used by this patch.
+            originalAddChild = originalAddChildValue as (
+                this: NonNullable<AssistantMessageComponentInstance["contentContainer"]>,
+                component: Component,
+            ) => void;
+        }
 
         if (contentContainer !== undefined && originalAddChild !== undefined) {
             contentContainer.addChild = function addChildWithFenceTracking(

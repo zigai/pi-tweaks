@@ -21,7 +21,7 @@ function normalizeInputPromptPrefix(prefix: string): string {
 }
 
 function readInputString(target: InputRenderTarget, key: string): string | undefined {
-    const value = Reflect.get(target, key);
+    const value: unknown = Reflect.get(target, key) as unknown;
     if (typeof value === "string") {
         return value;
     }
@@ -29,7 +29,7 @@ function readInputString(target: InputRenderTarget, key: string): string | undef
 }
 
 function readInputNumber(target: InputRenderTarget, key: string): number | undefined {
-    const value = Reflect.get(target, key);
+    const value: unknown = Reflect.get(target, key) as unknown;
     if (typeof value === "number" && Number.isFinite(value)) {
         return value;
     }
@@ -37,7 +37,7 @@ function readInputNumber(target: InputRenderTarget, key: string): number | undef
 }
 
 function readInputBoolean(target: InputRenderTarget, key: string): boolean | undefined {
-    const value = Reflect.get(target, key);
+    const value: unknown = Reflect.get(target, key) as unknown;
     if (typeof value === "boolean") {
         return value;
     }
@@ -89,6 +89,7 @@ export function installInputPromptPrefixPatch(prototype: unknown = Input.prototy
         warnInputPromptPrefixPatchUnavailable("missing render");
         return;
     }
+    // SAFETY: The immediately preceding guard proves the private Input.render seam is callable.
     const originalRender = originalRenderValue as InputRenderTarget["render"];
     prototype.render = function inputPromptPrefixRender(
         this: InputRenderTarget,

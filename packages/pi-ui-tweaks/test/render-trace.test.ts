@@ -74,11 +74,21 @@ function createFakeTuiPrototype(): FakeTui {
     };
 }
 
+function createInheritedTestInstance<TPrototype extends object>(
+    prototype: TPrototype,
+    ownProperties: object,
+): TPrototype {
+    const instance: unknown = Object.assign(Object.create(prototype), ownProperties);
+    // SAFETY: This test helper creates objects exclusively from its caller-provided
+    // fake prototype, preserving inherited methods needed to exercise patch restoration.
+    return instance as TPrototype;
+}
+
 test("render trace captures repaint controls without serializing visible text", () => {
     const temporaryDirectory = mkdtempSync(join(tmpdir(), "pi-ui-tweaks-render-trace-"));
     const filePath = join(temporaryDirectory, "trace.jsonl");
     const prototype = createFakeTuiPrototype();
-    const instance = Object.assign(Object.create(prototype) as FakeTui, {
+    const instance = createInheritedTestInstance(prototype, {
         terminal: {
             rows: 3,
             writes: [] as string[],
@@ -134,11 +144,11 @@ test("render trace preserves inherited terminal write methods", () => {
             this.writes.push(data);
         },
     };
-    const terminal = Object.assign(Object.create(terminalPrototype) as RecordingTerminal, {
+    const terminal = createInheritedTestInstance(terminalPrototype, {
         rows: 3,
         writes: [] as string[],
     });
-    const instance = Object.assign(Object.create(prototype) as FakeTui, { terminal });
+    const instance = createInheritedTestInstance(prototype, { terminal });
 
     try {
         const trace = installRenderTracePatch({ enabled: true, filePath, prototype });

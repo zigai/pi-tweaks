@@ -10,14 +10,20 @@ const HISTORY_FACTORY_BASE = Symbol.for("zigai.pi-prompt-history.editor-factory-
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
-type EditorLike = CustomEditor & {
-    addToHistory?: (text: string) => void;
-    render(width: number): string[];
-};
+type EditorLike = ReturnType<EditorFactory>;
 
 type WrappedEditorFactory = EditorFactory & {
     [HISTORY_FACTORY_BASE]?: EditorFactory | undefined;
 };
+
+export type PromptHistoryEditorContext = Pick<ExtensionContext, "cwd" | "hasUI"> & {
+    sessionManager: Pick<ExtensionContext["sessionManager"], "getBranch" | "getSessionFile">;
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "getEditorText" | "setEditorComponent">;
+};
+
+function isWrappedEditorFactory(value: EditorFactory | undefined): value is WrappedEditorFactory {
+    return value !== undefined && Reflect.has(value, HISTORY_FACTORY_BASE);
+}
 
 function enhanceEditor(editor: EditorLike, history: PromptEntry[]): EditorLike {
     for (const prompt of history) {
@@ -26,14 +32,18 @@ function enhanceEditor(editor: EditorLike, history: PromptEntry[]): EditorLike {
     return editor;
 }
 
-function setEditor(ctx: ExtensionContext, history: PromptEntry[]): void {
-    const existing = ctx.ui.getEditorComponent() as WrappedEditorFactory | undefined;
-    const baseFactory = existing?.[HISTORY_FACTORY_BASE] ?? existing;
-    const factory = ((tui, theme, keybindings) => {
-        const editor = (baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as EditorLike;
+function setEditor(ctx: PromptHistoryEditorContext, history: PromptEntry[]): void {
+    const configuredFactory = ctx.ui.getEditorComponent();
+    let existing: WrappedEditorFactory | undefined;
+    if (isWrappedEditorFactory(configuredFactory)) {
+        existing = configuredFactory;
+    }
+    const baseFactory = existing?.[HISTORY_FACTORY_BASE] ?? configuredFactory;
+    const factory: WrappedEditorFactory = (tui, theme, keybindings) => {
+        const editor: EditorLike =
+            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
         return enhanceEditor(editor, history);
-    }) as WrappedEditorFactory;
+    };
     factory[HISTORY_FACTORY_BASE] = baseFactory;
 
     ctx.ui.setEditorComponent(factory);
@@ -46,7 +56,7 @@ export type PromptHistoryLoader = (
 
 /** Loads prompt history before installing the session editor exactly once. */
 export async function applyPromptHistoryEditor(
-    ctx: ExtensionContext,
+    ctx: PromptHistoryEditorContext,
     loadHistory: PromptHistoryLoader = loadPromptHistoryForCwd,
 ): Promise<void> {
     if (!ctx.hasUI) return;

@@ -1,17 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionContext, KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { TUI, type EditorComponent, type EditorTheme, type Terminal } from "@earendil-works/pi-tui";
-import { applyBashExecSpacingEditor } from "../src/bash-exec-spacing.ts";
+import { KeybindingsManager } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
+import {
+    applyBashExecSpacingEditor,
+    type BashExecSpacingEditorContext,
+} from "../src/bash-exec-spacing.ts";
 import {
     applyPasteCollapseEditor,
     installPasteCollapsePatch,
     setPasteCollapseSettings,
+    type PasteCollapseEditorContext,
     type PasteCollapseSettings,
 } from "../src/paste-collapse.ts";
 
-const TOOL_EXPAND = "TOOL_EXPAND";
+const TOOL_EXPAND = "\x0f";
 const CUSTOM_EXPAND = "\x05";
 
 class FakeTerminal implements Terminal {
@@ -75,11 +80,14 @@ const editorTheme: EditorTheme = {
     },
 };
 
-const keybindings = {
-    matches(data: string, action: string): boolean {
-        return action === "app.tools.expand" && data === TOOL_EXPAND;
-    },
-} as unknown as KeybindingsManager;
+function isTestEditor(value: EditorComponent): value is TestEditor {
+    return typeof value.getExpandedText === "function";
+}
+
+function getTestEditor(value: EditorComponent): TestEditor {
+    if (!isTestEditor(value)) throw new Error("Expected CustomEditor expanded-text seam");
+    return value;
+}
 
 function setTestSettings(settings: Partial<PasteCollapseSettings>): void {
     setPasteCollapseSettings({ ...defaultSettings, ...settings });
@@ -107,7 +115,7 @@ function createPasteCollapseEditor(): TestEditor {
                 editorFactory = nextFactory;
             },
         },
-    } as unknown as ExtensionContext;
+    } satisfies PasteCollapseEditorContext;
 
     applyPasteCollapseEditor(context);
 
@@ -116,7 +124,7 @@ function createPasteCollapseEditor(): TestEditor {
     }
 
     const tui = new TUI(new FakeTerminal());
-    return editorFactory(tui, editorTheme, keybindings) as unknown as TestEditor;
+    return getTestEditor(editorFactory(tui, editorTheme, new KeybindingsManager()));
 }
 
 function paste(text: string): string {
@@ -192,11 +200,46 @@ test("tool expand key expands only the marker under the cursor", () => {
 
 test("tool expand key falls through when no paste marker is under the cursor", () => {
     withSettings({}, () => {
-        const editor = createPasteCollapseEditor();
+        const baseInputs: string[] = [];
+        const baseFactory: EditorFactory = () => ({
+            getCursor() {
+                return { line: 0, col: 0 };
+            },
+            getText() {
+                return "";
+            },
+            handleInput(data: string) {
+                baseInputs.push(data);
+            },
+            invalidate() {},
+            render() {
+                return [];
+            },
+            setText() {},
+        });
+        let editorFactory: EditorFactory | undefined = baseFactory;
+        const context = {
+            hasUI: true,
+            ui: {
+                getEditorComponent() {
+                    return editorFactory;
+                },
+                setEditorComponent(nextFactory: EditorFactory | undefined) {
+                    editorFactory = nextFactory;
+                },
+            },
+        } satisfies PasteCollapseEditorContext;
+        applyPasteCollapseEditor(context);
+        if (editorFactory === undefined) assert.fail("expected editor factory");
 
+        const editor = editorFactory(
+            new TUI(new FakeTerminal()),
+            editorTheme,
+            new KeybindingsManager(),
+        );
         editor.handleInput(TOOL_EXPAND);
 
-        assert.equal(editor.getText(), TOOL_EXPAND);
+        assert.deepEqual(baseInputs, [TOOL_EXPAND]);
     });
 });
 
@@ -205,17 +248,32 @@ test("editor wrappers remain idempotent across repeated session starts", () => {
         let shortcutChecks = 0;
         const baseInputs: string[] = [];
         const baseFactory: EditorFactory = () => {
-            return {
+            const editor = {
                 handleInput(data: string): void {
                     baseInputs.push(data);
                 },
+                getCursor() {
+                    return { line: 0, col: 0 };
+                },
+                getText() {
+                    return "";
+                },
+                setText() {},
+                render() {
+                    return [];
+                },
+                invalidate() {},
                 onExtensionShortcut(data: string): boolean {
                     if (data === TOOL_EXPAND) {
                         shortcutChecks += 1;
                     }
                     return false;
                 },
-            } as unknown as EditorComponent;
+            } satisfies EditorComponent & {
+                getCursor(): { line: number; col: number };
+                onExtensionShortcut(data: string): boolean;
+            };
+            return editor;
         };
         let editorFactory: EditorFactory | undefined = baseFactory;
         const context = {
@@ -228,7 +286,7 @@ test("editor wrappers remain idempotent across repeated session starts", () => {
                     editorFactory = nextFactory;
                 },
             },
-        } as unknown as ExtensionContext;
+        } satisfies PasteCollapseEditorContext & BashExecSpacingEditorContext;
 
         applyBashExecSpacingEditor(context);
         applyPasteCollapseEditor(context);
@@ -240,7 +298,7 @@ test("editor wrappers remain idempotent across repeated session starts", () => {
         }
 
         const tui = new TUI(new FakeTerminal());
-        const editor = editorFactory(tui, editorTheme, keybindings) as unknown as TestEditor;
+        const editor = editorFactory(tui, editorTheme, new KeybindingsManager());
         editor.handleInput(TOOL_EXPAND);
 
         assert.equal(shortcutChecks, 1);

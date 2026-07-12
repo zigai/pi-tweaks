@@ -8,24 +8,23 @@ import {
     selectModeUI,
 } from "./mode-state.ts";
 import { getConfiguredModeShortcuts, setSettingsContext } from "./settings.ts";
+import { isShortcutId } from "./shortcut-id.ts";
 import { applyThinkingLevelStatusPatch, restoreThinkingLevelStatusPatch } from "./status.ts";
-
-type ShortcutId = Parameters<ExtensionAPI["registerShortcut"]>[0];
 
 export default function (pi: ExtensionAPI) {
     void applyThinkingLevelStatusPatch();
 
     const shortcuts = getConfiguredModeShortcuts();
-    if (shortcuts.forward !== undefined) {
-        pi.registerShortcut(shortcuts.forward as ShortcutId, {
+    if (shortcuts.forward !== undefined && isShortcutId(shortcuts.forward)) {
+        pi.registerShortcut(shortcuts.forward, {
             description: "Cycle to the next configured mode",
             handler: async (ctx) => {
                 await cycleMode(pi, ctx, 1);
             },
         });
     }
-    if (shortcuts.backward !== undefined) {
-        pi.registerShortcut(shortcuts.backward as ShortcutId, {
+    if (shortcuts.backward !== undefined && isShortcutId(shortcuts.backward)) {
+        pi.registerShortcut(shortcuts.backward, {
             description: "Cycle to the previous configured mode",
             handler: async (ctx) => {
                 await cycleMode(pi, ctx, -1);

@@ -60,12 +60,12 @@ type CachedMentionSkillSettings = {
 let globalConfigScaffold: GlobalConfigScaffold | undefined;
 let cachedMentionSkillSettings: CachedMentionSkillSettings | undefined;
 
-type ProjectTrustContext = ExtensionContext & {
+export type MentionSkillSettingsContext = Pick<ExtensionContext, "cwd"> & {
     isProjectTrusted?: () => boolean;
 };
 
-function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return (ctx as ProjectTrustContext).isProjectTrusted?.() ?? true;
+function isProjectTrusted(ctx: MentionSkillSettingsContext): boolean {
+    return ctx.isProjectTrusted?.() ?? true;
 }
 
 function parseOptionalString(schema: TSchema, value: unknown): string | undefined {
@@ -231,7 +231,9 @@ function applyMentionSkillSettings(
     }
 }
 
-export function configuredMentionSkillSettings(ctx: ExtensionContext): MentionSkillSettings {
+export function configuredMentionSkillSettings(
+    ctx: MentionSkillSettingsContext,
+): MentionSkillSettings {
     ensureGlobalConfigScaffolded();
 
     const projectTrusted = isProjectTrusted(ctx);

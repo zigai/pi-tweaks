@@ -65,7 +65,7 @@ test("model selector provider patch uses the latest runtime state after reinstal
     installModelSelectorProviderPatch(runtimeState("Old Provider"), prototype);
     installModelSelectorProviderPatch(runtimeState("New Provider"), prototype);
 
-    const target = Object.create(prototype) as ModelSelectorPrototype;
+    const target: ModelSelectorPrototype = { ...prototype };
     target.allModels = [modelItem()];
     target.scopedModelItems = [];
     target.activeModels = [];
@@ -90,7 +90,7 @@ test("scoped models provider patch uses the latest runtime state after reinstall
     installScopedModelsProviderPatch(runtimeState("Old Provider"), prototype);
     installScopedModelsProviderPatch(runtimeState("New Provider"), prototype);
 
-    const target = Object.create(prototype) as ScopedModelsPrototype;
+    const target: ScopedModelsPrototype = { ...prototype };
     target.filteredItems = [scopedItem()];
     target.selectedIndex = 0;
 

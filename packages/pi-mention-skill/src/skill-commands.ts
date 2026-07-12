@@ -26,7 +26,7 @@ export type SkillCommandSource = {
     refresh(): SkillCommand[];
 };
 
-export function getSkillCommands(pi: ExtensionAPI): SkillCommand[] {
+export function getSkillCommands(pi: Pick<ExtensionAPI, "getCommands">): SkillCommand[] {
     return pi.getCommands().filter((command): command is SkillCommand => {
         return command.source === "skill" && command.name.startsWith(SKILL_COMMAND_PREFIX);
     });
@@ -40,7 +40,9 @@ export function skillNameSet(commands: ReadonlyArray<SkillCommand>): Set<string>
     return new Set(commands.map(skillName));
 }
 
-export function createSkillCommandSource(pi: ExtensionAPI): SkillCommandSource {
+export function createSkillCommandSource(
+    pi: Pick<ExtensionAPI, "getCommands">,
+): SkillCommandSource {
     let cachedCommands: SkillCommand[] = [];
     let cachedSkillNames: ReadonlySet<string> = new Set();
 

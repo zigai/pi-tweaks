@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, test } from "vitest";
 
-import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import mentionSkillExtension from "../src/index.ts";
+import type { ContextEvent } from "@earendil-works/pi-coding-agent";
+import mentionSkillExtension, { type MentionSkillExtensionApi } from "../src/index.ts";
+import type { MentionSkillSettingsContext } from "../src/settings.ts";
 import type { SkillCommand } from "../src/types.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -20,8 +21,6 @@ afterAll(async () => {
         process.env.PI_CODING_AGENT_DIR = originalAgentDir;
     }
 });
-
-type RegisteredHandler = (...args: unknown[]) => unknown;
 
 type ContextExpansionResult = {
     readonly messages?: ContextEvent["messages"];
@@ -43,13 +42,13 @@ function skillCommand(name: string, filePath: string, description = "test skill"
     };
 }
 
-function context(cwd: string): ExtensionContext {
+function context(cwd: string): MentionSkillSettingsContext {
     return {
         cwd,
         isProjectTrusted() {
             return true;
         },
-    } as unknown as ExtensionContext;
+    };
 }
 
 function isObject(value: unknown): value is object {
@@ -61,32 +60,37 @@ function isContextExpansionResult(value: unknown): value is ContextExpansionResu
         return false;
     }
 
-    const messages = Reflect.get(value, "messages");
+    const messages = Object.getOwnPropertyDescriptor(value, "messages")?.value as unknown;
     return messages === undefined || Array.isArray(messages);
+}
+
+function invokeRegisteredHandler(
+    handlers: ReadonlyMap<string, unknown>,
+    event: string,
+    args: unknown[],
+): unknown {
+    const handler = handlers.get(event);
+    if (typeof handler !== "function") throw new Error(`Expected ${event} handler`);
+    return Reflect.apply(handler, undefined, args) as unknown;
 }
 
 test("mention skill skips command enumeration when provider context has no trigger", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-index-cwd-"));
-    const registeredHandlers = new Map<string, RegisteredHandler[]>();
     let getCommandsCount = 0;
 
     try {
-        const pi = {
-            on(event: string, handler: RegisteredHandler) {
-                const handlers = registeredHandlers.get(event) ?? [];
-                handlers.push(handler);
-                registeredHandlers.set(event, handlers);
+        const registeredHandlers = new Map<string, unknown>();
+        const pi: MentionSkillExtensionApi = {
+            on(event, handler) {
+                registeredHandlers.set(event, handler);
             },
             getCommands() {
                 getCommandsCount += 1;
                 return [];
             },
-        } as unknown as ExtensionAPI;
-
+        };
         mentionSkillExtension(pi);
-        const contextHandler = registeredHandlers.get("context")?.[0];
-        assert.notEqual(contextHandler, undefined);
-        if (contextHandler === undefined) assert.fail("expected context handler");
+        assert.deepEqual([...registeredHandlers.keys()], ["session_start", "context"]);
 
         const messages: ContextEvent["messages"] = [
             {
@@ -95,7 +99,10 @@ test("mention skill skips command enumeration when provider context has no trigg
                 timestamp: 1,
             },
         ];
-        const result = await contextHandler({ type: "context", messages }, context(cwd));
+        const result = await invokeRegisteredHandler(registeredHandlers, "context", [
+            { type: "context", messages },
+            context(cwd),
+        ]);
 
         assert.equal(result, undefined);
         assert.equal(getCommandsCount, 0);
@@ -107,29 +114,19 @@ test("mention skill skips command enumeration when provider context has no trigg
 test("mention skill expands provider context without registering an input rewrite", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-index-cwd-"));
     const skillPath = path.join(cwd, "python.md");
-    const registeredHandlers = new Map<string, RegisteredHandler[]>();
-
     try {
         await writeFile(skillPath, "Use Python carefully.\n", "utf8");
-        const pi = {
-            on(event: string, handler: RegisteredHandler) {
-                const handlers = registeredHandlers.get(event) ?? [];
-                handlers.push(handler);
-                registeredHandlers.set(event, handlers);
+        const registeredHandlers = new Map<string, unknown>();
+        const pi: MentionSkillExtensionApi = {
+            on(event, handler) {
+                registeredHandlers.set(event, handler);
             },
             getCommands() {
                 return [skillCommand("python", skillPath)];
             },
-        } as unknown as ExtensionAPI;
-
+        };
         mentionSkillExtension(pi);
-
-        assert.equal((registeredHandlers.get("input") ?? []).length, 0);
-        const contextHandlers = registeredHandlers.get("context") ?? [];
-        assert.equal(contextHandlers.length, 1);
-        const contextHandler = contextHandlers[0];
-        assert.notEqual(contextHandler, undefined);
-        if (contextHandler === undefined) assert.fail("expected context handler");
+        assert.deepEqual([...registeredHandlers.keys()], ["session_start", "context"]);
 
         const messages: ContextEvent["messages"] = [
             {
@@ -138,7 +135,10 @@ test("mention skill expands provider context without registering an input rewrit
                 timestamp: 1,
             },
         ];
-        const result = await contextHandler({ type: "context", messages }, context(cwd));
+        const result = await invokeRegisteredHandler(registeredHandlers, "context", [
+            { type: "context", messages },
+            context(cwd),
+        ]);
 
         assert.equal(messages[0]?.role, "user");
         if (messages[0]?.role === "user" && Array.isArray(messages[0].content)) {

@@ -90,11 +90,12 @@ type ScopedModelsSelectorPatchTarget = {
     selectedIndex?: number;
 };
 
-type ScopedModelsSelectorModule = {
-    ScopedModelsSelectorComponent?: {
-        prototype?: unknown;
-    };
-};
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
 
 function warnProviderDisplayPatchUnavailable(feature: string, error?: unknown): void {
     let suffix = "";
@@ -116,6 +117,18 @@ function isScopedModelsSelectorPatchTarget(
         return false;
     }
     return typeof Reflect.get(value, "updateList") === "function";
+}
+
+function isModelSelectorPatchTarget(value: unknown): value is ModelSelectorPatchTarget {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return false;
+    }
+
+    return (
+        typeof getUnknownProperty(value, "loadModels") === "function" &&
+        typeof getUnknownProperty(value, "filterModels") === "function" &&
+        typeof getUnknownProperty(value, "updateList") === "function"
+    );
 }
 
 function setModelSelectorPatchState(
@@ -212,7 +225,7 @@ function textComponentValue(component: unknown): string | undefined {
         return undefined;
     }
 
-    const value = Reflect.get(component, "text");
+    const value = getUnknownProperty(component, "text");
     if (typeof value === "string") {
         return value;
     }
@@ -224,9 +237,9 @@ function setTextComponentValue(component: unknown, text: string): void {
         return;
     }
 
-    const setText = Reflect.get(component, "setText");
+    const setText = getUnknownProperty(component, "setText");
     if (typeof setText === "function") {
-        setText.call(component, text);
+        Reflect.apply(setText, component, [text]);
     }
 }
 
@@ -448,8 +461,17 @@ function getScopedSearchText(item: ScopedModelsSelectorItem, loaded: LoadedConfi
 
 export function installModelSelectorProviderPatch(
     state: RuntimeState,
-    prototype: ModelSelectorPatchTarget = ModelSelectorComponent.prototype as unknown as ModelSelectorPatchTarget,
+    prototype?: ModelSelectorPatchTarget,
 ): void {
+    const target = prototype ?? ModelSelectorComponent.prototype;
+    if (!isModelSelectorPatchTarget(target)) {
+        warnProviderDisplayPatchUnavailable(
+            "model picker provider alias patch",
+            "missing model selector methods",
+        );
+        return;
+    }
+    prototype = target;
     const patchState = setModelSelectorPatchState(prototype, state);
     if (prototype[MODEL_SELECTOR_PROVIDER_PATCH_KEY] === true) {
         return;
@@ -572,9 +594,11 @@ export function installScopedModelsProviderPatch(
         typeof originalRefreshValue === "function" &&
         typeof originalBuildItemsValue === "function"
     ) {
+        // SAFETY: The immediately preceding runtime guard proves the private refresh seam is callable.
         const originalRefresh = originalRefreshValue as (
             this: ScopedModelsSelectorPatchTarget,
         ) => void;
+        // SAFETY: The immediately preceding runtime guard proves the private buildItems seam is callable.
         const originalBuildItems = originalBuildItemsValue as (
             this: ScopedModelsSelectorPatchTarget,
         ) => ScopedModelsSelectorItem[];
@@ -620,8 +644,9 @@ async function installScopedModelsProviderPatchFromPi(state: RuntimeState): Prom
         const componentPath = pathToFileURL(
             join(distDir, "modes/interactive/components/scoped-models-selector.js"),
         ).href;
-        const componentModule = (await import(componentPath)) as ScopedModelsSelectorModule;
-        const prototype = componentModule.ScopedModelsSelectorComponent?.prototype;
+        const componentModule: unknown = (await import(componentPath)) as unknown;
+        const component = getUnknownProperty(componentModule, "ScopedModelsSelectorComponent");
+        const prototype = getUnknownProperty(component, "prototype");
         if (!isScopedModelsSelectorPatchTarget(prototype)) {
             warnProviderDisplayPatchUnavailable("scoped models provider alias patch");
             return;

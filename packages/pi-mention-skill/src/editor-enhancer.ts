@@ -1,6 +1,6 @@
-import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { CustomEditor } from "@earendil-works/pi-coding-agent";
 
-import type { EditorFactory, EditorLike } from "./types.ts";
+import type { EditorEnhancerContext, EditorFactory, EditorLike } from "./types.ts";
 
 const EDITOR_ENHANCER_REGISTRY = Symbol.for("zigai.pi-tweaks.editor-enhancer-registry");
 const EDITOR_ENHANCER_FACTORY = Symbol.for("zigai.pi-tweaks.editor-enhancer-factory");
@@ -16,21 +16,25 @@ type EnhancerEditorFactory = EditorFactory & {
     [EDITOR_ENHANCER_FACTORY]?: true;
 };
 
-type EditorEnhancerUi = ExtensionContext["ui"] & {
+type EditorEnhancerUi = EditorEnhancerContext["ui"] & {
     [EDITOR_ENHANCER_REGISTRY]?: EditorEnhancerRegistry | undefined;
 };
 
+function isEnhancerEditorFactory(value: EditorFactory | undefined): value is EnhancerEditorFactory {
+    return value !== undefined && Reflect.get(value, EDITOR_ENHANCER_FACTORY) === true;
+}
+
 export function applyEditorEnhancer(
-    ctx: ExtensionContext,
+    ctx: EditorEnhancerContext,
     enhancerKey: symbol,
     enhancer: EditorEnhancer,
 ): void {
     if (!ctx.hasUI) return;
 
-    const ui = ctx.ui as EditorEnhancerUi;
-    const existing = ctx.ui.getEditorComponent() as EnhancerEditorFactory | undefined;
+    const ui: EditorEnhancerUi = ctx.ui;
+    const existing = ctx.ui.getEditorComponent();
     let registry = ui[EDITOR_ENHANCER_REGISTRY];
-    if (registry === undefined || existing?.[EDITOR_ENHANCER_FACTORY] !== true) {
+    if (registry === undefined || !isEnhancerEditorFactory(existing)) {
         registry = {
             baseFactory: existing,
             enhancers: new Map(registry?.enhancers),
@@ -40,15 +44,16 @@ export function applyEditorEnhancer(
 
     registry.enhancers.set(enhancerKey, enhancer);
 
-    const factory = ((tui, theme, keybindings) => {
-        const editor = (registry.baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as unknown as EditorLike;
+    const factory: EnhancerEditorFactory = (tui, theme, keybindings) => {
+        const editor: EditorLike =
+            registry.baseFactory?.(tui, theme, keybindings) ??
+            new CustomEditor(tui, theme, keybindings);
         let enhanced = editor;
         for (const editorEnhancer of registry.enhancers.values()) {
             enhanced = editorEnhancer(enhanced);
         }
         return enhanced;
-    }) as EnhancerEditorFactory;
+    };
     factory[EDITOR_ENHANCER_FACTORY] = true;
 
     ctx.ui.setEditorComponent(factory);

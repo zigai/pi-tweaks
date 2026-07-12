@@ -111,19 +111,30 @@ export function setRestoreContentAfterAutocompleteClose(enabled: boolean): void 
  * Installs an idempotent patch that moves editor autocomplete rows above the input box.
  */
 export function installAutocompletePositionPatch(
-    prototype: AutocompletePositionPatchTarget = Editor.prototype as unknown as AutocompletePositionPatchTarget,
+    prototype?: AutocompletePositionPatchTarget,
 ): void {
-    if (prototype[AUTOCOMPLETE_POSITION_PATCHED] === true) return;
-
-    const originalRenderValue: unknown = Reflect.get(prototype, "render");
+    const prototypeValue: unknown = prototype ?? Editor.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        warnAutocompletePositionPatchUnavailable();
+        return;
+    }
+    const originalRenderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
     if (typeof originalRenderValue !== "function") {
         warnAutocompletePositionPatchUnavailable("missing render");
         return;
     }
-
+    // SAFETY: The guarded pi-tui Editor adapter verifies the private render seam
+    // before exposing the smallest autocomplete-position patch target.
+    prototype = prototypeValue as AutocompletePositionPatchTarget;
+    if (prototype[AUTOCOMPLETE_POSITION_PATCHED] === true) return;
+    // SAFETY: The immediately preceding runtime guard proves the private Editor render seam is callable.
     const originalRender = originalRenderValue as AutocompletePositionPatchTarget["render"];
     const originalHandleInputValue: unknown = Reflect.get(prototype, "handleInput");
     if (typeof originalHandleInputValue === "function") {
+        // SAFETY: The immediately preceding runtime guard proves the private Editor handleInput seam is callable.
         const originalHandleInput = originalHandleInputValue as (
             this: AutocompletePositionPatchTarget,
             data: string,

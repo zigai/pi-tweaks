@@ -14,11 +14,12 @@ type ThemeInstance = {
     fg(color: string, text: string): string;
 };
 
-type ThemeModule = {
-    Theme?: {
-        prototype?: unknown;
-    };
-};
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
 
 function warnNeutralBorderPatchUnavailable(error?: unknown): void {
     let suffix = "";
@@ -56,8 +57,9 @@ export async function installNeutralBorderColorPatch(): Promise<void> {
     try {
         const distDir = await resolvePiDistDir();
         const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
-        const themeModule = (await import(themePath)) as ThemeModule;
-        const prototype = themeModule.Theme?.prototype;
+        const themeModule: unknown = (await import(themePath)) as unknown;
+        const theme = getUnknownProperty(themeModule, "Theme");
+        const prototype = getUnknownProperty(theme, "prototype");
         if (!isThemePrototype(prototype)) {
             warnNeutralBorderPatchUnavailable();
             return;
@@ -71,6 +73,7 @@ export async function installNeutralBorderColorPatch(): Promise<void> {
             warnNeutralBorderPatchUnavailable();
             return;
         }
+        // SAFETY: The immediately preceding runtime guard proves the private Theme.fg seam is callable.
         const originalFg = originalFgValue as ThemePrototype["fg"];
         prototype.fg = function neutralBorderFg(
             this: ThemeInstance,

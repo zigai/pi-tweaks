@@ -34,6 +34,14 @@ class FakeTreeSelectorComponent {
     }
 }
 
+class InvalidTreeSelectorComponent {
+    readonly list = {};
+
+    getTreeList(): unknown {
+        return this.list;
+    }
+}
+
 function fakeTreeInternals(
     themeNames: Array<string | undefined>,
 ): [TreeSelectorModule, ThemeModule] {
@@ -59,6 +67,38 @@ function fakeTreeInternals(
         },
     ];
 }
+
+test("tree selector patch leaves the original selector method intact when the tree seam is invalid", async () => {
+    const globalState = globalThis as typeof globalThis & { [PATCH_KEY]?: boolean };
+    delete globalState[PATCH_KEY];
+    const originalGetTreeList: unknown = Object.getOwnPropertyDescriptor(
+        InvalidTreeSelectorComponent.prototype,
+        "getTreeList",
+    )?.value;
+    let headerPatchCount = 0;
+
+    try {
+        await patchTreeSelector({
+            async loadTreeInternals() {
+                const [, themeModule] = fakeTreeInternals([]);
+                return [{ TreeSelectorComponent: InvalidTreeSelectorComponent }, themeModule];
+            },
+            patchTreeHeaderText() {
+                headerPatchCount += 1;
+            },
+        });
+
+        const currentGetTreeList: unknown = Object.getOwnPropertyDescriptor(
+            InvalidTreeSelectorComponent.prototype,
+            "getTreeList",
+        )?.value;
+        assert.equal(currentGetTreeList, originalGetTreeList);
+        assert.equal(headerPatchCount, 0);
+        assert.equal(globalState[PATCH_KEY], undefined);
+    } finally {
+        delete globalState[PATCH_KEY];
+    }
+});
 
 test("tree selector patch updates shared settings state after reinstall", async () => {
     const globalState = globalThis as typeof globalThis & { [PATCH_KEY]?: boolean };

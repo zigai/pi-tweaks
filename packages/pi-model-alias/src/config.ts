@@ -249,8 +249,12 @@ export function safeReadConfig(state: RuntimeState): LoadedConfig {
     try {
         try {
             mtimeMs = statSync(configPath).mtimeMs;
-        } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        } catch (error: unknown) {
+            let errorCode: unknown;
+            if ((typeof error === "object" || typeof error === "function") && error !== null) {
+                errorCode = Object.getOwnPropertyDescriptor(error, "code")?.value;
+            }
+            if (errorCode === "ENOENT") {
                 const loaded: LoadedConfig = {
                     path: configPath,
                     mtimeMs: -1,

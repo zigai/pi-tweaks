@@ -352,6 +352,10 @@ function readOptionalNonNegativeInteger(
     return { value };
 }
 
+function isUnknownArray(value: unknown): value is unknown[] {
+    return Array.isArray(value);
+}
+
 function readOptionalMessages(
     record: Record<string, unknown>,
     label: string,
@@ -360,7 +364,7 @@ function readOptionalMessages(
     if (value === undefined) {
         return { errors: [] };
     }
-    if (!Array.isArray(value)) {
+    if (!isUnknownArray(value)) {
         return { errors: [`${label}.messages must be an array of strings.`] };
     }
 
@@ -680,23 +684,20 @@ function buildStatusBarResolvedConfig(settings: StatusBarSettings): LoadedStatus
 export function resolveStatusBarResolvedConfig(
     settingsSources: readonly StatusBarSettingsSource[],
 ): LoadedStatusBarConfig {
-    let mergedSettings: StatusBarSettings = {};
+    let mergedSettings: {
+        statusBar?: StatusBarConfig;
+        rightMessages?: RightMessagesSettings;
+    } = {};
     const errors: string[] = [];
 
     for (const source of settingsSources) {
         const parsed = parseStatusBarSettings(source.settings, source.label, source.baseDir);
-        mergedSettings = {
-            ...mergedSettings,
-            statusBar: mergeStatusBarConfig(mergedSettings.statusBar, parsed.settings.statusBar),
-        };
+        mergedSettings.statusBar = mergeStatusBarConfig(
+            mergedSettings.statusBar,
+            parsed.settings.statusBar,
+        );
         if (parsed.settings.rightMessages !== undefined) {
-            mergedSettings = {
-                ...mergedSettings,
-                rightMessages: {
-                    ...mergedSettings.rightMessages,
-                    ...parsed.settings.rightMessages,
-                },
-            };
+            Object.assign((mergedSettings.rightMessages ??= {}), parsed.settings.rightMessages);
         }
         errors.push(...parsed.errors);
     }

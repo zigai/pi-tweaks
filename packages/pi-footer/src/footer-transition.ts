@@ -24,6 +24,11 @@ type FooterFactory = (
     theme: PlainFooterTheme,
     footerData: FooterData,
 ) => FooterComponent;
+type LiveFooterContext = FooterContext & {
+    ui: {
+        setFooter(factory: FooterFactory | undefined): void;
+    };
+};
 
 type FooterResetHost = {
     customFooter?: unknown;
@@ -35,10 +40,6 @@ type FooterSnapshot = {
     context: FooterContext;
     thinkingLevel: string;
     config: FooterConfig;
-};
-
-type MaybeMcpContext = ExtensionContext & {
-    mcpServers?: unknown[];
 };
 
 type FooterTransitionState = {
@@ -84,7 +85,8 @@ function cloneContextUsage(usage: ContextUsage): ContextUsage {
     return { ...usage };
 }
 
-function resolveProviderDisplayName(ctx: ExtensionContext, provider: string): string | undefined {
+function resolveProviderDisplayName(ctx: FooterContext, provider: string): string | undefined {
+    if (ctx.modelRegistry === undefined) return undefined;
     try {
         const displayName = ctx.modelRegistry.getProviderDisplayName(provider);
         if (displayName.length > 0) {
@@ -97,7 +99,7 @@ function resolveProviderDisplayName(ctx: ExtensionContext, provider: string): st
     return undefined;
 }
 
-function cloneModel(ctx: ExtensionContext): FooterModel | undefined {
+function cloneModel(ctx: FooterContext): FooterModel | undefined {
     const model = ctx.model;
     if (model === undefined) return undefined;
 
@@ -116,15 +118,15 @@ function cloneModel(ctx: ExtensionContext): FooterModel | undefined {
     return cloned;
 }
 
-function cloneMcpServers(ctx: ExtensionContext): unknown[] | undefined {
-    const servers = (ctx as MaybeMcpContext).mcpServers;
+function cloneMcpServers(ctx: FooterContext): unknown[] | undefined {
+    const servers = ctx.mcpServers;
     if (!Array.isArray(servers)) return undefined;
 
     return Array.from<unknown>({ length: servers.length });
 }
 
 function createFooterSnapshot(
-    ctx: ExtensionContext,
+    ctx: FooterContext,
     thinkingLevel: string,
     config: FooterConfig,
 ): FooterSnapshot {
@@ -195,7 +197,23 @@ export function patchFooterReset(): void {
     // replacement session has emitted session_start. Reinstall a snapshot-backed
     // bridge footer in that same reset call so the built-in footer never paints
     // during the handoff.
-    const prototype = InteractiveMode.prototype as unknown as PatchableInteractiveModePrototype;
+    const prototypeValue: unknown = InteractiveMode.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        return;
+    }
+    const originalResetValue: unknown = Reflect.get(prototypeValue, "resetExtensionUI") as unknown;
+    const setExtensionFooterValue: unknown = Reflect.get(
+        prototypeValue,
+        "setExtensionFooter",
+    ) as unknown;
+    if (typeof originalResetValue !== "function") return;
+    if (typeof setExtensionFooterValue !== "function") return;
+    // SAFETY: The guarded Pi InteractiveMode boundary verifies both private methods
+    // required by this reset patch before exposing its minimal prototype seam.
+    const prototype = prototypeValue as PatchableInteractiveModePrototype;
 
     const existingPatchState = prototype[RESET_PATCH_STATE];
     if (existingPatchState !== undefined) {
@@ -204,10 +222,7 @@ export function patchFooterReset(): void {
         return;
     }
 
-    const originalReset = prototype.resetExtensionUI;
-    const setExtensionFooter = prototype.setExtensionFooter;
-    if (typeof originalReset !== "function") return;
-    if (typeof setExtensionFooter !== "function") return;
+    const originalReset = originalResetValue as FooterResetPatchState["originalReset"];
 
     const patchState: FooterResetPatchState = {
         originalReset,
@@ -229,7 +244,7 @@ export function patchFooterReset(): void {
 }
 
 export function installLiveFooter(
-    ctx: ExtensionContext,
+    ctx: LiveFooterContext,
     getThinkingLevel: () => string,
     config: FooterConfig,
 ): void {

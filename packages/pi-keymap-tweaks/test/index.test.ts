@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionContext, KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { TUI, type EditorComponent, type EditorTheme, type Terminal } from "@earendil-works/pi-tui";
-import { applyKeymapEditor } from "../src/index.ts";
+import { KeybindingsManager } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
+import { applyKeymapEditor, type KeymapEditorContext } from "../src/index.ts";
 
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";
@@ -61,14 +62,6 @@ const editorTheme: EditorTheme = {
     },
 };
 
-const keybindings = {
-    matches(data: string, action: string): boolean {
-        if (action === "tui.editor.cursorUp") return data === UP;
-        if (action === "app.models.clearAll") return data === CTRL_X;
-        return false;
-    },
-} as unknown as KeybindingsManager;
-
 type ClipboardWriter = (text: string) => Promise<void>;
 
 function createKeymapEditor(writeClipboard?: ClipboardWriter): TestEditor {
@@ -83,7 +76,7 @@ function createKeymapEditor(writeClipboard?: ClipboardWriter): TestEditor {
                 editorFactory = nextFactory;
             },
         },
-    } as unknown as ExtensionContext;
+    } satisfies KeymapEditorContext;
 
     applyKeymapEditor(context, { writeClipboard });
 
@@ -92,7 +85,14 @@ function createKeymapEditor(writeClipboard?: ClipboardWriter): TestEditor {
     }
 
     const tui = new TUI(new FakeTerminal());
-    return editorFactory(tui, editorTheme, keybindings) as unknown as TestEditor;
+    const editor = editorFactory(tui, editorTheme, new KeybindingsManager());
+    const getCursor: unknown = Reflect.get(editor, "getCursor") as unknown;
+    if (typeof editor.addToHistory !== "function" || typeof getCursor !== "function") {
+        throw new Error("Expected CustomEditor test seam");
+    }
+    // SAFETY: The real CustomEditor factory result is checked for every additional
+    // member asserted by this integration test; its public component type hides them.
+    return editor as TestEditor;
 }
 
 function renderEditor(editor: TestEditor): void {
@@ -151,4 +151,45 @@ test("up arrow still recalls prompt history when the editor is empty", () => {
     editor.handleInput(DOWN);
     renderEditor(editor);
     assert.equal(editor.getText(), "newer prompt");
+});
+
+test("leaves third-party editors without the required navigation seam unchanged", () => {
+    const inputs: string[] = [];
+    const thirdPartyEditor = {
+        getText() {
+            return "draft";
+        },
+        handleInput(data: string) {
+            inputs.push(data);
+        },
+        invalidate() {},
+        render() {
+            return [];
+        },
+        setText() {},
+    } satisfies EditorComponent;
+    let editorFactory: EditorFactory | undefined = () => thirdPartyEditor;
+    const context = {
+        hasUI: true,
+        ui: {
+            getEditorComponent() {
+                return editorFactory;
+            },
+            setEditorComponent(nextFactory: EditorFactory | undefined) {
+                editorFactory = nextFactory;
+            },
+        },
+    } satisfies KeymapEditorContext;
+
+    applyKeymapEditor(context);
+    if (editorFactory === undefined) assert.fail("expected editor factory");
+    const editor = editorFactory(
+        new TUI(new FakeTerminal()),
+        editorTheme,
+        new KeybindingsManager(),
+    );
+    editor.handleInput(UP);
+
+    assert.equal(editor, thirdPartyEditor);
+    assert.deepEqual(inputs, [UP]);
 });

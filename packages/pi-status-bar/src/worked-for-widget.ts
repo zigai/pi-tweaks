@@ -1,16 +1,24 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, type Component, type TUI } from "@earendil-works/pi-tui";
 
 import { WIDGET_KEY } from "./constants.ts";
 import { getStatusBarSnapshot } from "./status-bar-api.ts";
 
 let workedForWidgetSignature: string | undefined;
 
+type StatusBarWidgetFactory = (tui: TUI, theme: Theme) => Component & { dispose?(): void };
+
+export type WorkedForWidgetContext = Pick<ExtensionContext, "hasUI"> & {
+    ui: {
+        setWidget(key: string, content: StatusBarWidgetFactory | undefined): void;
+    };
+};
+
 export function resetWorkedForWidgetCache(): void {
     workedForWidgetSignature = undefined;
 }
 
-export function clearWorkedForWidget(ctx: ExtensionContext): void {
+export function clearWorkedForWidget(ctx: WorkedForWidgetContext): void {
     if (ctx.hasUI !== true) return;
     workedForWidgetSignature = undefined;
     ctx.ui.setWidget(WIDGET_KEY, undefined);
@@ -30,7 +38,7 @@ export function formatDuration(ms: number): string {
 }
 
 export function setWorkedForWidget(
-    ctx: ExtensionContext,
+    ctx: WorkedForWidgetContext,
     workedForText?: string,
     tokensPerSecond?: number,
 ): void {

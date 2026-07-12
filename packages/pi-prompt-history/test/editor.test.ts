@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
-import { applyPromptHistoryEditor, type PromptHistoryLoader } from "../src/editor.ts";
+import {
+    applyPromptHistoryEditor,
+    type PromptHistoryEditorContext,
+    type PromptHistoryLoader,
+} from "../src/editor.ts";
 import type { PromptEntry } from "../src/types.ts";
 
 type EditorTestContext = {
-    readonly ctx: ExtensionContext;
+    readonly ctx: PromptHistoryEditorContext;
     readonly installedFactories: unknown[];
     setEditorText(text: string): void;
 };
@@ -40,8 +42,7 @@ function createEditorTestContext(): EditorTestContext {
     };
 
     return {
-        // SAFETY: applyPromptHistoryEditor uses only the context members implemented above.
-        ctx: ctx as unknown as ExtensionContext,
+        ctx,
         installedFactories,
         setEditorText(text: string): void {
             editorText = text;

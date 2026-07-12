@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { registerFooterSlot } from "@zigai/pi-footer/api";
 import { createFooterComponent } from "../src/footer-rendering.ts";
@@ -15,7 +14,7 @@ function stripAnsi(value: string): string {
     return value.replace(ANSI_PATTERN, "");
 }
 
-function footerContext(): ExtensionContext {
+function footerContext(): FooterContext {
     return {
         cwd: "/workspace/pi-tweaks",
         model: {
@@ -25,6 +24,7 @@ function footerContext(): ExtensionContext {
         },
         getContextUsage() {
             return {
+                tokens: 150_000,
                 percent: 75,
                 contextWindow: 200_000,
             };
@@ -36,7 +36,7 @@ function footerContext(): ExtensionContext {
                 return provider;
             },
         },
-    } as unknown as ExtensionContext;
+    };
 }
 
 function footerData(branch: string | null, statuses: ReadonlyMap<string, string>): FooterData {

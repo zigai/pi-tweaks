@@ -222,7 +222,7 @@ export function resolveMessageHighlightsConfig(
 
     for (const source of settingsSources) {
         const parsed = parseMessageHighlightsSettings(source.settings, source.label);
-        mergedSettings = { ...mergedSettings, ...parsed.settings };
+        Object.assign(mergedSettings, parsed.settings);
         errors.push(...parsed.errors);
     }
 

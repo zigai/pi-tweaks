@@ -9,7 +9,7 @@ const MODE_FACTORY_BASE = Symbol.for("zigai.pi-model-modes.editor-factory-base")
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
-type EditorLike = CustomEditor & {
+type EditorLike = ReturnType<EditorFactory> & {
     borderColor: (text: string) => string;
     getText(): string;
 };
@@ -17,6 +17,24 @@ type EditorLike = CustomEditor & {
 type WrappedEditorFactory = EditorFactory & {
     [MODE_FACTORY_BASE]?: EditorFactory | undefined;
 };
+
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
+function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
+    return (
+        typeof getUnknownProperty(value, "borderColor") === "function" &&
+        typeof getUnknownProperty(value, "getText") === "function"
+    );
+}
+
+function isWrappedEditorFactory(value: EditorFactory | undefined): value is WrappedEditorFactory {
+    return value !== undefined && Reflect.has(value, MODE_FACTORY_BASE);
+}
 
 function enhanceEditor(
     editor: EditorLike,
@@ -48,13 +66,18 @@ function enhanceEditor(
 export function applyModeEditor(pi: ExtensionAPI, ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
 
-    const existing = ctx.ui.getEditorComponent() as WrappedEditorFactory | undefined;
-    const baseFactory = existing?.[MODE_FACTORY_BASE] ?? existing;
-    const factory = ((tui, theme, keybindings) => {
-        const editor = (baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as EditorLike;
+    const configuredFactory = ctx.ui.getEditorComponent();
+    let existing: WrappedEditorFactory | undefined;
+    if (isWrappedEditorFactory(configuredFactory)) {
+        existing = configuredFactory;
+    }
+    const baseFactory = existing?.[MODE_FACTORY_BASE] ?? configuredFactory;
+    const factory: WrappedEditorFactory = (tui, theme, keybindings) => {
+        const editor =
+            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
+        if (!isEditorLike(editor)) return editor;
         return enhanceEditor(editor, pi, ctx, () => tui.requestRender());
-    }) as WrappedEditorFactory;
+    };
     factory[MODE_FACTORY_BASE] = baseFactory;
 
     ctx.ui.setEditorComponent(factory);

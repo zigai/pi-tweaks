@@ -10,9 +10,7 @@ const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(join(tmpdir(), "pi-model-filter-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-import type * as ModelFilter from "../src/index.ts";
-
-const modelFilter = (await import("../src/index.ts")) as unknown as typeof ModelFilter;
+const modelFilter = await import("../src/index.ts");
 const configPath = join(agentDir, "pi-model-filter", "config.json");
 const schemaPath = join(agentDir, "pi-model-filter", "config.schema.json");
 

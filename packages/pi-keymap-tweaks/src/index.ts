@@ -40,14 +40,77 @@ type KeymapEditorOptions = {
     readonly notify?: Notifier;
 };
 
-type EditorLike = CustomEditor & {
-    handleInput(data: string): void;
-    requestRenderNow?: () => void;
-};
+type EditorLike = ReturnType<EditorFactory> &
+    Pick<
+        CustomEditor,
+        | "getCursor"
+        | "getText"
+        | "handleInput"
+        | "isShowingAutocomplete"
+        | "onChange"
+        | "onExtensionShortcut"
+    > & {
+        handleInput(data: string): void;
+        requestRenderNow?: () => void;
+    };
 
 type WrappedEditorFactory = EditorFactory & {
     [KEYMAP_FACTORY_BASE]?: EditorFactory | undefined;
 };
+
+export type KeymapEditorContext = Pick<ExtensionContext, "hasUI"> & {
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
+};
+
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
+function getEditorInternals(editor: EditorLike): EditorInternals | undefined {
+    const state = getUnknownProperty(editor, "state");
+    const lines = getUnknownProperty(state, "lines");
+    const cursorLine = getUnknownProperty(state, "cursorLine");
+    const cursorCol = getUnknownProperty(state, "cursorCol");
+    const pushUndoSnapshot = getUnknownProperty(editor, "pushUndoSnapshot");
+    const exitHistoryBrowsing = getUnknownProperty(editor, "exitHistoryBrowsing");
+    if (
+        !Array.isArray(lines) ||
+        !lines.every((line) => typeof line === "string") ||
+        typeof cursorLine !== "number" ||
+        typeof cursorCol !== "number" ||
+        typeof getUnknownProperty(editor, "setCursorCol") !== "function" ||
+        (pushUndoSnapshot !== undefined && typeof pushUndoSnapshot !== "function") ||
+        (exitHistoryBrowsing !== undefined && typeof exitHistoryBrowsing !== "function")
+    ) {
+        return undefined;
+    }
+    // SAFETY: The checked editor adapter verifies the complete private state and
+    // required mutator before exposing the smallest internals seam used below.
+    const internals: unknown = editor;
+    return internals as EditorInternals;
+}
+
+function isWrappedEditorFactory(value: EditorFactory | undefined): value is WrappedEditorFactory {
+    return value !== undefined && Reflect.has(value, KEYMAP_FACTORY_BASE);
+}
+
+function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
+    const onChange = getUnknownProperty(value, "onChange");
+    const onExtensionShortcut = getUnknownProperty(value, "onExtensionShortcut");
+    const requestRenderNow = getUnknownProperty(value, "requestRenderNow");
+    return (
+        typeof getUnknownProperty(value, "handleInput") === "function" &&
+        typeof getUnknownProperty(value, "getText") === "function" &&
+        typeof getUnknownProperty(value, "getCursor") === "function" &&
+        typeof getUnknownProperty(value, "isShowingAutocomplete") === "function" &&
+        (onChange === undefined || typeof onChange === "function") &&
+        (onExtensionShortcut === undefined || typeof onExtensionShortcut === "function") &&
+        (requestRenderNow === undefined || typeof requestRenderNow === "function")
+    );
+}
 
 function swappedStreamingBehavior(options: PromptOptions): PromptOptions {
     if (options?.streamingBehavior === "steer") {
@@ -74,14 +137,26 @@ function shouldNormalizeLfEnter(): boolean {
     );
 }
 
-function patchStreamingBehaviorSwap(): void {
-    const prototype = AgentSession.prototype as PatchableAgentSessionPrototype;
-    if (prototype[SWAP_MARKER] === true) return;
+function getAgentSessionPrompt(): AgentSession["prompt"] | undefined {
+    const value: unknown = Object.getOwnPropertyDescriptor(AgentSession.prototype, "prompt")?.value;
+    if (typeof value !== "function") return undefined;
+    return value as AgentSession["prompt"];
+}
 
-    const originalPrompt = Reflect.get(AgentSession.prototype, "prompt") as
-        | AgentSession["prompt"]
-        | undefined;
-    if (typeof originalPrompt !== "function") return;
+function getEditorHandleInput(): Editor["handleInput"] | undefined {
+    const value: unknown = Object.getOwnPropertyDescriptor(Editor.prototype, "handleInput")?.value;
+    if (typeof value !== "function") return undefined;
+    return value as Editor["handleInput"];
+}
+
+function patchStreamingBehaviorSwap(): void {
+    const prototypeValue: unknown = AgentSession.prototype;
+    const originalPrompt = getAgentSessionPrompt();
+    if (originalPrompt === undefined) return;
+    // SAFETY: The guarded AgentSession boundary verifies prompt before attaching
+    // this private symbol marker to the smallest patchable prototype surface.
+    const prototype = prototypeValue as PatchableAgentSessionPrototype;
+    if (prototype[SWAP_MARKER] === true) return;
 
     AgentSession.prototype.prompt = function promptWithSwappedStreamingBehavior(
         this: AgentSession,
@@ -97,13 +172,13 @@ function patchStreamingBehaviorSwap(): void {
 function patchTerminalLfEnterSubmit(): void {
     if (!shouldNormalizeLfEnter()) return;
 
-    const prototype = Editor.prototype as PatchableEditorPrototype;
+    const prototypeValue: unknown = Editor.prototype;
+    const originalHandleInput = getEditorHandleInput();
+    if (originalHandleInput === undefined) return;
+    // SAFETY: The guarded pi-tui Editor boundary verifies handleInput before adding
+    // this private marker to its minimal patchable prototype seam.
+    const prototype = prototypeValue as PatchableEditorPrototype;
     if (prototype[TERMINAL_ENTER_MARKER] === true) return;
-
-    const originalHandleInput = Reflect.get(Editor.prototype, "handleInput") as
-        | Editor["handleInput"]
-        | undefined;
-    if (typeof originalHandleInput !== "function") return;
 
     Editor.prototype.handleInput = function handleSshLfEnterAsSubmit(
         this: Editor,
@@ -120,7 +195,8 @@ function patchTerminalLfEnterSubmit(): void {
 }
 
 function moveToCodexLineStart(editor: EditorLike): void {
-    const self = editor as unknown as EditorInternals;
+    const self = getEditorInternals(editor);
+    if (self === undefined) return;
     const state = self.state;
 
     self.lastAction = null;
@@ -132,7 +208,8 @@ function moveToCodexLineStart(editor: EditorLike): void {
 }
 
 function moveToCodexLineEnd(editor: EditorLike): void {
-    const self = editor as unknown as EditorInternals;
+    const self = getEditorInternals(editor);
+    if (self === undefined) return;
     const state = self.state;
     const currentLine = state.lines[state.cursorLine] || "";
 
@@ -149,7 +226,8 @@ function moveToCodexLineEnd(editor: EditorLike): void {
 }
 
 function isBrowsingPromptHistory(editor: EditorLike): boolean {
-    const self = editor as unknown as EditorInternals;
+    const self = getEditorInternals(editor);
+    if (self === undefined) return false;
     return typeof self.historyIndex === "number" && self.historyIndex > -1;
 }
 
@@ -167,7 +245,8 @@ function deleteCurrentLine(
     writeClipboard: ClipboardWriter,
     notify: Notifier,
 ): void {
-    const internals = editor as unknown as EditorInternals;
+    const internals = getEditorInternals(editor);
+    if (internals === undefined) return;
     const currentLine = internals.state.lines[internals.state.cursorLine] ?? "";
     if (internals.pushUndoSnapshot === undefined) return;
 
@@ -243,16 +322,24 @@ export function applySubmitModeKeymap(): void {
     patchTerminalLfEnterSubmit();
 }
 
-export function applyKeymapEditor(ctx: ExtensionContext, options: KeymapEditorOptions = {}): void {
+export function applyKeymapEditor(
+    ctx: KeymapEditorContext,
+    options: KeymapEditorOptions = {},
+): void {
     if (!ctx.hasUI) return;
 
-    const existing = ctx.ui.getEditorComponent() as WrappedEditorFactory | undefined;
-    const baseFactory = existing?.[KEYMAP_FACTORY_BASE] ?? existing;
-    const factory = ((tui, theme, keybindings) => {
-        const editor = (baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as EditorLike;
+    const configuredFactory = ctx.ui.getEditorComponent();
+    let existing: WrappedEditorFactory | undefined;
+    if (isWrappedEditorFactory(configuredFactory)) {
+        existing = configuredFactory;
+    }
+    const baseFactory = existing?.[KEYMAP_FACTORY_BASE] ?? configuredFactory;
+    const factory: WrappedEditorFactory = (tui, theme, keybindings) => {
+        const editor =
+            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
+        if (!isEditorLike(editor)) return editor;
         return enhanceEditor(editor, keybindings, () => tui.requestRender(), options);
-    }) as WrappedEditorFactory;
+    };
     factory[KEYMAP_FACTORY_BASE] = baseFactory;
 
     ctx.ui.setEditorComponent(factory);

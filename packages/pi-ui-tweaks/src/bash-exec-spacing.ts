@@ -7,6 +7,10 @@ import {
 } from "./editor-factory-layers.ts";
 import { getUiTweaksPatchState } from "./patch-state.ts";
 
+export type BashExecSpacingEditorContext = Pick<ExtensionContext, "hasUI"> & {
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
+};
+
 export type BashExecSpacingEditor = {
     getCursor(): { line: number; col: number };
     getText(): string;
@@ -17,7 +21,23 @@ export type BashExecSpacingEditor = {
     setText(text: string): void;
 };
 
-type EditorLike = CustomEditor & BashExecSpacingEditor;
+type EditorLike = ReturnType<EditorFactory> & BashExecSpacingEditor;
+
+function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return undefined;
+    }
+    return Reflect.get(value, key) as unknown;
+}
+
+function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
+    return (
+        typeof getUnknownProperty(value, "getCursor") === "function" &&
+        typeof getUnknownProperty(value, "getText") === "function" &&
+        typeof getUnknownProperty(value, "handleInput") === "function" &&
+        typeof getUnknownProperty(value, "setText") === "function"
+    );
+}
 
 function requestEditorRender(editor: BashExecSpacingEditor): void {
     editor.requestRenderNow?.();
@@ -86,7 +106,7 @@ function enhanceEditor(editor: EditorLike, requestRender: () => void): EditorLik
     return editor;
 }
 
-export function applyBashExecSpacingEditor(ctx: ExtensionContext): void {
+export function applyBashExecSpacingEditor(ctx: BashExecSpacingEditorContext): void {
     if (!ctx.hasUI) {
         return;
     }
@@ -98,8 +118,9 @@ export function applyBashExecSpacingEditor(ctx: ExtensionContext): void {
 
     const baseFactory = existing;
     const factory: EditorFactory = (tui, theme, keybindings) => {
-        const editor = (baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as EditorLike;
+        const editor =
+            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
+        if (!isEditorLike(editor)) return editor;
         return enhanceEditor(editor, () => tui.requestRender());
     };
     markEditorFactoryLayer(factory, existing, "bashExecSpacing");

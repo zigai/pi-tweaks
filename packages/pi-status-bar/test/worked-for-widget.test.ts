@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "vitest";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { WIDGET_KEY } from "../src/constants.ts";
 import { configureStatusBar, resetStatusBarStateForTests } from "../src/status-bar-api.ts";
 import {
@@ -9,6 +8,7 @@ import {
     formatDuration,
     resetWorkedForWidgetCache,
     setWorkedForWidget,
+    type WorkedForWidgetContext,
 } from "../src/worked-for-widget.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -27,8 +27,17 @@ type WidgetFactory = (
     theme: { fg(role: string, text: string): string },
 ) => { render(width: number): string[]; invalidate(): void };
 
+function getWidgetFactory(value: unknown): WidgetFactory {
+    if (typeof value !== "function") {
+        throw new Error("Expected widget factory");
+    }
+    // SAFETY: The status-widget integration seam stores only callable factories;
+    // this test invokes the factory only with the narrow TUI/theme/data shape it verifies.
+    return value as WidgetFactory;
+}
+
 function widgetContext(): {
-    ctx: ExtensionContext;
+    ctx: WorkedForWidgetContext;
     currentWidget: () => unknown;
     updateCount: () => number;
 } {
@@ -37,13 +46,16 @@ function widgetContext(): {
     const ctx = {
         hasUI: true,
         ui: {
-            setWidget(key: string, nextWidget: unknown) {
+            setWidget(
+                key: Parameters<WorkedForWidgetContext["ui"]["setWidget"]>[0],
+                nextWidget: Parameters<WorkedForWidgetContext["ui"]["setWidget"]>[1],
+            ) {
                 assert.equal(key, WIDGET_KEY);
                 widget = nextWidget;
                 updates += 1;
             },
         },
-    } as unknown as ExtensionContext;
+    } satisfies WorkedForWidgetContext;
 
     return {
         ctx,
@@ -91,7 +103,7 @@ test("setWorkedForWidget renders duration and token rate within the provided wid
 
     const widget = currentWidget();
     assert.equal(typeof widget, "function");
-    const factory = widget as WidgetFactory;
+    const factory = getWidgetFactory(widget);
     const component = factory({}, { fg: (_role, text) => `[dim]${text}` });
 
     assert.deepEqual(component.render(80), ["[dim] Worked for 1m 05s. [42 tok/s]"]);
@@ -113,7 +125,7 @@ test("setWorkedForWidget renders idle status bar overrides with the last-run sum
 
     const widget = currentWidget();
     assert.equal(typeof widget, "function");
-    const factory = widget as WidgetFactory;
+    const factory = getWidgetFactory(widget);
     const component = factory({}, { fg: (_role, text) => `[dim]${text}` });
 
     assert.deepEqual(component.render(80), ["[dim] Ready · Worked for 9s. [3 tok/s]"]);

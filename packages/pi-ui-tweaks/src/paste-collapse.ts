@@ -19,9 +19,9 @@ const PASTE_MARKER_FOR_ID = (pasteId: number): RegExp =>
 const ESCAPE_CHARACTER = String.fromCharCode(27);
 const CSI_U_CTRL_SEQUENCE_REGEX = new RegExp(`${ESCAPE_CHARACTER}\\[(\\d+);5u`, "g");
 
-// SAFETY: `matchesKey` accepts key identifiers as runtime strings; the public
-// type narrows them for autocomplete, but config values are parsed at runtime.
-const matchesRuntimeKey = matchesKey as unknown as (data: string, keyId: string) => boolean;
+function matchesRuntimeKey(data: string, keyId: string): boolean {
+    return Reflect.apply(matchesKey, undefined, [data, keyId]) === true;
+}
 
 type PasteMarker = {
     readonly pasteId: number;
@@ -29,6 +29,10 @@ type PasteMarker = {
     readonly line: number;
     readonly start: number;
     readonly end: number;
+};
+
+export type PasteCollapseEditorContext = Pick<ExtensionContext, "hasUI"> & {
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
 };
 
 /** Configurable paste-collapse behavior copied into the global patch state. */
@@ -73,16 +77,11 @@ export type PasteCollapseEditor = {
 
 type EditorLike = CustomEditor & PasteCollapseEditor;
 
-type PatchableEditorPrototype = object & {
-    [PASTE_COLLAPSE_PATCH_MARKER]?: true;
-};
-
-function asObject(value: unknown): Record<PropertyKey, unknown> | undefined {
+function asObject(value: unknown): object | undefined {
     if (typeof value !== "object" || value === null) {
         return undefined;
     }
-    // SAFETY: The object/null check above proves Reflect/object indexing is valid.
-    return value as Record<PropertyKey, unknown>;
+    return value;
 }
 
 function getPasteEditorInternals(editor: unknown): PasteEditorInternals | undefined {
@@ -91,7 +90,7 @@ function getPasteEditorInternals(editor: unknown): PasteEditorInternals | undefi
         return undefined;
     }
 
-    const state = Reflect.get(value, "state");
+    const state: unknown = Reflect.get(value, "state");
     const stateValue = asObject(state);
     let lines: unknown;
     let cursorLine: unknown;
@@ -101,7 +100,7 @@ function getPasteEditorInternals(editor: unknown): PasteEditorInternals | undefi
         cursorLine = Reflect.get(stateValue, "cursorLine");
         cursorCol = Reflect.get(stateValue, "cursorCol");
     }
-    const pastes = Reflect.get(value, "pastes");
+    const pastes: unknown = Reflect.get(value, "pastes");
 
     if (!Array.isArray(lines)) {
         return undefined;
@@ -314,13 +313,11 @@ export function setPasteCollapseSettings(settings: PasteCollapseSettings): void 
 }
 
 function installPasteCollapsePatchOnPrototype(prototype: object): void {
-    // SAFETY: The marker only augments the editor prototype with an idempotency flag.
-    const patchablePrototype = prototype as PatchableEditorPrototype;
-    if (patchablePrototype[PASTE_COLLAPSE_PATCH_MARKER] === true) {
+    if (Reflect.get(prototype, PASTE_COLLAPSE_PATCH_MARKER) === true) {
         return;
     }
 
-    const originalHandlePaste = Reflect.get(prototype, "handlePaste");
+    const originalHandlePaste: unknown = Reflect.get(prototype, "handlePaste") as unknown;
     if (typeof originalHandlePaste !== "function") {
         return;
     }
@@ -331,7 +328,7 @@ function installPasteCollapsePatchOnPrototype(prototype: object): void {
         function handlePasteWithConfig(this: unknown, pastedText: string): void {
             const internals = getPasteEditorInternals(this);
             if (internals === undefined) {
-                originalHandlePaste.call(this, pastedText);
+                Reflect.apply(originalHandlePaste, this, [pastedText]);
                 return;
             }
 
@@ -339,7 +336,7 @@ function installPasteCollapsePatchOnPrototype(prototype: object): void {
         },
     );
 
-    patchablePrototype[PASTE_COLLAPSE_PATCH_MARKER] = true;
+    Reflect.set(prototype, PASTE_COLLAPSE_PATCH_MARKER, true);
 }
 
 /**
@@ -379,6 +376,17 @@ function shouldTryExpandPasteMarker(data: string, keybindings: KeybindingsManage
     );
 }
 
+function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
+    const getCursor: unknown = Reflect.get(value, "getCursor") as unknown;
+    const getText: unknown = Reflect.get(value, "getText") as unknown;
+    const handleInput: unknown = Reflect.get(value, "handleInput") as unknown;
+    return (
+        typeof getCursor === "function" &&
+        typeof getText === "function" &&
+        typeof handleInput === "function"
+    );
+}
+
 function enhanceEditor(
     editor: EditorLike,
     keybindings: KeybindingsManager,
@@ -406,7 +414,7 @@ function enhanceEditor(
 /**
  * Wraps the active editor factory so configured keys can expand one paste marker.
  */
-export function applyPasteCollapseEditor(ctx: ExtensionContext): void {
+export function applyPasteCollapseEditor(ctx: PasteCollapseEditorContext): void {
     if (!ctx.hasUI) {
         return;
     }
@@ -418,8 +426,9 @@ export function applyPasteCollapseEditor(ctx: ExtensionContext): void {
 
     const baseFactory = existing;
     const factory: EditorFactory = (tui, theme, keybindings) => {
-        const editor = (baseFactory?.(tui, theme, keybindings) ??
-            new CustomEditor(tui, theme, keybindings)) as EditorLike;
+        const editor =
+            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
+        if (!isEditorLike(editor)) return editor;
         return enhanceEditor(editor, keybindings, () => tui.requestRender());
     };
     markEditorFactoryLayer(factory, existing, "pasteCollapse");

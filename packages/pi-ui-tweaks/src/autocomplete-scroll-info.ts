@@ -49,17 +49,25 @@ export function setHideAutocompleteScrollInfo(enabled: boolean): void {
 /**
  * Installs an idempotent patch that removes autocomplete scroll/count footer rows.
  */
-export function installAutocompleteScrollInfoPatch(
-    prototype: SelectListScrollInfoTarget = SelectList.prototype as unknown as SelectListScrollInfoTarget,
-): void {
-    if (prototype[AUTOCOMPLETE_SCROLL_INFO_PATCHED] === true) return;
-
-    const originalRenderValue: unknown = Reflect.get(prototype, "render");
+export function installAutocompleteScrollInfoPatch(prototype?: SelectListScrollInfoTarget): void {
+    const prototypeValue: unknown = prototype ?? SelectList.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        warnAutocompleteScrollInfoPatchUnavailable();
+        return;
+    }
+    const originalRenderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
     if (typeof originalRenderValue !== "function") {
         warnAutocompleteScrollInfoPatchUnavailable("missing render");
         return;
     }
-
+    // SAFETY: The guarded pi-tui SelectList adapter verifies the private render
+    // seam before exposing its smallest autocomplete scroll-info patch target.
+    prototype = prototypeValue as SelectListScrollInfoTarget;
+    if (prototype[AUTOCOMPLETE_SCROLL_INFO_PATCHED] === true) return;
+    // SAFETY: The immediately preceding runtime guard proves the private SelectList render seam is callable.
     const originalRender = originalRenderValue as SelectListScrollInfoTarget["render"];
     prototype.render = function autocompleteScrollInfoRender(
         this: SelectListScrollInfoTarget,

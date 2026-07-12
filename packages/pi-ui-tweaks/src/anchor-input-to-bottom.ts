@@ -58,8 +58,8 @@ function warnAnchorInputToBottomPatchUnavailable(reason?: string): void {
 }
 
 function isComponentContainer(component: Component): component is ComponentContainer {
-    const candidate = component as { children?: unknown };
-    return Array.isArray(candidate.children);
+    const children: unknown = Reflect.get(component, "children") as unknown;
+    return Array.isArray(children);
 }
 
 function containsComponent(root: Component, target: Component): boolean {
@@ -136,10 +136,7 @@ function renderWithChildLineRanges(
             const child = tui.children[index];
             if (child === undefined) continue;
 
-            const originalRenderValue: unknown = Reflect.get(child, "render");
-            if (typeof originalRenderValue !== "function") continue;
-
-            const originalRender = originalRenderValue as Component["render"];
+            const originalRender = child.render.bind(child);
             const ownDescriptor = Object.getOwnPropertyDescriptor(child, "render");
             originals.push({ child, ownDescriptor });
             child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
@@ -301,17 +298,25 @@ export function setAnchorInputToBottom(enabled: boolean): void {
 /**
  * Installs an idempotent patch that keeps the focused input/footer at the terminal bottom.
  */
-export function installAnchorInputToBottomPatch(
-    prototype: PatchableTuiPrototype = TUI.prototype as unknown as PatchableTuiPrototype,
-): void {
-    if (prototype[ANCHOR_INPUT_TO_BOTTOM_PATCHED] === true) return;
-
-    const originalRenderValue: unknown = Reflect.get(prototype, "render");
+export function installAnchorInputToBottomPatch(prototype?: PatchableTuiPrototype): void {
+    const prototypeValue: unknown = prototype ?? TUI.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        warnAnchorInputToBottomPatchUnavailable();
+        return;
+    }
+    const originalRenderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
     if (typeof originalRenderValue !== "function") {
         warnAnchorInputToBottomPatchUnavailable("missing render");
         return;
     }
-
+    // SAFETY: The guarded TUI boundary verifies the private render method before
+    // patching the smallest prototype seam used by this layout adapter.
+    prototype = prototypeValue as PatchableTuiPrototype;
+    if (prototype[ANCHOR_INPUT_TO_BOTTOM_PATCHED] === true) return;
+    // SAFETY: The immediately preceding runtime guard proves the private TUI render seam is callable.
     const originalRender = originalRenderValue as PatchableTuiRender;
     prototype.render = function anchorInputToBottomRender(
         this: PatchableTuiInstance,

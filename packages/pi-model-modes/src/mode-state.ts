@@ -45,6 +45,54 @@ type ScopedModelItem = {
     thinkingLevel?: string;
 };
 
+const MODE_COLOR_TOKENS: ReadonlySet<string> = new Set([
+    "accent",
+    "border",
+    "borderAccent",
+    "borderMuted",
+    "success",
+    "error",
+    "warning",
+    "muted",
+    "dim",
+    "text",
+    "thinkingText",
+    "userMessageText",
+    "customMessageText",
+    "customMessageLabel",
+    "toolTitle",
+    "toolOutput",
+    "mdHeading",
+    "mdLink",
+    "mdLinkUrl",
+    "mdCode",
+    "mdCodeBlock",
+    "mdCodeBlockBorder",
+    "mdQuote",
+    "mdQuoteBorder",
+    "mdHr",
+    "mdListBullet",
+    "toolDiffAdded",
+    "toolDiffRemoved",
+    "toolDiffContext",
+    "syntaxComment",
+    "syntaxKeyword",
+    "syntaxFunction",
+    "syntaxVariable",
+    "syntaxString",
+    "syntaxNumber",
+    "syntaxType",
+    "syntaxOperator",
+    "syntaxPunctuation",
+    "thinkingOff",
+    "thinkingMinimal",
+    "thinkingLow",
+    "thinkingMedium",
+    "thinkingHigh",
+    "thinkingXhigh",
+    "bashMode",
+]);
+
 const ModeSpecJsonSchema = Type.Object(
     {
         provider: Type.Optional(Type.String()),
@@ -244,17 +292,30 @@ export function applyModesPatch(target: ModesFile, patch: ModesPatch): void {
     }
 }
 
+function isThinkingLevel(value: string): value is ThinkingLevel {
+    return ALL_THINKING_LEVELS.some((level) => level === value);
+}
+
 function normalizeThinkingLevel(level: unknown): ThinkingLevel | undefined {
     if (typeof level !== "string") return undefined;
-    if (ALL_THINKING_LEVELS.includes(level as ThinkingLevel)) {
-        return level as ThinkingLevel;
+    if (isThinkingLevel(level)) {
+        return level;
     }
+    return undefined;
+}
+
+function isModeColor(value: string): value is NonNullable<ModeSpec["color"]> {
+    return MODE_COLOR_TOKENS.has(value);
+}
+
+function parseModeColor(value: string): ModeSpec["color"] | undefined {
+    if (isModeColor(value)) return value;
     return undefined;
 }
 
 function getLoadErrorCode(error: unknown): string | undefined {
     if (!(error instanceof Error)) return undefined;
-    const code = (error as NodeJS.ErrnoException).code;
+    const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value as unknown;
     if (typeof code === "string") return code;
     return undefined;
 }
@@ -276,7 +337,7 @@ function sanitizeModeSpec(spec: ModeSpecJson | undefined): ModeSpec {
     };
     if (spec.provider !== undefined) sanitized.provider = spec.provider;
     if (spec.modelId !== undefined) sanitized.modelId = spec.modelId;
-    if (spec.color !== undefined) sanitized.color = spec.color as ModeSpec["color"];
+    if (spec.color !== undefined) sanitized.color = parseModeColor(spec.color);
     return sanitized;
 }
 
@@ -724,7 +785,7 @@ async function pickThinkingLevelForModeUI(
     const choice = await ctx.ui.select("Thinking level", ordered);
     if (choice === undefined || choice.length === 0) return undefined;
     if (choice === THINKING_UNSET_LABEL) return null;
-    if (ALL_THINKING_LEVELS.includes(choice as ThinkingLevel)) return choice as ThinkingLevel;
+    if (isThinkingLevel(choice)) return choice;
     return undefined;
 }
 
@@ -1127,7 +1188,7 @@ export async function handleModeCommand(
         return;
     }
 
-    await applyMode(pi, ctx, tokens[0]!);
+    await applyMode(pi, ctx, tokens[0]);
 }
 
 export async function handleSessionActivated(

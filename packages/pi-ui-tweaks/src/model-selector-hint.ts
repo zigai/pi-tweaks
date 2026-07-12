@@ -35,22 +35,26 @@ function isObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
+function getUnknownProperty(value: object, key: PropertyKey): unknown {
+    return Reflect.get(value, key) as unknown;
+}
+
 function isSingleLineSpacer(component: ComponentLike): boolean {
-    const lines = Reflect.get(component, "lines");
+    const lines = getUnknownProperty(component, "lines");
     if (lines !== 1) {
         return false;
     }
 
-    const constructorValue = Reflect.get(component, "constructor");
+    const constructorValue = getUnknownProperty(component, "constructor");
     if (!isObject(constructorValue)) {
         return false;
     }
 
-    return Reflect.get(constructorValue, "name") === "Spacer";
+    return getUnknownProperty(constructorValue, "name") === "Spacer";
 }
 
 function isModelProviderHintText(component: ComponentLike): boolean {
-    const text = Reflect.get(component, "text");
+    const text = getUnknownProperty(component, "text");
     return typeof text === "string" && text.includes(MODEL_PROVIDER_HINT_TEXT);
 }
 

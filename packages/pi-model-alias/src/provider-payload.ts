@@ -5,7 +5,7 @@ function payloadModel(payload: unknown): string | undefined {
     if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
         return undefined;
     }
-    const model = (payload as Record<string, unknown>).model;
+    const model: unknown = Object.getOwnPropertyDescriptor(payload, "model")?.value as unknown;
     if (typeof model === "string") {
         return model;
     }
@@ -17,7 +17,7 @@ export function rewritePayloadModel(payload: unknown, targetModel: string): unkn
         return payload;
     }
     return {
-        ...(payload as Record<string, unknown>),
+        ...payload,
         model: targetModel,
     };
 }

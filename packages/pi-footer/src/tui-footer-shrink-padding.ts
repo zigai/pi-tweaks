@@ -112,8 +112,8 @@ function getPaddingInsertIndex(tui: PatchableTuiInstance, targetLength: number):
 }
 
 function isComponentContainer(component: Component): component is ComponentContainer {
-    const candidate = component as { children?: unknown };
-    return Array.isArray(candidate.children);
+    const children: unknown = Reflect.get(component, "children") as unknown;
+    return Array.isArray(children);
 }
 
 function containsComponent(root: Component, target: Component): boolean {
@@ -214,10 +214,7 @@ function renderWithChildLineRanges(
             const child = tui.children[index];
             if (child === undefined) continue;
 
-            const originalRenderValue: unknown = Reflect.get(child, "render");
-            if (typeof originalRenderValue !== "function") continue;
-
-            const originalRender = originalRenderValue as Component["render"];
+            const originalRender = child.render.bind(child);
             const ownDescriptor = Object.getOwnPropertyDescriptor(child, "render");
             originals.push({ child, ownDescriptor });
             child.render = function renderAndRecordChildLines(this: Component, childWidth: number) {
@@ -382,11 +379,22 @@ function padAtVisibleBoundary(
  * pads shrinking transcripts above it so status/widgets, editor, and footer stay attached.
  */
 export function installFooterShrinkPaddingPatch(): void {
-    const prototype = TUI.prototype as unknown as PatchableTuiPrototype;
+    const prototypeValue: unknown = TUI.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        return;
+    }
+    const renderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
+    if (typeof renderValue !== "function") return;
+    // SAFETY: The guarded TUI adapter verifies the private render method before
+    // patching its minimal prototype seam.
+    const prototype = prototypeValue as PatchableTuiPrototype;
     if (prototype[FOOTER_SHRINK_PADDING_PATCH_MARKER] === true) return;
 
-    const originalRender = prototype.render;
-    if (typeof originalRender !== "function") return;
+    // SAFETY: The immediately preceding runtime guard proves the private TUI render seam is callable.
+    const originalRender = renderValue as NonNullable<PatchableTuiPrototype["render"]>;
 
     prototype.render = function patchedFooterShrinkPaddingRender(
         this: PatchableTuiInstance,

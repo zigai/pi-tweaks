@@ -37,16 +37,27 @@ export function setHideSlashCommandSourceTags(enabled: boolean): void {
 /**
  * Installs an idempotent patch that removes source tags from slash command autocomplete rows.
  */
-export function installSlashCommandSourcePatch(
-    prototype: SlashCommandSourcePatchTarget = InteractiveMode.prototype as unknown as SlashCommandSourcePatchTarget,
-): void {
-    if (prototype[SLASH_COMMAND_SOURCE_PATCH_KEY] === true) {
+export function installSlashCommandSourcePatch(prototype?: SlashCommandSourcePatchTarget): void {
+    const prototypeValue: unknown = prototype ?? InteractiveMode.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        warnSlashCommandSourcePatchUnavailable();
         return;
     }
-
-    const originalPrefixValue: unknown = Reflect.get(prototype, "prefixAutocompleteDescription");
+    const originalPrefixValue: unknown = Reflect.get(
+        prototypeValue,
+        "prefixAutocompleteDescription",
+    ) as unknown;
     if (typeof originalPrefixValue !== "function") {
         warnSlashCommandSourcePatchUnavailable("missing prefixAutocompleteDescription");
+        return;
+    }
+    // SAFETY: The guarded Pi InteractiveMode adapter verifies the private method
+    // before exposing the smallest slash-command description patch target.
+    prototype = prototypeValue as SlashCommandSourcePatchTarget;
+    if (prototype[SLASH_COMMAND_SOURCE_PATCH_KEY] === true) {
         return;
     }
 

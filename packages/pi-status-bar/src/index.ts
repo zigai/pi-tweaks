@@ -86,7 +86,7 @@ function getSafeMinGap(config: RightMessagesConfig): number {
 }
 
 function getLoaderPaddingX(loader: Loader): number {
-    const value = Reflect.get(loader, "paddingX");
+    const value: unknown = Reflect.get(loader, "paddingX") as unknown;
     if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
         return Math.floor(value);
     }
@@ -335,7 +335,10 @@ type LoaderInternals = {
 };
 
 function updateDisplay(loader: Loader): void {
-    const l = loader as unknown as LoaderInternals;
+    const loaderInternals: unknown = loader;
+    // SAFETY: Loader instances are created by Pi and this adapter consumes only the
+    // documented-at-runtime fields required to replace its display text.
+    const l = loaderInternals as LoaderInternals;
     const snapshot = getStatusBarSnapshot();
     const frames = snapshot.active.spinnerFrames ?? l.frames;
     const frame = frames[l.currentFrame % Math.max(1, frames.length)] ?? "";
@@ -379,7 +382,10 @@ function patchLoaderTime(): void {
     if ((state[LOADER_TIME_PATCH_VERSION_KEY] ?? 0) >= LOADER_TIME_PATCH_VERSION) {
         return;
     }
-    const prototype = Loader.prototype as unknown as {
+    const loaderPrototype: unknown = Loader.prototype;
+    // SAFETY: The patch validates every prototype method before wrapping it; Pi's
+    // public Loader declaration does not expose the patchable method surface.
+    const prototype = loaderPrototype as {
         start?: () => void;
         stop?: () => void;
         updateDisplay?: () => void;

@@ -19,6 +19,24 @@ type TuiInternals = {
     previousViewportTop: number;
 };
 
+function getTuiInternals(tui: TUI): TuiInternals {
+    const value: unknown = tui;
+    const doRender: unknown = Reflect.get(tui, "doRender") as unknown;
+    const previousLines: unknown = Reflect.get(tui, "previousLines") as unknown;
+    const previousViewportTop: unknown = Reflect.get(tui, "previousViewportTop") as unknown;
+    if (
+        typeof doRender !== "function" ||
+        !Array.isArray(previousLines) ||
+        !previousLines.every((line) => typeof line === "string") ||
+        typeof previousViewportTop !== "number"
+    ) {
+        throw new Error("Expected TUI render internals.");
+    }
+    // SAFETY: This integration-test adapter checks each private TUI member used to
+    // observe real rendering behavior; the pi-tui declaration intentionally hides them.
+    return value as TuiInternals;
+}
+
 function stripTestAnsi(text: string): string {
     return text.split(`${ESC}[0m`).join("").split(`${ESC}]8;;${BEL}`).join("");
 }
@@ -145,6 +163,20 @@ class TestEditor implements Component {
     invalidate(): void {}
 }
 
+class InheritedChildrenContainer implements Component {
+    constructor(private readonly child: Component) {}
+
+    get children(): Component[] {
+        return [this.child];
+    }
+
+    render(width: number): string[] {
+        return this.child.render(width);
+    }
+
+    invalidate(): void {}
+}
+
 class VariableEditor implements Component {
     focused = false;
 
@@ -218,7 +250,7 @@ test("footer shrink padding keeps the final chat row attached when anchor compac
     const editorContainer = new Container();
     const editor = new VariableEditor(5);
     const tui = new TUI(terminal);
-    const tuiInternals = tui as unknown as TuiInternals;
+    const tuiInternals = getTuiInternals(tui);
 
     try {
         editorContainer.addChild(editor);
@@ -252,7 +284,7 @@ test("footer shrink padding preserves visible tail without native clear", () => 
     const lines = new VariableLines(24);
     const tui = new TUI(terminal);
     tui.setClearOnShrink(true);
-    const tuiInternals = tui as unknown as TuiInternals;
+    const tuiInternals = getTuiInternals(tui);
     tui.addChild(lines);
     tui.addChild(markFooterComponent(new TestFooter(), "live"));
 
@@ -285,7 +317,7 @@ test("footer shrink padding yields to full redraw for distant content rebuilds",
     );
     const tui = new TUI(terminal);
     tui.setClearOnShrink(true);
-    const tuiInternals = tui as unknown as TuiInternals;
+    const tuiInternals = getTuiInternals(tui);
     tui.addChild(lines);
     tui.addChild(markFooterComponent(new TestFooter(), "live"));
 
@@ -314,7 +346,7 @@ test("footer shrink padding keeps small-shrink blanks below numbered content", (
     const lines = new VariableLines(24);
     const tui = new TUI(terminal);
     tui.setClearOnShrink(true);
-    const tuiInternals = tui as unknown as TuiInternals;
+    const tuiInternals = getTuiInternals(tui);
     tui.addChild(lines);
     tui.addChild(markFooterComponent(new TestFooter(), "live"));
 
@@ -342,14 +374,13 @@ test("footer shrink padding keeps focused editor attached to footer", () => {
 
     const terminal = new FakeTerminal();
     const lines = new VariableLines(24);
-    const editorContainer = new Container();
     const editor = new TestEditor();
+    const editorContainer = new InheritedChildrenContainer(editor);
     const belowWidgetContainer = new Container();
     const tui = new TUI(terminal);
     tui.setClearOnShrink(true);
-    const tuiInternals = tui as unknown as TuiInternals;
+    const tuiInternals = getTuiInternals(tui);
 
-    editorContainer.addChild(editor);
     tui.addChild(lines);
     tui.addChild(editorContainer);
     tui.addChild(belowWidgetContainer);
@@ -389,7 +420,7 @@ test("footer shrink padding keeps working loader attached to editor", () => {
     const belowWidgetContainer = new Container();
     const tui = new TUI(terminal);
     tui.setClearOnShrink(true);
-    const tuiInternals = tui as unknown as TuiInternals;
+    const tuiInternals = getTuiInternals(tui);
 
     editorContainer.addChild(editor);
     tui.addChild(lines);
@@ -438,7 +469,7 @@ test("footer shrink padding keeps worked-for widget attached to editor", () => {
     const belowWidgetContainer = new Container();
     const tui = new TUI(terminal);
     tui.setClearOnShrink(true);
-    const tuiInternals = tui as unknown as TuiInternals;
+    const tuiInternals = getTuiInternals(tui);
 
     editorContainer.addChild(editor);
     tui.addChild(lines);
