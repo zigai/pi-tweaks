@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeEach, test } from "vitest";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
-import { applyMentionProjectCliFlags, configuredMentionProjectSettings } from "../src/settings.ts";
+import {
+    applyMentionProjectCliFlags,
+    configuredMentionProjectSettings,
+    type MentionProjectSettingsContext,
+} from "../src/settings.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-agent-"));
@@ -28,13 +30,13 @@ afterAll(async () => {
     }
 });
 
-function context(cwd: string, projectTrusted: boolean): ExtensionContext {
+function context(cwd: string, projectTrusted: boolean): MentionProjectSettingsContext {
     return {
         cwd,
         isProjectTrusted() {
             return projectTrusted;
         },
-    } as unknown as ExtensionContext;
+    };
 }
 
 async function writeJson(filePath: string, value: Record<string, unknown>): Promise<void> {

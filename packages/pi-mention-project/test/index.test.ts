@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, test } from "vitest";
 
-import {
-    CONFIG_DIR_NAME,
-    type ContextEvent,
-    type ExtensionAPI,
-    type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, type ContextEvent } from "@earendil-works/pi-coding-agent";
 
-import mentionProjectExtension, { createProjectMentionContextHandler } from "../src/index.ts";
+import {
+    createProjectMentionContextHandler,
+    registerProjectMentionExtension,
+    type ProjectMentionExtensionApi,
+} from "../src/index.ts";
+import type { MentionProjectSettingsContext } from "../src/settings.ts";
 import type { ProjectDirectory } from "../src/types.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -27,13 +27,13 @@ afterAll(async () => {
     }
 });
 
-function context(cwd: string): ExtensionContext {
+function context(cwd: string): MentionProjectSettingsContext {
     return {
         cwd,
         isProjectTrusted() {
             return true;
         },
-    } as unknown as ExtensionContext;
+    };
 }
 
 function project(name: string, root = "/tmp/projects"): ProjectDirectory {
@@ -44,18 +44,16 @@ function project(name: string, root = "/tmp/projects"): ProjectDirectory {
     };
 }
 
-type RegisteredHandler = (...args: unknown[]) => unknown;
-
 type ContextExpansionResult = {
     readonly messages?: ContextEvent["messages"];
 };
 
-function extensionApi(): ExtensionAPI {
+function extensionApi(): Pick<ProjectMentionExtensionApi, "getFlag"> {
     return {
         getFlag() {
             return false;
         },
-    } as unknown as ExtensionAPI;
+    };
 }
 
 function isObject(value: unknown): value is object {
@@ -65,8 +63,18 @@ function isObject(value: unknown): value is object {
 function isContextExpansionResult(value: unknown): value is ContextExpansionResult {
     if (!isObject(value)) return false;
 
-    const messages = Reflect.get(value, "messages");
+    const messages = Object.getOwnPropertyDescriptor(value, "messages")?.value as unknown;
     return messages === undefined || Array.isArray(messages);
+}
+
+function invokeRegisteredHandler(
+    handlers: ReadonlyMap<string, unknown>,
+    event: string,
+    args: unknown[],
+): unknown {
+    const handler = handlers.get(event);
+    if (typeof handler !== "function") throw new Error(`Expected ${event} handler`);
+    return Reflect.apply(handler, undefined, args) as unknown;
 }
 
 test("context handler skips project directory scans when user messages have no trigger", async () => {
@@ -133,9 +141,9 @@ test("context handler scans and expands past user messages after the trigger is 
     assert.equal(latestText.text, "Now compare it with /tmp/projects/work-api");
 });
 
-test("mention project keeps hashtag prompts in history and expands provider context", async () => {
+test("mention project rewrites submitted prompts and expands provider context", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-index-cwd-"));
-    const registeredHandlers = new Map<string, RegisteredHandler[]>();
+    const registeredHandlers = new Map<string, unknown>();
 
     try {
         await mkdir(path.join(cwd, "pi-tweaks", ".git"), { recursive: true });
@@ -147,26 +155,32 @@ test("mention project keeps hashtag prompts in history and expands provider cont
             "utf8",
         );
 
-        const pi = {
+        const pi: ProjectMentionExtensionApi = {
             registerFlag() {},
             getFlag() {
                 return false;
             },
-            on(event: string, handler: RegisteredHandler) {
-                const handlers = registeredHandlers.get(event) ?? [];
-                handlers.push(handler);
-                registeredHandlers.set(event, handlers);
+            on(event, handler) {
+                registeredHandlers.set(event, handler);
             },
-        } as unknown as ExtensionAPI;
+        };
 
-        mentionProjectExtension(pi);
+        registerProjectMentionExtension(pi);
 
-        assert.equal((registeredHandlers.get("input") ?? []).length, 0);
-        const contextHandlers = registeredHandlers.get("context") ?? [];
-        assert.equal(contextHandlers.length, 1);
-        const contextHandler = contextHandlers[0];
-        assert.notEqual(contextHandler, undefined);
-        if (contextHandler === undefined) assert.fail("expected context handler");
+        assert.deepEqual([...registeredHandlers.keys()], ["session_start", "input", "context"]);
+        const inputResult = await invokeRegisteredHandler(registeredHandlers, "input", [
+            {
+                type: "input",
+                text: "Please inspect #pi-tweaks",
+                source: "interactive",
+            },
+            context(cwd),
+        ]);
+        assert.deepEqual(inputResult, {
+            action: "transform",
+            text: `Please inspect ${path.join(cwd, "pi-tweaks")}`,
+            images: undefined,
+        });
 
         const messages: ContextEvent["messages"] = [
             {
@@ -175,7 +189,10 @@ test("mention project keeps hashtag prompts in history and expands provider cont
                 timestamp: 1,
             },
         ];
-        const result = await contextHandler({ type: "context", messages }, context(cwd));
+        const result = await invokeRegisteredHandler(registeredHandlers, "context", [
+            { type: "context", messages },
+            context(cwd),
+        ]);
 
         const original = messages[0];
         assert.equal(original?.role, "user");

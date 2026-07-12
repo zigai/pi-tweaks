@@ -1,16 +1,15 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
 import {
     isProjectMentionContext,
     parseProjectMentionName,
     projectMentionPattern,
 } from "./mention-syntax.ts";
+import type { EditorEnhancerContext } from "./types.ts";
 
 export { isProjectMentionContext };
 
 export function colorProjectMentions(
     line: string,
-    ctx: ExtensionContext,
+    ctx: EditorEnhancerContext,
     trigger: string,
     knownNames: ReadonlySet<string>,
 ): string {

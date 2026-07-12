@@ -2,13 +2,13 @@
 
 <a href="https://www.npmjs.com/package/@zigai/pi-mention-project"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-mention-project.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-mention-project"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-mention-project.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-mention-project.svg" style="display:inline-block;border:0" /></a>
 
-Use short `#project` mentions in Pi while the model receives the matching absolute project path.
+Use short `#project` mentions while typing in Pi; submitted messages show the matching absolute project path.
 
 ```text
 #pi-tweaks update the package README
 ```
 
-Your chat stays readable with `#pi-tweaks`. Before each model request, matching project mentions in current and past user messages expand to paths such as `/home/you/Projects/pi-tweaks`.
+Type `#pi-tweaks` and select the project from autocomplete. When submitted, the visible message and the model context use the matching path, such as `/home/you/Projects/pi-tweaks`.
 
 ## Install
 
@@ -20,6 +20,7 @@ pi install npm:@zigai/pi-mention-project
 
 - Type `#` to fuzzy-search configured project folders.
 - Pick a project to insert a mention such as `#pi-tweaks`.
+- Submitting the message replaces known mentions with their absolute paths.
 - Use quoted mentions for names with spaces, such as `#"My Project"`.
 - Unknown mentions stay unchanged.
 

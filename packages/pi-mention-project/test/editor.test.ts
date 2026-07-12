@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-
 import { applyMentionSkillEditor } from "../../pi-mention-skill/src/editor.ts";
 import { applyMentionProjectEditor } from "../src/editor.ts";
-import type { EditorFactory, EditorLike } from "../src/types.ts";
+import type { EditorEnhancerContext, EditorFactory, EditorLike } from "../src/types.ts";
 
 class FakeEditor implements EditorLike {
     text = "";
@@ -23,6 +21,12 @@ class FakeEditor implements EditorLike {
         return [this.text];
     }
 
+    setText(text: string): void {
+        this.text = text;
+    }
+
+    invalidate(): void {}
+
     isShowingAutocomplete(): boolean {
         return false;
     }
@@ -33,7 +37,7 @@ class FakeEditor implements EditorLike {
 }
 
 type EditorContext = {
-    ctx: ExtensionContext;
+    ctx: EditorEnhancerContext;
     getFactory: () => EditorFactory | undefined;
 };
 
@@ -54,23 +58,23 @@ function contextWithFactory(baseFactory: EditorFactory): EditorContext {
     };
 
     return {
-        ctx: { hasUI: true, ui } as unknown as ExtensionContext,
+        ctx: { hasUI: true, ui },
         getFactory: () => currentFactory,
     };
 }
 
-function createEditor(factory: EditorFactory): FakeEditor {
-    const editor = factory(undefined as never, undefined as never, undefined as never);
-    return editor as unknown as FakeEditor;
+function createEditor(factory: EditorFactory): EditorLike {
+    const invoke: (...args: never[]) => EditorLike = factory;
+    return invoke();
 }
 
 test("applyMentionProjectEditor replaces its enhancer instead of stacking hooks", () => {
     let editor = new FakeEditor();
-    const baseFactory = (() => {
+    const baseFactory: EditorFactory = () => {
         editor = new FakeEditor();
         editor.text = "Please inspect #gameops";
         return editor;
-    }) as unknown as EditorFactory;
+    };
     const { ctx, getFactory } = contextWithFactory(baseFactory);
     let projectNameSnapshotCalls = 0;
     const getProjectNames = (): ReadonlySet<string> => {
@@ -93,10 +97,10 @@ test("applyMentionProjectEditor replaces its enhancer instead of stacking hooks"
 
 test("mention project and skill editors share one enhancer registry", () => {
     let editor = new FakeEditor();
-    const baseFactory = (() => {
+    const baseFactory: EditorFactory = () => {
         editor = new FakeEditor();
         return editor;
-    }) as unknown as EditorFactory;
+    };
     const { ctx, getFactory } = contextWithFactory(baseFactory);
 
     applyMentionProjectEditor(ctx, "#", () => new Set(["gameops"]));

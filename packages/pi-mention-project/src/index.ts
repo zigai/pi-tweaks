@@ -1,9 +1,17 @@
-import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+    ContextEvent,
+    ExtensionAPI,
+    ExtensionHandler,
+    InputEvent,
+    InputEventResult,
+    SessionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 
 import { createProjectMentionProvider } from "./autocomplete.ts";
 import { applyMentionProjectEditor } from "./editor.ts";
 import {
     contextContainsProjectMentionTrigger,
+    expandProjectMentions,
     expandProjectMentionsInMessages,
 } from "./expand-mentions.ts";
 import { createProjectDirectorySource, listProjectDirectories } from "./projects.ts";
@@ -12,10 +20,14 @@ import {
     configuredMentionProjectSettings,
     INCLUDE_DOT_FOLDERS_FLAG,
     INCLUDE_NON_GIT_FLAG,
+    type MentionProjectSettingsContext,
 } from "./settings.ts";
 import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
 
-function mentionProjectSettings(pi: ExtensionAPI, ctx: ExtensionContext): MentionProjectSettings {
+function mentionProjectSettings(
+    pi: Pick<ExtensionAPI, "getFlag">,
+    ctx: MentionProjectSettingsContext,
+): MentionProjectSettings {
     return applyMentionProjectCliFlags(configuredMentionProjectSettings(ctx), {
         includeNonGit: pi.getFlag(INCLUDE_NON_GIT_FLAG),
         includeDotFolders: pi.getFlag(INCLUDE_DOT_FOLDERS_FLAG),
@@ -33,11 +45,46 @@ type ProjectMentionContextResult = {
 
 type ProjectMentionContextHandler = (
     event: ContextEvent,
-    ctx: ExtensionContext,
+    ctx: MentionProjectSettingsContext,
 ) => Promise<ProjectMentionContextResult | undefined>;
 
+type ProjectMentionInputHandler = (
+    event: InputEvent,
+    ctx: MentionProjectSettingsContext,
+) => Promise<InputEventResult>;
+
+export type ProjectMentionHandlerMap = {
+    session_start: ExtensionHandler<SessionStartEvent>;
+    input: ProjectMentionInputHandler;
+    context: ProjectMentionContextHandler;
+};
+
+export type ProjectMentionExtensionApi = Pick<ExtensionAPI, "registerFlag" | "getFlag"> & {
+    on<TKey extends keyof ProjectMentionHandlerMap>(
+        event: TKey,
+        handler: ProjectMentionHandlerMap[TKey],
+    ): void;
+};
+
+export function createProjectMentionInputHandler(
+    pi: Pick<ExtensionAPI, "getFlag">,
+    loadProjects: ProjectDirectoryLoader = listProjectDirectories,
+): ProjectMentionInputHandler {
+    return async (event, ctx) => {
+        const settings = mentionProjectSettings(pi, ctx);
+        if (event.streamingBehavior !== undefined || !event.text.includes(settings.trigger)) {
+            return { action: "continue" };
+        }
+
+        const projects = await loadProjects(settings, ctx.cwd);
+        const expanded = expandProjectMentions(event.text, projects, settings.trigger);
+        if (expanded === event.text) return { action: "continue" };
+        return { action: "transform", text: expanded, images: event.images };
+    };
+}
+
 export function createProjectMentionContextHandler(
-    pi: ExtensionAPI,
+    pi: Pick<ExtensionAPI, "getFlag">,
     loadProjects: ProjectDirectoryLoader = listProjectDirectories,
 ): ProjectMentionContextHandler {
     return async (event, ctx) => {
@@ -56,7 +103,7 @@ export function createProjectMentionContextHandler(
     };
 }
 
-export default function (pi: ExtensionAPI): void {
+export function registerProjectMentionExtension(pi: ProjectMentionExtensionApi): void {
     pi.registerFlag(INCLUDE_NON_GIT_FLAG, {
         description: "Include non-Git child folders in pi-mention-project suggestions.",
         type: "boolean",
@@ -84,5 +131,10 @@ export default function (pi: ExtensionAPI): void {
         );
     });
 
+    pi.on("input", createProjectMentionInputHandler(pi));
     pi.on("context", createProjectMentionContextHandler(pi));
+}
+
+export default function (pi: ExtensionAPI): void {
+    registerProjectMentionExtension(pi);
 }
