@@ -46,13 +46,13 @@ export default function (pi: ExtensionAPI) {
         },
     });
 
-    pi.on("session_start", async (_event, ctx) => {
+    pi.on("session_start", async (event, ctx) => {
         setSettingsContext(ctx);
         // Install the editor wrapper before loading mode files so startup renders use
         // the configured border color immediately instead of briefly showing Pi's
         // thinking-level border color.
         applyModeEditor(pi, ctx);
-        await handleSessionActivated(pi, ctx);
+        await handleSessionActivated(pi, ctx, event);
     });
 
     pi.on("model_select", async (event, ctx) => {

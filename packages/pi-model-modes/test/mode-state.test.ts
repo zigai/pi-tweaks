@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { applyModesPatch, computeModesPatch } from "../src/mode-state.ts";
+import {
+    applyModesPatch,
+    computeModesPatch,
+    ensureDefaultModeEntries,
+    findModeForModel,
+    shouldApplyDefaultModel,
+} from "../src/mode-state.ts";
 import type { ModesFile } from "../src/types.ts";
 
 function baseModesFile(): ModesFile {
@@ -62,12 +68,102 @@ test("computeModesPatch records additions, deletions, removals, and current mode
     });
 });
 
+test("computeModesPatch records changes to the persistent default model", () => {
+    const base = baseModesFile();
+    const next = baseModesFile();
+    next.defaultModel = {
+        provider: "openai-codex",
+        modelId: "gpt-5.6-luna",
+        thinkingLevel: "xhigh",
+    };
+
+    assert.deepEqual(computeModesPatch(base, next, false), {
+        defaultModel: next.defaultModel,
+    });
+
+    applyModesPatch(base, { defaultModel: next.defaultModel });
+    assert.deepEqual(base.defaultModel, next.defaultModel);
+});
+
 test("computeModesPatch can omit current mode so runtime-only switches are not written", () => {
     const base = baseModesFile();
     const next = baseModesFile();
     next.currentMode = "docs";
 
     assert.equal(computeModesPatch(base, next, false), null);
+});
+
+test("findModeForModel ignores thinking level when matching the active model", () => {
+    const modes = {
+        luna: {
+            provider: "openai-codex",
+            modelId: "gpt-5.6-luna",
+            thinkingLevel: "xhigh" as const,
+        },
+        terra: {
+            provider: "openai-codex",
+            modelId: "gpt-5.6-terra",
+        },
+        sol: {
+            provider: "openai-codex",
+            modelId: "gpt-5.6-sol",
+            thinkingLevel: "medium" as const,
+        },
+    };
+
+    assert.equal(findModeForModel(modes, "openai-codex", "gpt-5.6-sol"), "sol");
+});
+
+test("ensureDefaultModeEntries preserves an explicit mode order", () => {
+    const file: ModesFile = {
+        version: 1,
+        currentMode: "luna",
+        modes: {
+            luna: { provider: "openai-codex", modelId: "gpt-5.6-luna" },
+            terra: { provider: "openai-codex", modelId: "gpt-5.6-terra" },
+            sol: { provider: "openai-codex", modelId: "gpt-5.6-sol" },
+        },
+    };
+
+    ensureDefaultModeEntries(file, {
+        provider: "openai-codex",
+        modelId: "gpt-5.6-terra",
+        thinkingLevel: "xhigh",
+    });
+
+    assert.deepEqual(Object.keys(file.modes), ["luna", "terra", "sol"]);
+});
+
+test("shouldApplyDefaultModel recognizes Pi's initial fresh-session entries", () => {
+    assert.equal(
+        shouldApplyDefaultModel({ reason: "startup" }, [
+            { type: "model_change" },
+            { type: "thinking_level_change" },
+        ]),
+        true,
+    );
+    assert.equal(shouldApplyDefaultModel({ reason: "new" }, []), true);
+});
+
+test("shouldApplyDefaultModel preserves existing session model selections", () => {
+    assert.equal(
+        shouldApplyDefaultModel({ reason: "startup" }, [
+            { type: "model_change" },
+            { type: "thinking_level_change" },
+            { type: "message" },
+        ]),
+        false,
+    );
+    assert.equal(
+        shouldApplyDefaultModel({ reason: "startup" }, [
+            { type: "model_change" },
+            { type: "thinking_level_change" },
+            { type: "model_change" },
+            { type: "thinking_level_change" },
+        ]),
+        false,
+    );
+    assert.equal(shouldApplyDefaultModel({ reason: "resume" }, []), false);
 });
 
 test("applyModesPatch merges into the latest file without deleting unrelated modes", () => {

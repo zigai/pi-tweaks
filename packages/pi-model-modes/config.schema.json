@@ -8,6 +8,16 @@
     "$schema": { "type": "string" },
     "version": { "type": "number", "default": 1 },
     "currentMode": { "type": "string", "default": "default" },
+    "defaultModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "modelId"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "modelId": { "type": "string", "minLength": 1 },
+        "thinkingLevel": {}
+      }
+    },
     "modeUseThinkingBorderColors": { "type": "boolean", "default": false },
     "modeShowThinkingLevelStatus": { "type": "boolean", "default": false },
     "shortcuts": {

@@ -5,6 +5,7 @@ export const CUSTOM_MODE_NAME = "custom" as const;
 
 export const MODE_UI_CONFIGURE = "Configure modes…";
 export const MODE_UI_ADD = "Add mode…";
+export const MODE_UI_DEFAULT_MODEL = "Set default model…";
 export const MODE_UI_THINKING_COLORS_ON = "Thinking border colors: on";
 export const MODE_UI_THINKING_COLORS_OFF = "Thinking border colors: off";
 export const MODE_UI_THINKING_STATUS_ON = "Thinking level status: on";

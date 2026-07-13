@@ -16,8 +16,11 @@ pi install npm:@zigai/pi-model-modes
 - Adds `Ctrl+Shift+M` to select a mode.
 - Supports optional forward and backward keyboard shortcuts for cycling modes.
 - Colors the prompt editor border from the active mode, with an opt-in setting for thinking-derived border colors.
+- Applies an optional persistent default model to fresh sessions without changing it when the session model changes.
 
-Modes can store a provider, model, thinking level, and optional color. Mode cycling wraps from the last mode to the first and vice versa. No cycling shortcut is configured by default.
+Modes can store a provider, model, thinking level, and optional color. Their JSON object order is the exact cycle order; with configured modes, no implicit entries are added. Mode cycling matches the active provider and model, ignoring thinking level, and wraps from the last mode to the first and vice versa. No cycling shortcut is configured by default.
+
+Set the persistent default through `/mode` → `Configure modes…` → `Set default model…`, or edit `defaultModel` in the configuration file.
 
 ## Configuration
 
@@ -26,7 +29,10 @@ Configure global settings at `~/.pi/agent/pi-model-modes/config.json`.
 | Option                        | Type      | Default     | Description                                                                |
 | ----------------------------- | --------- | ----------- | -------------------------------------------------------------------------- |
 | `version`                     | `number`  | `1`         | Config format version.                                                     |
-| `currentMode`                 | `string`  | `"default"` | Mode selected at startup.                                                  |
+| `currentMode`                 | `string`  | `"default"` | Stored mode name used as the initial mode-state fallback.                  |
+| `defaultModel.provider`       | `string`  | —           | Provider for the model used by fresh sessions.                             |
+| `defaultModel.modelId`        | `string`  | —           | Model used by fresh sessions.                                              |
+| `defaultModel.thinkingLevel`  | `string`  | —           | Thinking level used with the fresh-session default model.                  |
 | `modeUseThinkingBorderColors` | `boolean` | `false`     | Uses thinking-derived border colors when a mode has no explicit color.     |
 | `modeShowThinkingLevelStatus` | `boolean` | `false`     | Shows Pi's transient thinking-level status message.                        |
 | `shortcuts.forward`           | `string`  | —           | Optional key for cycling to the next configured mode.                      |

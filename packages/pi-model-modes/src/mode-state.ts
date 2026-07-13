@@ -3,6 +3,7 @@ import {
     SettingsManager,
     type ExtensionAPI,
     type ExtensionContext,
+    type SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -20,6 +21,7 @@ import {
     MODE_UI_THINKING_COLORS_ON,
     MODE_UI_THINKING_STATUS_OFF,
     MODE_UI_THINKING_STATUS_ON,
+    MODE_UI_DEFAULT_MODEL,
     THINKING_UNSET_LABEL,
 } from "./constants.ts";
 import {
@@ -38,7 +40,14 @@ import {
     shouldShowThinkingLevelStatus,
     shouldUseThinkingBorderColors,
 } from "./settings.ts";
-import type { ModeRuntime, ModesFile, ModesPatch, ModeSpec, ModeSpecPatch } from "./types.ts";
+import type {
+    DefaultModelSpec,
+    ModeRuntime,
+    ModesFile,
+    ModesPatch,
+    ModeSpec,
+    ModeSpecPatch,
+} from "./types.ts";
 
 type ScopedModelItem = {
     model: Model<Api>;
@@ -102,12 +111,21 @@ const ModeSpecJsonSchema = Type.Object(
     },
     { additionalProperties: false },
 );
+const DefaultModelJsonSchema = Type.Object(
+    {
+        provider: Type.String({ minLength: 1 }),
+        modelId: Type.String({ minLength: 1 }),
+        thinkingLevel: Type.Optional(Type.Unknown()),
+    },
+    { additionalProperties: false },
+);
 
 const ModesFileJsonSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
         version: Type.Optional(Type.Number()),
         currentMode: Type.Optional(Type.String()),
+        defaultModel: Type.Optional(DefaultModelJsonSchema),
         modeUseThinkingBorderColors: Type.Optional(Type.Boolean()),
         modeShowThinkingLevelStatus: Type.Optional(Type.Boolean()),
         shortcuts: Type.Optional(
@@ -126,6 +144,7 @@ const ModesFileJsonSchema = Type.Object(
 const ConfigObjectSchema = ModesFileJsonSchema;
 
 type ModeSpecJson = Static<typeof ModeSpecJsonSchema>;
+type DefaultModelJson = Static<typeof DefaultModelJsonSchema>;
 type ModesFileJson = Static<typeof ModesFileJsonSchema>;
 
 function formatSchemaPath(instancePath: string): string {
@@ -177,16 +196,29 @@ function cloneModeSpec(spec: ModeSpec): ModeSpec {
     return cloned;
 }
 
+function cloneDefaultModelSpec(spec: DefaultModelSpec): DefaultModelSpec {
+    const cloned: DefaultModelSpec = {
+        provider: spec.provider,
+        modelId: spec.modelId,
+    };
+    if (spec.thinkingLevel !== undefined) cloned.thinkingLevel = spec.thinkingLevel;
+    return cloned;
+}
+
 function cloneModesFile(file: ModesFile): ModesFile {
     const modes: Record<string, ModeSpec> = {};
     for (const [name, spec] of Object.entries(file.modes)) {
         modes[name] = cloneModeSpec(spec);
     }
-    return {
+    const cloned: ModesFile = {
         version: file.version,
         currentMode: file.currentMode,
         modes,
     };
+    if (file.defaultModel !== undefined) {
+        cloned.defaultModel = cloneDefaultModelSpec(file.defaultModel);
+    }
+    return cloned;
 }
 
 function modeSpec(modes: Record<string, ModeSpec>, name: string): ModeSpec | undefined {
@@ -203,6 +235,20 @@ export function computeModesPatch(
 
     if (includeCurrentMode && base.currentMode !== next.currentMode) {
         patch.currentMode = next.currentMode;
+    }
+
+    if (base.defaultModel === undefined && next.defaultModel !== undefined) {
+        patch.defaultModel = cloneDefaultModelSpec(next.defaultModel);
+    } else if (base.defaultModel !== undefined && next.defaultModel === undefined) {
+        patch.defaultModel = null;
+    } else if (base.defaultModel !== undefined && next.defaultModel !== undefined) {
+        if (
+            base.defaultModel.provider !== next.defaultModel.provider ||
+            base.defaultModel.modelId !== next.defaultModel.modelId ||
+            base.defaultModel.thinkingLevel !== next.defaultModel.thinkingLevel
+        ) {
+            patch.defaultModel = cloneDefaultModelSpec(next.defaultModel);
+        }
     }
 
     const keys = new Set([...Object.keys(base.modes), ...Object.keys(next.modes)]);
@@ -243,13 +289,27 @@ export function computeModesPatch(
         patch.modes = modesPatch;
     }
 
-    if (patch.modes === undefined && patch.currentMode === undefined) return null;
+    if (
+        patch.modes === undefined &&
+        patch.currentMode === undefined &&
+        patch.defaultModel === undefined
+    ) {
+        return null;
+    }
     return patch;
 }
 
 export function applyModesPatch(target: ModesFile, patch: ModesPatch): void {
     if (patch.currentMode !== undefined) {
         target.currentMode = patch.currentMode;
+    }
+
+    if (patch.defaultModel !== undefined) {
+        if (patch.defaultModel === null) {
+            delete target.defaultModel;
+        } else {
+            target.defaultModel = cloneDefaultModelSpec(patch.defaultModel);
+        }
     }
 
     if (patch.modes === undefined) return;
@@ -341,16 +401,29 @@ function sanitizeModeSpec(spec: ModeSpecJson | undefined): ModeSpec {
     return sanitized;
 }
 
-function createDefaultModes(ctx: ExtensionContext, pi: ExtensionAPI): ModesFile {
-    const currentModel = ctx.model;
-    const currentThinking = pi.getThinkingLevel();
+function sanitizeDefaultModelSpec(
+    spec: DefaultModelJson | undefined,
+): DefaultModelSpec | undefined {
+    if (spec === undefined) return undefined;
 
-    const base: ModeSpec = {
-        provider: currentModel?.provider,
-        modelId: currentModel?.id,
-        thinkingLevel: currentThinking,
+    const sanitized: DefaultModelSpec = {
+        provider: spec.provider,
+        modelId: spec.modelId,
     };
+    const thinkingLevel = normalizeThinkingLevel(spec.thinkingLevel);
+    if (thinkingLevel !== undefined) sanitized.thinkingLevel = thinkingLevel;
+    return sanitized;
+}
 
+function getFallbackModeSpec(ctx: ExtensionContext, pi: ExtensionAPI): ModeSpec {
+    return {
+        provider: ctx.model?.provider,
+        modelId: ctx.model?.id,
+        thinkingLevel: pi.getThinkingLevel(),
+    };
+}
+
+function createDefaultModes(base: ModeSpec): ModesFile {
     return {
         version: 1,
         currentMode: "default",
@@ -361,15 +434,9 @@ function createDefaultModes(ctx: ExtensionContext, pi: ExtensionAPI): ModesFile 
     };
 }
 
-function ensureDefaultModeEntries(file: ModesFile, ctx: ExtensionContext, pi: ExtensionAPI): void {
-    for (const name of DEFAULT_MODE_ORDER) {
-        if (modeSpec(file.modes, name) === undefined) {
-            const defaults = createDefaultModes(ctx, pi);
-            const defaultSpec = modeSpec(defaults.modes, name);
-            if (defaultSpec !== undefined) {
-                file.modes[name] = cloneModeSpec(defaultSpec);
-            }
-        }
+export function ensureDefaultModeEntries(file: ModesFile, fallbackMode: ModeSpec): void {
+    if (Object.keys(file.modes).length === 0) {
+        file.modes = createDefaultModes(fallbackMode).modes;
     }
 
     if (file.currentMode === CUSTOM_MODE_NAME) {
@@ -398,6 +465,7 @@ async function loadModesFile(
     pi: ExtensionAPI,
     options?: { throwOnInvalid?: boolean },
 ): Promise<ModesFile> {
+    const fallbackMode = getFallbackModeSpec(ctx, pi);
     if (filePath === getGlobalModesPath()) {
         await scaffoldGlobalModesConfig();
     }
@@ -419,12 +487,14 @@ async function loadModesFile(
             currentMode,
             modes,
         };
-        ensureDefaultModeEntries(file, ctx, pi);
+        const defaultModel = sanitizeDefaultModelSpec(parsed.defaultModel);
+        if (defaultModel !== undefined) file.defaultModel = defaultModel;
+        ensureDefaultModeEntries(file, fallbackMode);
         return file;
     } catch (error: unknown) {
-        if (getLoadErrorCode(error) === "ENOENT") return createDefaultModes(ctx, pi);
+        if (getLoadErrorCode(error) === "ENOENT") return createDefaultModes(fallbackMode);
         if (options?.throwOnInvalid === true) throwLoadError(filePath, error);
-        return createDefaultModes(ctx, pi);
+        return createDefaultModes(fallbackMode);
     }
 }
 
@@ -443,12 +513,62 @@ async function saveModesFile(filePath: string, data: ModesFile): Promise<void> {
     const config = await readConfigObject(filePath);
     config.version = data.version;
     config.currentMode = data.currentMode;
+    if (data.defaultModel === undefined) {
+        delete config.defaultModel;
+    } else {
+        config.defaultModel = data.defaultModel;
+    }
     config.modes = data.modes;
     await atomicWriteUtf8(filePath, JSON.stringify(config, null, 2) + "\n");
 }
 
 function orderedModeNames(modes: Record<string, ModeSpec>): string[] {
     return Object.keys(modes).filter((name) => name !== CUSTOM_MODE_NAME);
+}
+
+function modeUsesModel(spec: ModeSpec | undefined, provider: string, modelId: string): boolean {
+    return spec?.provider === provider && spec.modelId === modelId;
+}
+
+export function findModeForModel(
+    modes: Record<string, ModeSpec>,
+    provider: string | undefined,
+    modelId: string | undefined,
+): string | null {
+    if (provider === undefined || modelId === undefined) return null;
+
+    for (const name of orderedModeNames(modes)) {
+        if (modeUsesModel(modes[name], provider, modelId)) return name;
+    }
+    return null;
+}
+
+type SessionEntryKind = {
+    type: string;
+};
+
+export function shouldApplyDefaultModel(
+    event: Pick<SessionStartEvent, "reason">,
+    entries: readonly SessionEntryKind[],
+): boolean {
+    if (event.reason === "new") return true;
+    if (event.reason !== "startup") return false;
+
+    let modelChangeCount = 0;
+    let thinkingLevelChangeCount = 0;
+    for (const entry of entries) {
+        if (entry.type === "model_change") {
+            modelChangeCount += 1;
+            continue;
+        }
+        if (entry.type === "thinking_level_change") {
+            thinkingLevelChangeCount += 1;
+            continue;
+        }
+        return false;
+    }
+
+    return modelChangeCount <= 1 && thinkingLevelChangeCount <= 1;
 }
 
 function formatModeLabel(mode: string): string {
@@ -474,14 +594,9 @@ async function resolveModesPath(ctx: ExtensionContext): Promise<string> {
     return getGlobalModesPath();
 }
 
-function inferModeFromSelection(
-    ctx: ExtensionContext,
-    pi: ExtensionAPI,
-    data: ModesFile,
-): string | null {
+function inferModeFromSelection(ctx: ExtensionContext, data: ModesFile): string | null {
     const provider = ctx.model?.provider;
     const modelId = ctx.model?.id;
-    const thinkingLevel = pi.getThinkingLevel();
     if (
         provider === undefined ||
         provider.length === 0 ||
@@ -490,43 +605,7 @@ function inferModeFromSelection(
     ) {
         return null;
     }
-
-    const names = orderedModeNames(data.modes);
-    const supportsThinking = ctx.model?.reasoning === true;
-
-    if (supportsThinking) {
-        for (const name of names) {
-            const spec = modeSpec(data.modes, name);
-            if (spec === undefined) continue;
-            if (spec.provider !== provider || spec.modelId !== modelId) continue;
-            if ((spec.thinkingLevel ?? undefined) !== thinkingLevel) continue;
-            return name;
-        }
-        return null;
-    }
-
-    const candidates: string[] = [];
-    for (const name of names) {
-        const spec = modeSpec(data.modes, name);
-        if (spec === undefined) continue;
-        if (spec.provider !== provider || spec.modelId !== modelId) continue;
-        candidates.push(name);
-    }
-    if (candidates.length === 0) return null;
-
-    for (const name of candidates) {
-        const spec = modeSpec(data.modes, name);
-        if (spec === undefined) continue;
-        if ((spec.thinkingLevel ?? "off") === thinkingLevel) return name;
-    }
-
-    for (const name of candidates) {
-        const spec = modeSpec(data.modes, name);
-        if (spec === undefined) continue;
-        if (spec.thinkingLevel === undefined) return name;
-    }
-
-    return candidates[0] ?? null;
+    return findModeForModel(data.modes, provider, modelId);
 }
 
 const runtime: ModeRuntime = {
@@ -590,7 +669,7 @@ async function ensureRuntime(pi: ExtensionAPI, ctx: ExtensionContext): Promise<v
         runtime.fileMtimeMs = mtimeMs;
 
         const loaded = await loadModesFile(filePath, ctx, pi);
-        ensureDefaultModeEntries(loaded, ctx, pi);
+        ensureDefaultModeEntries(loaded, getFallbackModeSpec(ctx, pi));
         runtime.data = loaded;
         runtime.baseline = cloneModesFile(runtime.data);
 
@@ -621,7 +700,7 @@ async function persistRuntime(pi: ExtensionAPI, ctx: ExtensionContext): Promise<
         await withFileLock(runtime.filePath, async () => {
             const latest = await loadModesFile(runtime.filePath, ctx, pi, { throwOnInvalid: true });
             applyModesPatch(latest, patch);
-            ensureDefaultModeEntries(latest, ctx, pi);
+            ensureDefaultModeEntries(latest, getFallbackModeSpec(ctx, pi));
             await saveModesFile(runtime.filePath, latest);
 
             runtime.data = latest;
@@ -642,6 +721,42 @@ function getCurrentSelectionSpec(pi: ExtensionAPI): ModeSpec {
         modelId: lastObservedModel.modelId,
         thinkingLevel: pi.getThinkingLevel(),
     };
+}
+
+async function applyConfiguredDefaultModel(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+    const spec = runtime.data.defaultModel;
+    if (spec === undefined) return;
+
+    const model = ctx.modelRegistry.find(spec.provider, spec.modelId);
+    if (model === undefined) {
+        if (ctx.hasUI) {
+            ctx.ui.notify(
+                `Default model references unknown model ${spec.provider}/${spec.modelId}`,
+                "warning",
+            );
+        }
+        return;
+    }
+
+    runtime.applying = true;
+    try {
+        const modelApplied = await pi.setModel(model);
+        if (!modelApplied) {
+            if (ctx.hasUI) {
+                ctx.ui.notify(
+                    `No API key available for ${spec.provider}/${spec.modelId}`,
+                    "warning",
+                );
+            }
+            return;
+        }
+
+        if (spec.thinkingLevel !== undefined) {
+            pi.setThinkingLevel(spec.thinkingLevel);
+        }
+    } finally {
+        runtime.applying = false;
+    }
 }
 
 async function storeSelectionIntoMode(
@@ -824,6 +939,34 @@ async function pickModelForModeUI(
     );
 }
 
+async function setDefaultModelUI(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+    if (!ctx.hasUI) return;
+
+    await ensureRuntime(pi, ctx);
+    const currentDefault = runtime.data.defaultModel;
+    const currentSpec: ModeSpec = currentDefault ?? {
+        provider: ctx.model?.provider,
+        modelId: ctx.model?.id,
+        thinkingLevel: pi.getThinkingLevel(),
+    };
+    const selectedModel = await pickModelForModeUI(ctx, currentSpec);
+    if (selectedModel === undefined) return;
+
+    const currentThinkingLevel = currentDefault?.thinkingLevel ?? pi.getThinkingLevel();
+    const thinkingLevel = await pickThinkingLevelForModeUI(ctx, currentThinkingLevel);
+    if (thinkingLevel === undefined) return;
+
+    const defaultModel: DefaultModelSpec = {
+        provider: selectedModel.provider,
+        modelId: selectedModel.modelId,
+    };
+    if (thinkingLevel !== null) defaultModel.thinkingLevel = thinkingLevel;
+
+    runtime.data.defaultModel = defaultModel;
+    await persistRuntime(pi, ctx);
+    ctx.ui.notify(`Default model set to ${defaultModel.provider}/${defaultModel.modelId}`, "info");
+}
+
 function renameModesRecord(
     modes: Record<string, ModeSpec>,
     oldName: string,
@@ -963,7 +1106,7 @@ async function editModeUI(pi: ExtensionAPI, ctx: ExtensionContext, mode: string)
                 customOverlay = getCurrentSelectionSpec(pi);
             }
             if (runtime.lastRealMode === modeName) {
-                runtime.lastRealMode = "default";
+                runtime.lastRealMode = orderedModeNames(runtime.data.modes)[0] ?? "";
             }
             requestEditorRender?.();
             ctx.ui.notify(`Deleted mode "${modeName}"`, "info");
@@ -1019,6 +1162,7 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
         const choice = await ctx.ui.select("Configure modes", [
             ...names,
             MODE_UI_ADD,
+            MODE_UI_DEFAULT_MODEL,
             thinkingColorsChoice,
             thinkingStatusChoice,
             MODE_UI_BACK,
@@ -1030,6 +1174,11 @@ async function configureModesUI(pi: ExtensionAPI, ctx: ExtensionContext): Promis
             if (created !== undefined && created.length > 0) {
                 await editModeUI(pi, ctx, created);
             }
+            continue;
+        }
+
+        if (choice === MODE_UI_DEFAULT_MODEL) {
+            await setDefaultModelUI(pi, ctx);
             continue;
         }
 
@@ -1135,9 +1284,11 @@ export async function cycleMode(
     const names = orderedModeNames(runtime.data.modes);
     if (names.length === 0) return;
 
-    let baseMode = runtime.currentMode;
+    let baseMode =
+        findModeForModel(runtime.data.modes, ctx.model?.provider, ctx.model?.id) ??
+        runtime.currentMode;
     if (runtime.currentMode === CUSTOM_MODE_NAME) {
-        baseMode = runtime.lastRealMode;
+        if (baseMode === CUSTOM_MODE_NAME) baseMode = runtime.lastRealMode;
     }
     const fallbackMode = names[0];
     if (fallbackMode === undefined) return;
@@ -1194,12 +1345,17 @@ export async function handleModeCommand(
 export async function handleSessionActivated(
     pi: ExtensionAPI,
     ctx: ExtensionContext,
+    event: SessionStartEvent,
 ): Promise<void> {
-    lastObservedModel = { provider: ctx.model?.provider, modelId: ctx.model?.id };
     await ensureRuntime(pi, ctx);
+    if (shouldApplyDefaultModel(event, ctx.sessionManager.getEntries())) {
+        await applyConfiguredDefaultModel(pi, ctx);
+    }
+
+    lastObservedModel = { provider: ctx.model?.provider, modelId: ctx.model?.id };
     customOverlay = null;
 
-    const inferred = inferModeFromSelection(ctx, pi, runtime.data);
+    const inferred = inferModeFromSelection(ctx, runtime.data);
     if (inferred !== null && inferred.length > 0) {
         runtime.currentMode = inferred;
         runtime.lastRealMode = inferred;

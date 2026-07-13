@@ -15,9 +15,16 @@ export type ModeSpec = {
     color?: ThemeColor;
 };
 
+export type DefaultModelSpec = {
+    provider: string;
+    modelId: string;
+    thinkingLevel?: ThinkingLevel;
+};
+
 export type ModesFile = {
     version: 1;
     currentMode: ModeName;
+    defaultModel?: DefaultModelSpec;
     modes: Record<ModeName, ModeSpec>;
 };
 
@@ -30,6 +37,7 @@ export type ModeSpecPatch = {
 
 export type ModesPatch = {
     currentMode?: ModeName;
+    defaultModel?: DefaultModelSpec | null;
     modes?: Record<ModeName, ModeSpecPatch | null>;
 };
 

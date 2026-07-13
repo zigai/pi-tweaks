@@ -35,6 +35,14 @@ const ModeSpecJsonSchema = Type.Object(
     },
     { additionalProperties: false },
 );
+const DefaultModelJsonSchema = Type.Object(
+    {
+        provider: Type.String({ minLength: 1 }),
+        modelId: Type.String({ minLength: 1 }),
+        thinkingLevel: Type.Optional(Type.Unknown()),
+    },
+    { additionalProperties: false },
+);
 const ModeShortcutsJsonSchema = Type.Object(
     {
         forward: Type.Optional(Type.String({ minLength: 1 })),
@@ -49,6 +57,7 @@ const SettingsObjectSchema = Type.Object(
         $schema: Type.Optional(Type.String()),
         version: Type.Optional(Type.Number()),
         currentMode: Type.Optional(Type.String()),
+        defaultModel: Type.Optional(DefaultModelJsonSchema),
         [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
         [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
         shortcuts: Type.Optional(ModeShortcutsJsonSchema),
