@@ -1,12 +1,19 @@
-import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, SessionEntry, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component, type TUI } from "@earendil-works/pi-tui";
 
 import { WIDGET_KEY } from "./constants.ts";
 import { getStatusBarSnapshot } from "./status-bar-api.ts";
 
+export const WORKED_FOR_STATE_ENTRY = "pi-status-bar.worked-for";
+
 let workedForWidgetSignature: string | undefined;
 
 type StatusBarWidgetFactory = (tui: TUI, theme: Theme) => Component & { dispose?(): void };
+
+export type WorkedForState = {
+    readonly durationMs: number;
+    readonly tokensPerSecond?: number;
+};
 
 export type WorkedForWidgetContext = Pick<ExtensionContext, "hasUI"> & {
     ui: {
@@ -16,6 +23,49 @@ export type WorkedForWidgetContext = Pick<ExtensionContext, "hasUI"> & {
 
 export function resetWorkedForWidgetCache(): void {
     workedForWidgetSignature = undefined;
+}
+
+function parseWorkedForState(data: unknown): WorkedForState | undefined {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) {
+        return undefined;
+    }
+
+    const durationMs: unknown = Reflect.get(data, "durationMs");
+    if (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 0) {
+        return undefined;
+    }
+
+    const tokensPerSecond: unknown = Reflect.get(data, "tokensPerSecond");
+    if (
+        tokensPerSecond !== undefined &&
+        (typeof tokensPerSecond !== "number" ||
+            !Number.isFinite(tokensPerSecond) ||
+            tokensPerSecond <= 0)
+    ) {
+        return undefined;
+    }
+
+    if (tokensPerSecond === undefined) {
+        return { durationMs };
+    }
+    return { durationMs, tokensPerSecond };
+}
+
+export function getWorkedForStateFromBranch(ctx: {
+    readonly sessionManager: { getBranch(): readonly SessionEntry[] };
+}): WorkedForState | undefined {
+    let state: WorkedForState | undefined;
+    for (const entry of ctx.sessionManager.getBranch()) {
+        if (entry.type !== "custom" || entry.customType !== WORKED_FOR_STATE_ENTRY) {
+            continue;
+        }
+
+        const parsed = parseWorkedForState(entry.data);
+        if (parsed !== undefined) {
+            state = parsed;
+        }
+    }
+    return state;
 }
 
 export function clearWorkedForWidget(ctx: WorkedForWidgetContext): void {

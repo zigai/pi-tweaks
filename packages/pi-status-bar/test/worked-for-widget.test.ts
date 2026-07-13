@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "vitest";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { WIDGET_KEY } from "../src/constants.ts";
 import { configureStatusBar, resetStatusBarStateForTests } from "../src/status-bar-api.ts";
 import {
     clearWorkedForWidget,
     formatDuration,
+    getWorkedForStateFromBranch,
     resetWorkedForWidgetCache,
     setWorkedForWidget,
+    WORKED_FOR_STATE_ENTRY,
     type WorkedForWidgetContext,
 } from "../src/worked-for-widget.ts";
 
@@ -34,6 +37,17 @@ function getWidgetFactory(value: unknown): WidgetFactory {
     // SAFETY: The status-widget integration seam stores only callable factories;
     // this test invokes the factory only with the narrow TUI/theme/data shape it verifies.
     return value as WidgetFactory;
+}
+
+function customEntry(id: string, data: unknown): SessionEntry {
+    return {
+        type: "custom",
+        id,
+        parentId: null,
+        timestamp: "2026-07-13T00:00:00.000Z",
+        customType: WORKED_FOR_STATE_ENTRY,
+        data,
+    };
 }
 
 function widgetContext(): {
@@ -73,6 +87,37 @@ test("formatDuration rounds to seconds and uses readable minute/hour boundaries"
     assert.equal(formatDuration(1_400), "1s");
     assert.equal(formatDuration(65_000), "1m 05s");
     assert.equal(formatDuration(3_660_000), "1h 01m");
+});
+
+test("getWorkedForStateFromBranch restores the latest valid persisted run", () => {
+    const entries: SessionEntry[] = [
+        customEntry("first", { durationMs: 1_400, tokensPerSecond: 12 }),
+        customEntry("second", { durationMs: 65_000 }),
+    ];
+    const ctx = {
+        sessionManager: {
+            getBranch: () => entries,
+        },
+    } satisfies Parameters<typeof getWorkedForStateFromBranch>[0];
+
+    assert.deepEqual(getWorkedForStateFromBranch(ctx), { durationMs: 65_000 });
+});
+
+test("getWorkedForStateFromBranch ignores malformed persisted data", () => {
+    const entries: SessionEntry[] = [
+        customEntry("valid", { durationMs: 1_400, tokensPerSecond: 12 }),
+        customEntry("invalid", { durationMs: -1 }),
+    ];
+    const ctx = {
+        sessionManager: {
+            getBranch: () => entries,
+        },
+    } satisfies Parameters<typeof getWorkedForStateFromBranch>[0];
+
+    assert.deepEqual(getWorkedForStateFromBranch(ctx), {
+        durationMs: 1_400,
+        tokensPerSecond: 12,
+    });
 });
 
 test("setWorkedForWidget skips unchanged widget updates", () => {

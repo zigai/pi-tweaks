@@ -13,7 +13,15 @@ import {
     subscribeStatusBarUpdates,
     type StatusBarSegmentSnapshot,
 } from "./status-bar-api.ts";
-import { clearWorkedForWidget, formatDuration, setWorkedForWidget } from "./worked-for-widget.ts";
+import {
+    clearWorkedForWidget,
+    formatDuration,
+    getWorkedForStateFromBranch,
+    resetWorkedForWidgetCache,
+    setWorkedForWidget,
+    WORKED_FOR_STATE_ENTRY,
+    type WorkedForState,
+} from "./worked-for-widget.ts";
 
 const LOADER_TIME_PATCH_KEY = Symbol.for("zigai.pi-status-bar.loader-time-patched");
 const LOADER_TIME_PATCH_VERSION_KEY = Symbol.for("zigai.pi-status-bar.loader-time-patch-version");
@@ -472,6 +480,18 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
     let idleTokensPerSecond: number | undefined;
     let agentRunning = false;
 
+    function restoreWorkedForState(ctx: ExtensionContext): void {
+        const state = getWorkedForStateFromBranch(ctx);
+        if (state === undefined) {
+            idleWorkedForText = undefined;
+            idleTokensPerSecond = undefined;
+            return;
+        }
+
+        idleWorkedForText = formatDuration(state.durationMs);
+        idleTokensPerSecond = state.tokensPerSecond;
+    }
+
     subscribeStatusBarUpdates(() => {
         if (agentRunning) return;
         if (idleWidgetContext === undefined) return;
@@ -482,9 +502,16 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
         applyStatusBarResolvedConfig(ctx);
         agentRunning = false;
         idleWidgetContext = ctx;
-        idleWorkedForText = undefined;
-        idleTokensPerSecond = undefined;
-        setWorkedForWidget(ctx, undefined);
+        resetWorkedForWidgetCache();
+        restoreWorkedForState(ctx);
+        setWorkedForWidget(ctx, idleWorkedForText, idleTokensPerSecond);
+    });
+
+    pi.on("session_tree", async (_event, ctx) => {
+        if (agentRunning) return;
+        idleWidgetContext = ctx;
+        restoreWorkedForState(ctx);
+        setWorkedForWidget(ctx, idleWorkedForText, idleTokensPerSecond);
     });
 
     pi.on("agent_start", async (_event, ctx) => {
@@ -539,7 +566,7 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
 
     pi.on("agent_end", async (_event, ctx) => {
         if (agentStartedAt === undefined) return;
-        const duration = Date.now() - agentStartedAt;
+        const duration = Math.max(0, Date.now() - agentStartedAt);
         const elapsedSeconds = totalStreamMs / 1000;
         let tokensPerSecond: number | undefined;
         if (totalOutputTokens > 0 && elapsedSeconds > 0) {
@@ -550,6 +577,11 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
         idleWidgetContext = ctx;
         idleWorkedForText = formatDuration(duration);
         idleTokensPerSecond = tokensPerSecond;
+        const workedForState: WorkedForState = {
+            durationMs: duration,
+            tokensPerSecond,
+        };
+        pi.appendEntry(WORKED_FOR_STATE_ENTRY, workedForState);
         setWorkedForWidget(ctx, idleWorkedForText, idleTokensPerSecond);
     });
 
