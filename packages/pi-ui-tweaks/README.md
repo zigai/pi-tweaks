@@ -33,6 +33,7 @@ Configure global settings at `~/.pi/agent/pi-ui-tweaks/config.json`.
 | `pasteCollapseExpandKey`               | `string \| null` | `null`  | Extra Pi key id for expanding the marker under cursor. |
 | `pasteCollapseLineThreshold`           | `number`         | `10`    | Collapses pastes with more than this many lines.       |
 | `pasteCollapseUseToolExpandKey`        | `boolean`        | `true`  | Lets Pi's expand key expand paste markers.             |
+| `preserveCompactionHistory`            | `boolean`        | `false` | Keeps the live terminal transcript after compaction.   |
 | `restoreContentAfterAutocompleteClose` | `boolean`        | `true`  | Redraws content after above-input autocomplete.        |
 | `selectedOptionPrefix`                 | `string`         | `"→ "`  | Sets the selected-row marker in selector UIs.          |
 
@@ -56,6 +57,7 @@ Configure global settings at `~/.pi/agent/pi-ui-tweaks/config.json`.
   "pasteCollapseExpandKey": null,
   "pasteCollapseLineThreshold": 10,
   "pasteCollapseUseToolExpandKey": true,
+  "preserveCompactionHistory": false,
   "restoreContentAfterAutocompleteClose": true,
   "selectedOptionPrefix": "→ "
 }

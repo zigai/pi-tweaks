@@ -27,6 +27,7 @@ export type UiTweaksPatchState = {
     pasteCollapseCharThreshold: number;
     pasteCollapseExpandKey: string | null;
     pasteCollapseUseToolExpandKey: boolean;
+    preserveCompactionHistory: boolean;
 };
 
 const DEFAULT_UI_TWEAKS_PATCH_STATE: UiTweaksPatchState = {
@@ -48,6 +49,7 @@ const DEFAULT_UI_TWEAKS_PATCH_STATE: UiTweaksPatchState = {
     pasteCollapseCharThreshold: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
     pasteCollapseExpandKey: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
     pasteCollapseUseToolExpandKey: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+    preserveCompactionHistory: false,
 };
 
 function isUiTweaksPatchState(value: unknown): value is UiTweaksPatchState {
@@ -74,7 +76,8 @@ function isUiTweaksPatchState(value: unknown): value is UiTweaksPatchState {
         typeof Reflect.get(value, "pasteCollapseCharThreshold") === "number" &&
         (typeof Reflect.get(value, "pasteCollapseExpandKey") === "string" ||
             Reflect.get(value, "pasteCollapseExpandKey") === null) &&
-        typeof Reflect.get(value, "pasteCollapseUseToolExpandKey") === "boolean"
+        typeof Reflect.get(value, "pasteCollapseUseToolExpandKey") === "boolean" &&
+        typeof Reflect.get(value, "preserveCompactionHistory") === "boolean"
     );
 }
 

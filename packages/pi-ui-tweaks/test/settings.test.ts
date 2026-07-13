@@ -38,6 +38,7 @@ test("loadUiTweaksConfig scaffolds missing global config and schema", async () =
             pasteCollapseExpandKey: null,
             pasteCollapseLineThreshold: 10,
             pasteCollapseUseToolExpandKey: true,
+            preserveCompactionHistory: false,
             restoreContentAfterAutocompleteClose: true,
             selectedOptionPrefix: "→ ",
         });
@@ -81,6 +82,7 @@ test("ui tweaks settings default to enabled tweaks", () => {
     assert.equal(loaded.config.pasteCollapseExpandKey, null);
     assert.equal(loaded.config.pasteCollapseLineThreshold, 10);
     assert.equal(loaded.config.pasteCollapseUseToolExpandKey, true);
+    assert.equal(loaded.config.preserveCompactionHistory, false);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, true);
     assert.equal(loaded.config.selectedOptionPrefix, "→ ");
     assert.deepEqual(loaded.errors, []);
@@ -107,6 +109,7 @@ test("ui tweaks settings merge sources in precedence order", () => {
                 pasteCollapseExpandKey: "ctrl+shift+o",
                 pasteCollapseLineThreshold: 20,
                 pasteCollapseUseToolExpandKey: false,
+                preserveCompactionHistory: false,
                 restoreContentAfterAutocompleteClose: false,
                 selectedOptionPrefix: "❯ ",
             },
@@ -128,6 +131,7 @@ test("ui tweaks settings merge sources in precedence order", () => {
                 pasteCollapseExpandKey: null,
                 pasteCollapseLineThreshold: 5,
                 pasteCollapseUseToolExpandKey: true,
+                preserveCompactionHistory: true,
                 restoreContentAfterAutocompleteClose: true,
                 selectedOptionPrefix: "▌",
             },
@@ -150,6 +154,7 @@ test("ui tweaks settings merge sources in precedence order", () => {
     assert.equal(loaded.config.pasteCollapseExpandKey, null);
     assert.equal(loaded.config.pasteCollapseLineThreshold, 5);
     assert.equal(loaded.config.pasteCollapseUseToolExpandKey, true);
+    assert.equal(loaded.config.preserveCompactionHistory, true);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, true);
     assert.equal(loaded.config.selectedOptionPrefix, "▌");
 });
@@ -183,6 +188,7 @@ test("ui tweaks enabled false disables every tweak", () => {
     assert.equal(loaded.config.pasteCollapseExpandKey, null);
     assert.equal(loaded.config.pasteCollapseLineThreshold, 10);
     assert.equal(loaded.config.pasteCollapseUseToolExpandKey, false);
+    assert.equal(loaded.config.preserveCompactionHistory, false);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, false);
     assert.equal(loaded.config.selectedOptionPrefix, "→ ");
 });

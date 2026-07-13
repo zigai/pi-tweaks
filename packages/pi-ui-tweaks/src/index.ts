@@ -31,6 +31,10 @@ import {
     installPasteCollapsePatch,
     setPasteCollapseSettings,
 } from "./paste-collapse.ts";
+import {
+    installPreserveCompactionHistoryPatch,
+    setPreserveCompactionHistory,
+} from "./preserve-compaction-history.ts";
 import { installRenderTracePatch } from "./render-trace.ts";
 import {
     installSelectedOptionPrefixSelectListPatch,
@@ -75,6 +79,7 @@ function applyUiTweaksConfig(ctx: ExtensionContext): void {
         pasteCollapseLineThreshold: loaded.config.pasteCollapseLineThreshold,
         pasteCollapseUseToolExpandKey: loaded.config.pasteCollapseUseToolExpandKey,
     });
+    setPreserveCompactionHistory(loaded.config.preserveCompactionHistory);
     setRestoreContentAfterAutocompleteClose(loaded.config.restoreContentAfterAutocompleteClose);
     setSelectedOptionPrefix(loaded.config.selectedOptionPrefix);
     reportConfigErrors(ctx, loaded);
@@ -92,6 +97,7 @@ export default function uiTweaksExtension(pi: ExtensionAPI): void {
     void installModelSelectorProviderBadgePatch();
     installModelStatusPatch();
     installPasteCollapsePatch();
+    installPreserveCompactionHistoryPatch();
     installSelectedOptionPrefixSelectListPatch();
     installSlashCommandSourcePatch();
     void installNeutralBorderColorPatch();

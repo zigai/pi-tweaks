@@ -33,6 +33,7 @@ export type UiTweaksConfig = {
     readonly pasteCollapseExpandKey: string | null;
     readonly pasteCollapseLineThreshold: number;
     readonly pasteCollapseUseToolExpandKey: boolean;
+    readonly preserveCompactionHistory: boolean;
     readonly restoreContentAfterAutocompleteClose: boolean;
     readonly selectedOptionPrefix: string;
 };
@@ -66,6 +67,7 @@ type UiTweaksSettings = {
     pasteCollapseExpandKey?: string | null;
     pasteCollapseLineThreshold?: number;
     pasteCollapseUseToolExpandKey?: boolean;
+    preserveCompactionHistory?: boolean;
     restoreContentAfterAutocompleteClose?: boolean;
     selectedOptionPrefix?: string;
 };
@@ -98,6 +100,7 @@ const UiTweaksConfigSchema = Type.Object(
         pasteCollapseExpandKey: Type.Optional(OptionalPasteCollapseExpandKeySchema),
         pasteCollapseLineThreshold: Type.Optional(Type.Integer({ minimum: 0 })),
         pasteCollapseUseToolExpandKey: Type.Optional(Type.Boolean()),
+        preserveCompactionHistory: Type.Optional(Type.Boolean()),
         restoreContentAfterAutocompleteClose: Type.Optional(Type.Boolean()),
         selectedOptionPrefix: Type.Optional(Type.String({ minLength: 1 })),
     },
@@ -123,6 +126,7 @@ const DEFAULT_UI_TWEAKS_CONFIG: UiTweaksConfig = {
     pasteCollapseExpandKey: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
     pasteCollapseLineThreshold: DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
     pasteCollapseUseToolExpandKey: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+    preserveCompactionHistory: false,
     restoreContentAfterAutocompleteClose: true,
     selectedOptionPrefix: "→ ",
 };
@@ -196,6 +200,7 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
             pasteCollapseExpandKey: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseExpandKey,
             pasteCollapseLineThreshold: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseLineThreshold,
             pasteCollapseUseToolExpandKey: false,
+            preserveCompactionHistory: false,
             restoreContentAfterAutocompleteClose: false,
             selectedOptionPrefix: DEFAULT_UI_TWEAKS_CONFIG.selectedOptionPrefix,
         };
@@ -239,6 +244,9 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
         pasteCollapseUseToolExpandKey:
             settings.pasteCollapseUseToolExpandKey ??
             DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseUseToolExpandKey,
+        preserveCompactionHistory:
+            settings.preserveCompactionHistory ??
+            DEFAULT_UI_TWEAKS_CONFIG.preserveCompactionHistory,
         restoreContentAfterAutocompleteClose:
             settings.restoreContentAfterAutocompleteClose ??
             DEFAULT_UI_TWEAKS_CONFIG.restoreContentAfterAutocompleteClose,

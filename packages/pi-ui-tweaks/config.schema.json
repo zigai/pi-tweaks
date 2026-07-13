@@ -33,6 +33,7 @@
     },
     "pasteCollapseLineThreshold": { "type": "integer", "minimum": 0, "default": 10 },
     "pasteCollapseUseToolExpandKey": { "type": "boolean", "default": true },
+    "preserveCompactionHistory": { "type": "boolean", "default": false },
     "restoreContentAfterAutocompleteClose": { "type": "boolean", "default": true },
     "selectedOptionPrefix": { "type": "string", "minLength": 1, "default": "→ " }
   }
