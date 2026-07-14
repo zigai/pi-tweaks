@@ -10,15 +10,13 @@ Guidance for agents working in this repository.
 
 ## Commands
 
-Run these from the repo root before handing off code changes:
+Run `just setup` after cloning to install dependencies and Git hooks and verify the repository. Before handing off later changes, run:
 
 ```sh
-npm run format:check
-npm run lint
-npm run typecheck
+npm run check
 ```
 
-`npm run check` runs the same three gates in CI order. There is currently no automated test suite; do not claim test coverage beyond the commands above unless you add and run targeted tests.
+The check runs generated-settings validation, formatting, lint, strict TypeScript checks, and the Vitest suite in CI order. Keep pre-commit enabled; its first hook rejects stale schemas or generated README settings documentation.
 
 ## Style and code conventions
 
