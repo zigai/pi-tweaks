@@ -41,7 +41,7 @@
     "prepack": "node ../../scripts/prepare-settings-bundle.ts"
   },
   "dependencies": {
-    "@zigai/pi-extension-settings": "0.2.7",
+    "@zigai/pi-extension-settings": "0.2.8",
     "typebox": "^1.1.38"
   },
   "peerDependencies": {
