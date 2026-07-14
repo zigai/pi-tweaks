@@ -43,7 +43,7 @@
     "@earendil-works/pi-coding-agent": "^0.79.0",
     "@earendil-works/pi-tui": "^0.79.0",
     "@types/node": "^24.10.1",
-    "@zigai/pi-extension-settings": "file:vendor/zigai-pi-extension-settings-0.2.12.tgz",
+    "@zigai/pi-extension-settings": "file:vendor/zigai-pi-extension-settings-0.3.0.tgz",
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0",
     "oxlint-tsgolint": "^0.23.0",

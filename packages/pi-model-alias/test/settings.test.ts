@@ -107,31 +107,6 @@ test("loadModelAliasSettings parses and trims valid aliases", async () => {
     assert.equal(loaded.stableProviderColumn, false);
 });
 
-test("loadModelAliasSettings migrates and selects a trusted legacy project config", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "pi-model-alias-project-"));
-    try {
-        const legacyPath = join(cwd, ".pi", "pi-model-alias", "settings.json");
-        await mkdir(join(cwd, ".pi", "pi-model-alias"), { recursive: true });
-        await writeFile(
-            legacyPath,
-            JSON.stringify({
-                aliases: [{ provider: "openai", model: "gpt-5", alias: "project" }],
-            }),
-            "utf8",
-        );
-        const state = runtimeState();
-        state.configCwd = cwd;
-        state.projectTrusted = true;
-
-        const loaded = settings.loadModelAliasSettings(state);
-
-        assert.equal(loaded.path, join(cwd, ".pi", "extension-settings", "pi-model-alias.json"));
-        assert.equal(loaded.aliases[0]?.alias, "project");
-    } finally {
-        await rm(cwd, { recursive: true, force: true });
-    }
-});
-
 test("loadModelAliasSettings rejects duplicate aliases without throwing", async () => {
     await writeFile(
         configPath,

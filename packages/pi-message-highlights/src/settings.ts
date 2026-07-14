@@ -1,5 +1,5 @@
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
@@ -243,7 +243,7 @@ export function loadMessageHighlightsSettings(
     cwd: string,
     projectTrusted: boolean,
 ): LoadedMessageHighlightsConfig {
-    const settings = loadPiExtensionSettingsSync(
+    const settings = loadPiExtensionSettings(
         messageHighlightsSettingsDefinition,
         { cwd, isProjectTrusted: () => projectTrusted },
         {

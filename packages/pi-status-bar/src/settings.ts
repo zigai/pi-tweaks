@@ -1,5 +1,5 @@
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -801,7 +801,7 @@ export function resolveStatusBarResolvedConfig(
 
 /** Load status-bar settings from global and trusted-project extension settings. */
 export function loadStatusBarSettings(cwd: string, projectTrusted: boolean): LoadedStatusBarConfig {
-    const settings = loadPiExtensionSettingsSync(
+    const settings = loadPiExtensionSettings(
         statusBarSettingsDefinition,
         { cwd, isProjectTrusted: () => projectTrusted },
         {

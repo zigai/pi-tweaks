@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
@@ -81,96 +81,6 @@ test("mode cycle shortcuts are optional and read from global config", async () =
             forward: "ctrl+space",
             backward: "shift+ctrl+space",
         });
-    } finally {
-        await rm(agentDir, { recursive: true, force: true });
-        if (originalAgentDir === undefined) {
-            delete process.env.PI_CODING_AGENT_DIR;
-        } else {
-            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
-        }
-    }
-});
-
-test("scaffoldGlobalModesConfig copies legacy global config when new config is missing", async () => {
-    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
-    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
-    process.env.PI_CODING_AGENT_DIR = agentDir;
-
-    try {
-        const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
-        const legacyConfigPath = path.join(agentDir, "pi-mode", "config.json");
-        const legacyConfig = {
-            version: 1,
-            currentMode: "deep",
-            modes: {
-                deep: {
-                    provider: "openai",
-                    modelId: "gpt-5",
-                    thinkingLevel: "high",
-                },
-            },
-        };
-
-        await mkdir(path.dirname(legacyConfigPath), { recursive: true });
-        await writeFile(legacyConfigPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, "utf8");
-
-        await scaffoldGlobalModesConfig();
-
-        assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-            $schema: "./schemas/pi-model-modes.schema.json",
-            ...legacyConfig,
-        });
-        assert.deepEqual(JSON.parse(await readFile(legacyConfigPath, "utf8")), legacyConfig);
-    } finally {
-        await rm(agentDir, { recursive: true, force: true });
-        if (originalAgentDir === undefined) {
-            delete process.env.PI_CODING_AGENT_DIR;
-        } else {
-            process.env.PI_CODING_AGENT_DIR = originalAgentDir;
-        }
-    }
-});
-
-test("setting writes copy legacy global config before updating new config", async () => {
-    const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
-    const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
-    process.env.PI_CODING_AGENT_DIR = agentDir;
-
-    try {
-        const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
-        const legacyConfigPath = path.join(agentDir, "pi-mode", "config.json");
-        const legacyConfig = {
-            version: 1,
-            currentMode: "default",
-            modes: {
-                default: {
-                    provider: "openai",
-                    modelId: "gpt-5",
-                },
-            },
-        };
-
-        await mkdir(path.dirname(legacyConfigPath), { recursive: true });
-        await writeFile(legacyConfigPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, "utf8");
-
-        setUseThinkingBorderColors(true);
-
-        const migratedConfig: unknown = JSON.parse(await readFile(configPath, "utf8"));
-        if (typeof migratedConfig !== "object" || migratedConfig === null) {
-            assert.fail("expected migrated configuration object");
-        }
-        const modeUseThinkingBorderColors: unknown = Object.getOwnPropertyDescriptor(
-            migratedConfig,
-            "modeUseThinkingBorderColors",
-        )?.value as unknown;
-        const currentMode: unknown = Object.getOwnPropertyDescriptor(migratedConfig, "currentMode")
-            ?.value as unknown;
-        const modes: unknown = Object.getOwnPropertyDescriptor(migratedConfig, "modes")
-            ?.value as unknown;
-        assert.equal(modeUseThinkingBorderColors, true);
-        assert.equal(currentMode, "default");
-        assert.deepEqual(modes, legacyConfig.modes);
-        assert.deepEqual(JSON.parse(await readFile(legacyConfigPath, "utf8")), legacyConfig);
     } finally {
         await rm(agentDir, { recursive: true, force: true });
         if (originalAgentDir === undefined) {

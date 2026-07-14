@@ -146,33 +146,6 @@ test("loadModelFilterSettings parses and trims valid config rules", async () => 
     assert.deepEqual(loaded.excludeRules[0]?.modelPatterns, ["*-mini"]);
 });
 
-test("loadModelFilterSettings migrates and selects a trusted legacy project config", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "pi-model-filter-project-"));
-    try {
-        const legacyPath = join(cwd, ".pi", "pi-model-filter", "config.json");
-        await mkdir(join(cwd, ".pi", "pi-model-filter"), { recursive: true });
-        await writeFile(
-            legacyPath,
-            JSON.stringify({ include: [{ provider: "openai", models: ["gpt-5"] }] }),
-            "utf8",
-        );
-        const state: RuntimeState = {
-            configCwd: cwd,
-            projectTrusted: true,
-            loadSettings() {
-                return modelFilter.loadModelFilterSettings(state);
-            },
-        };
-
-        const loaded = modelFilter.loadModelFilterSettings(state);
-
-        assert.equal(loaded.path, join(cwd, ".pi", "extension-settings", "pi-model-filter.json"));
-        assert.equal(loaded.includeRules[0]?.providerPattern, "openai");
-    } finally {
-        await rm(cwd, { recursive: true, force: true });
-    }
-});
-
 test("loadModelFilterSettings rejects unknown config keys", async () => {
     await writeFile(
         configPath,

@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type } from "typebox";
 
 import type { MentionSkillSettings } from "./types.ts";
@@ -44,7 +44,7 @@ export type MentionSkillSettingsContext = Pick<ExtensionContext, "cwd"> & {
 
 /** Load validated global and trusted-project mention settings. */
 export function loadMentionSkillSettings(ctx: MentionSkillSettingsContext): MentionSkillSettings {
-    const loaded = loadPiExtensionSettingsSync(
+    const loaded = loadPiExtensionSettings(
         mentionSkillSettingsDefinition,
         {
             cwd: ctx.cwd,

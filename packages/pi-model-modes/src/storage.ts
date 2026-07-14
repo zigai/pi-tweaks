@@ -1,9 +1,9 @@
 import {
-    resolveGlobalSettingsPaths,
-    resolveProjectSettingsPaths,
-} from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
+    getPiGlobalSettingsPath,
+    getPiProjectSettingsPath,
+    loadPiExtensionSettings,
+} from "@zigai/pi-extension-settings/pi";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -14,14 +14,12 @@ export function getGlobalAgentDir(): string {
 }
 
 const EXTENSION_ID = "pi-model-modes";
-const LEGACY_EXTENSION_ID = "pi-mode";
-
 export function getGlobalModesPath(): string {
-    return resolveGlobalSettingsPaths(getGlobalAgentDir(), EXTENSION_ID).configPath;
+    return getPiGlobalSettingsPath(EXTENSION_ID);
 }
 
 export function getProjectModesPath(cwd: string): string {
-    return resolveProjectSettingsPaths(cwd, CONFIG_DIR_NAME, EXTENSION_ID).configPath;
+    return getPiProjectSettingsPath(EXTENSION_ID, cwd);
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {
@@ -38,11 +36,10 @@ export async function ensureDirForFile(filePath: string): Promise<void> {
 }
 
 export async function prepareModesConfig(cwd: string, projectTrusted: boolean): Promise<void> {
-    await loadPiExtensionSettings(
+    loadPiExtensionSettings(
         modelModesSettingsDefinition,
         { cwd, isProjectTrusted: () => projectTrusted },
         {
-            legacySettingsIds: [LEGACY_EXTENSION_ID],
             bundledSchema: {
                 kind: "url",
                 url: new URL("../config.schema.json", import.meta.url),

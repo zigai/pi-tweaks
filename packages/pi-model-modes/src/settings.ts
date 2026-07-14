@@ -1,6 +1,6 @@
-import { defineExtensionSettings, resolveGlobalSettingsPaths } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
-import { getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
+import { getPiGlobalSettingsPath, loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
     closeSync,
     mkdirSync,
@@ -91,7 +91,6 @@ export default modelModesSettingsDefinition;
 const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
 const STALE_SETTINGS_LOCK_MS = 30_000;
 const EXTENSION_ID = "pi-model-modes";
-const LEGACY_EXTENSION_ID = "pi-mode";
 export type ModeShortcuts = Static<typeof modeShortcutsSchema>;
 
 const SettingsObjectSchema = Type.Object(
@@ -143,19 +142,18 @@ export function setSettingsContext(ctx: ExtensionContext): void {
 }
 
 function getSettingsPath(): string {
-    return resolveGlobalSettingsPaths(getAgentDir(), EXTENSION_ID).configPath;
+    return getPiGlobalSettingsPath(EXTENSION_ID);
 }
 
 export function loadModelModesSettings() {
     const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
-    return loadPiExtensionSettingsSync(
+    return loadPiExtensionSettings(
         modelModesSettingsDefinition,
         {
             cwd: context.cwd,
             isProjectTrusted: () => context.projectTrusted,
         },
         {
-            legacySettingsIds: [LEGACY_EXTENSION_ID],
             bundledSchema: {
                 kind: "url",
                 url: new URL("../config.schema.json", import.meta.url),

@@ -1,5 +1,5 @@
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 import { FOOTER_LAYOUT } from "./constants.ts";
@@ -339,7 +339,7 @@ export function resolveFooterConfig(
 }
 
 export function loadFooterSettings(cwd: string, projectTrusted: boolean): LoadedFooterConfig {
-    const settings = loadPiExtensionSettingsSync(
+    const settings = loadPiExtensionSettings(
         footerSettingsDefinition,
         { cwd, isProjectTrusted: () => projectTrusted },
         {

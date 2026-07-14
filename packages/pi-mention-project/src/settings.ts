@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type } from "typebox";
 
 import type { MentionProjectSettings } from "./types.ts";
@@ -59,7 +59,7 @@ export type MentionProjectSettingsContext = Pick<ExtensionContext, "cwd"> & {
 export function loadMentionProjectSettings(
     ctx: MentionProjectSettingsContext,
 ): MentionProjectSettings {
-    const loaded = loadPiExtensionSettingsSync(
+    const loaded = loadPiExtensionSettings(
         mentionProjectSettingsDefinition,
         {
             cwd: ctx.cwd,

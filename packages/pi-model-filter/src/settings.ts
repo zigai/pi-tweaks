@@ -1,14 +1,10 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import {
-    CONFIG_DIR_NAME,
-    getAgentDir,
-    type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import {
-    defineExtensionSettings,
-    resolveGlobalSettingsPaths,
-    resolveProjectSettingsPaths,
-} from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+    getPiGlobalSettingsPath,
+    getPiProjectSettingsPath,
+    loadPiExtensionSettings,
+} from "@zigai/pi-extension-settings/pi";
 import { existsSync, statSync } from "node:fs";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -205,11 +201,11 @@ export function filterModels(models: ModelLike[], loaded: LoadedConfig): ModelLi
 }
 
 export function getGlobalConfigPath(): string {
-    return resolveGlobalSettingsPaths(getAgentDir(), EXTENSION_ID).configPath;
+    return getPiGlobalSettingsPath(EXTENSION_ID);
 }
 
 export function getProjectConfigPath(cwd: string): string {
-    return resolveProjectSettingsPaths(cwd, CONFIG_DIR_NAME, EXTENSION_ID).configPath;
+    return getPiProjectSettingsPath(EXTENSION_ID, cwd);
 }
 
 export function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
@@ -224,7 +220,7 @@ export function setConfigContext(state: RuntimeState, ctx: ExtensionContext): vo
 export function loadModelFilterSettings(state: RuntimeState): LoadedConfig {
     const cwd = state.configCwd ?? process.cwd();
     const projectConfigPath = getProjectConfigPath(cwd);
-    const settings = loadPiExtensionSettingsSync(
+    const settings = loadPiExtensionSettings(
         modelFilterSettingsDefinition,
         { cwd, isProjectTrusted: () => state.projectTrusted === true },
         {

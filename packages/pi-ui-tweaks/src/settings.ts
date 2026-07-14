@@ -1,5 +1,5 @@
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
@@ -367,7 +367,7 @@ export function resolveUiTweaksConfig(
 
 /** Load UI tweak settings from global and trusted-project extension settings. */
 export function loadUiTweaksSettings(cwd: string, projectTrusted: boolean): LoadedUiTweaksConfig {
-    const settings = loadPiExtensionSettingsSync(
+    const settings = loadPiExtensionSettings(
         uiTweaksSettingsDefinition,
         { cwd, isProjectTrusted: () => projectTrusted },
         {

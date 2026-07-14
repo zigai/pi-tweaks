@@ -42,11 +42,11 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 - Use “settings” for the extension capability and source module; reserve “config” for concrete persisted-file concepts such as config paths and `config.schema.json`. Do not create a one-file `src/config/` directory or a parallel `config.ts`; split `settings.ts` only when a substantial domain capability earns its own specifically named module.
 - Register each definition, `config.schema.json`, and README in the package's `piExtensionSettings` manifest field.
 - Expose the package-facing loader as `load<ExtensionName>Settings`, such as `loadMentionSkillSettings`. This function owns the shared loader call and returns the extension's typed, resolved settings; ordinary extension code should call it rather than the definition or shared adapter directly.
-- Implement that loader with `loadPiExtensionSettings` or `loadPiExtensionSettingsSync`. The Pi adapter uses `getAgentDir()` and `CONFIG_DIR_NAME` from `@earendil-works/pi-coding-agent`; never hardcode `~/.pi/agent` or `.pi` in runtime code.
+- Implement that loader with `loadPiExtensionSettings`. The Pi adapter uses `getAgentDir()` and `CONFIG_DIR_NAME` from `@earendil-works/pi-coding-agent`; never hardcode `~/.pi/agent` or `.pi` in runtime code.
 - Global config lives at `getAgentDir()/extension-settings/<extension-id>.json`; editor schemas live at `getAgentDir()/extension-settings/schemas/<extension-id>.schema.json`.
 - Trusted project overrides live at `ctx.cwd/CONFIG_DIR_NAME/extension-settings/<extension-id>.json`. Never read project config for an untrusted project or create project config automatically.
 - Parse config at the boundary: `JSON.parse` to `unknown`, validate/decode with TypeBox, then pass typed config inward. Do not cast `JSON.parse` output to config types or scatter hand-written shape checks.
-- The shared loader scaffolds default global config only when missing, never overwrites existing or malformed config, installs stale/missing schemas atomically, and non-destructively migrates the former per-extension directory layout.
+- The shared loader scaffolds default global config only when missing, never overwrites existing or malformed config, and installs stale or missing schemas atomically.
 - Run `just config-generate` after changing a definition. Run `just config-check` to prove checked-in schemas and README regions are current; this check is required by pre-commit and `npm run check`.
 
 ## README Configuration Docs
@@ -55,7 +55,7 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 - Only packages with meaningful user-facing settings should declare `piExtensionSettings` and include a generated region.
 - Generated docs contain the centralized global path, a compact option table, and the full scaffolded default JSON document.
 - Setting descriptions belong on the TypeBox definition properties; wording changes flow into the README via `just config-generate`.
-- Keep implementation lifecycle, project override, migration, trust, and malformed-file behavior in `AGENTS.md`, source, tests, or dedicated advanced docs rather than generated user-facing configuration sections.
+- Keep implementation lifecycle, project override, trust, and malformed-file behavior in `AGENTS.md`, source, tests, or dedicated advanced docs rather than generated user-facing configuration sections.
 
 ## Packaging notes
 

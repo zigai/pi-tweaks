@@ -1,12 +1,10 @@
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import {
-    defineExtensionSettings,
-    resolveGlobalSettingsPaths,
-    resolveProjectSettingsPaths,
-} from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
+    getPiGlobalSettingsPath,
+    getPiProjectSettingsPath,
+    loadPiExtensionSettings,
+} from "@zigai/pi-extension-settings/pi";
 import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
@@ -171,24 +169,20 @@ function parseModelAliasesConfig(config: unknown): {
 }
 
 export function getGlobalConfigPath(): string {
-    return resolveGlobalSettingsPaths(getAgentDir(), EXTENSION_ID).configPath;
+    return getPiGlobalSettingsPath(EXTENSION_ID);
 }
 
 export function getProjectConfigPath(cwd: string): string {
-    return resolveProjectSettingsPaths(cwd, CONFIG_DIR_NAME, EXTENSION_ID).configPath;
+    return getPiProjectSettingsPath(EXTENSION_ID, cwd);
 }
 
 export function loadModelAliasSettings(state: RuntimeState): LoadedConfig {
     const cwd = state.configCwd ?? process.cwd();
     const projectConfigPath = getProjectConfigPath(cwd);
-    const settings = loadPiExtensionSettingsSync(
+    const settings = loadPiExtensionSettings(
         modelAliasSettingsDefinition,
         { cwd, isProjectTrusted: () => state.projectTrusted === true },
         {
-            legacyConfigPaths: {
-                global: [join(getAgentDir(), EXTENSION_ID, "settings.json")],
-                project: [join(cwd, CONFIG_DIR_NAME, EXTENSION_ID, "settings.json")],
-            },
             bundledSchema: {
                 kind: "url",
                 url: new URL("../config.schema.json", import.meta.url),

@@ -1,5 +1,5 @@
-import { defineExtensionSettings, resolveGlobalSettingsPaths } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
+import { getPiGlobalSettingsPath, loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import {
     getAgentDir,
     SettingsManager,
@@ -137,12 +137,12 @@ export function isTreeTimestampMode(value: unknown): value is TreeTimestampMode 
 }
 
 function getSettingsPath(): string {
-    return resolveGlobalSettingsPaths(getAgentDir(), EXTENSION_ID).configPath;
+    return getPiGlobalSettingsPath(EXTENSION_ID);
 }
 
 export function loadTreeSettings() {
     const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
-    return loadPiExtensionSettingsSync(
+    return loadPiExtensionSettings(
         treeSettingsDefinition,
         {
             cwd: context.cwd,
