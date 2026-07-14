@@ -1,116 +1,143 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-status-bar/config.schema.json",
-  "title": "Pi status bar config",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-status-bar/config.schema.json",
+  "title": "Pi Status Bar settings",
+  "description": "Settings for active, idle, and rotating status-bar content.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string",
+      "default": "./schemas/pi-status-bar.schema.json",
+      "description": "JSON Schema used by editors for this settings file."
+    },
     "statusBar": {
       "type": "object",
-      "additionalProperties": false,
       "properties": {
         "active": {
           "type": "object",
-          "additionalProperties": false,
           "properties": {
             "text": {
               "type": "string",
-              "description": "Optional active working text override."
+              "description": "Custom active status text."
             },
             "spinner": {
               "type": "object",
-              "additionalProperties": false,
               "properties": {
                 "frames": {
                   "type": "array",
-                  "items": { "type": "string" },
-                  "description": "Optional active spinner frames override."
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Spinner frames displayed while Pi is active."
                 }
-              }
+              },
+              "additionalProperties": false
             },
             "timer": {
               "type": "object",
-              "additionalProperties": false,
               "properties": {
-                "visible": { "type": "boolean", "default": true },
-                "paused": { "type": "boolean", "default": false }
+                "visible": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Show the active-run timer."
+                },
+                "paused": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Display the active-run timer as paused."
+                }
               },
-              "default": {
-                "visible": true,
-                "paused": false
-              }
+              "default": {},
+              "additionalProperties": false
             }
           },
-          "default": {
-            "timer": {
-              "visible": true,
-              "paused": false
-            }
-          }
+          "default": {},
+          "additionalProperties": false
         },
         "idle": {
           "type": "object",
-          "additionalProperties": false,
           "properties": {
             "text": {
               "type": "string",
-              "description": "Optional idle status text shown before the last-run summary."
+              "description": "Custom idle status text."
             },
-            "visible": { "type": "boolean", "default": true },
-            "showLastRunSummary": { "type": "boolean", "default": true }
+            "visible": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show the status bar while Pi is idle."
+            },
+            "showLastRunSummary": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show the previous run summary while idle."
+            }
           },
-          "default": {
-            "visible": true,
-            "showLastRunSummary": true
-          }
+          "default": {},
+          "additionalProperties": false
         }
       },
-      "default": {
-        "active": {
-          "timer": {
-            "visible": true,
-            "paused": false
-          }
-        },
-        "idle": {
-          "visible": true,
-          "showLastRunSummary": true
-        }
-      }
+      "default": {},
+      "additionalProperties": false
     },
     "rightMessages": {
       "type": "object",
-      "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "intervalMs": { "type": "integer", "minimum": 1, "default": 10000 },
-        "minGap": { "type": "integer", "minimum": 0, "default": 4 },
-        "minScrollCycles": { "type": "integer", "minimum": 1, "default": 1 },
-        "scrollColumnIntervalMs": { "type": "integer", "minimum": 1, "default": 120 },
-        "dimmed": { "type": "boolean", "default": true },
-        "italic": { "type": "boolean", "default": true },
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable rotating messages on the right side."
+        },
+        "intervalMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10000,
+          "description": "Delay between rotating messages in milliseconds."
+        },
+        "minGap": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 4,
+          "description": "Minimum spaces between repeated scrolling messages."
+        },
+        "minScrollCycles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Minimum completed scroll cycles before advancing."
+        },
+        "scrollColumnIntervalMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 120,
+          "description": "Delay between horizontal scroll columns in milliseconds."
+        },
+        "dimmed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render rotating messages with dim styling."
+        },
+        "italic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render rotating messages with italic styling."
+        },
         "messages": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": []
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Inline rotating status messages."
         },
         "messagesFile": {
           "type": "string",
           "minLength": 1,
-          "description": "Optional text file with one message per line, resolved relative to the config file base directory."
+          "description": "Path to a newline-delimited messages file."
         }
       },
-      "default": {
-        "enabled": false,
-        "intervalMs": 10000,
-        "minGap": 4,
-        "minScrollCycles": 1,
-        "scrollColumnIntervalMs": 120,
-        "dimmed": true,
-        "italic": true,
-        "messages": []
-      }
+      "default": {},
+      "additionalProperties": false
     }
   }
 }

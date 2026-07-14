@@ -22,26 +22,27 @@ Modes can store a provider, model, thinking level, and optional color. Their JSO
 
 Set the persistent default through `/mode` → `Configure modes…` → `Set default model…`, or edit `defaultModel` in the configuration file.
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-model-modes/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-model-modes.json`.
 
-| Option                        | Type      | Default     | Description                                                                |
-| ----------------------------- | --------- | ----------- | -------------------------------------------------------------------------- |
-| `version`                     | `number`  | `1`         | Config format version.                                                     |
-| `currentMode`                 | `string`  | `"default"` | Stored mode name used as the initial mode-state fallback.                  |
-| `defaultModel.provider`       | `string`  | —           | Provider for the model used by fresh sessions.                             |
-| `defaultModel.modelId`        | `string`  | —           | Model used by fresh sessions.                                              |
-| `defaultModel.thinkingLevel`  | `string`  | —           | Thinking level used with the fresh-session default model.                  |
-| `modeUseThinkingBorderColors` | `boolean` | `false`     | Uses thinking-derived border colors when a mode has no explicit color.     |
-| `modeShowThinkingLevelStatus` | `boolean` | `false`     | Shows Pi's transient thinking-level status message.                        |
-| `shortcuts.forward`           | `string`  | —           | Optional key for cycling to the next configured mode.                      |
-| `shortcuts.backward`          | `string`  | —           | Optional key for cycling to the previous configured mode.                  |
-| `modes`                       | `object`  | `{}`        | Named modes with optional `provider`, `modelId`, `thinkingLevel`, `color`. |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `version` | number | `1` | Settings format version. |
+| `currentMode` | string | `"default"` | Currently selected mode ID. |
+| `defaultModel.provider` | string | — | Default model provider. |
+| `defaultModel.modelId` | string | — | Default model ID. |
+| `defaultModel.thinkingLevel` | unknown | — | Optional default thinking level. |
+| `modeUseThinkingBorderColors` | boolean | `false` | Use thinking-level colors instead of mode colors for borders. |
+| `modeShowThinkingLevelStatus` | boolean | `false` | Show thinking level alongside mode status. |
+| `shortcuts.forward` | string | — | Shortcut for cycling modes forward. |
+| `shortcuts.backward` | string | — | Shortcut for cycling modes backward. |
+| `modes` | object | `{}` | Named model-mode specifications keyed by mode ID. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-model-modes.schema.json",
   "version": 1,
   "currentMode": "default",
   "modeUseThinkingBorderColors": false,
@@ -49,6 +50,7 @@ Configure global settings at `~/.pi/agent/pi-model-modes/config.json`.
   "modes": {}
 }
 ```
+<!-- pi-extension-settings:end -->
 
 ## License
 

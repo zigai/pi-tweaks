@@ -11,8 +11,8 @@ const agentDir = await mkdtemp(join(tmpdir(), "pi-model-filter-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
 const modelFilter = await import("../src/index.ts");
-const configPath = join(agentDir, "pi-model-filter", "config.json");
-const schemaPath = join(agentDir, "pi-model-filter", "config.schema.json");
+const configPath = join(agentDir, "extension-settings", "pi-model-filter.json");
+const schemaPath = join(agentDir, "extension-settings", "schemas", "pi-model-filter.schema.json");
 
 afterAll(async () => {
     await rm(agentDir, { recursive: true, force: true });
@@ -23,7 +23,7 @@ afterAll(async () => {
     }
 });
 
-await mkdir(join(agentDir, "pi-model-filter"), { recursive: true });
+await mkdir(join(agentDir, "extension-settings"), { recursive: true });
 
 const models: ModelLike[] = [
     { provider: "openai", id: "gpt-5" },
@@ -62,45 +62,45 @@ test("include rules constrain matching providers while excludes always hide mode
     );
 });
 
-test("safeReadConfig falls back for missing and malformed config files", async () => {
+test("loadModelFilterSettings falls back for missing and malformed config files", async () => {
     await rm(configPath, { force: true });
     const state: RuntimeState = {
-        loadConfig() {
-            return modelFilter.safeReadConfig(state);
+        loadSettings() {
+            return modelFilter.loadModelFilterSettings(state);
         },
     };
 
-    const missing = modelFilter.safeReadConfig(state);
+    const missing = modelFilter.loadModelFilterSettings(state);
     assert.deepEqual(missing.includeRules, []);
     assert.deepEqual(missing.excludeRules, []);
     assert.equal(missing.error, undefined);
     assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-        $schema: "./config.schema.json",
+        $schema: "./schemas/pi-model-filter.schema.json",
         include: [],
         exclude: [],
     });
-    assert.match(await readFile(schemaPath, "utf8"), /Pi model filter config/);
+    assert.match(await readFile(schemaPath, "utf8"), /Pi Model Filter settings/);
 
     await writeFile(schemaPath, "stale schema", "utf8");
     state.configCache = undefined;
-    modelFilter.safeReadConfig(state);
-    assert.equal(await readFile(schemaPath, "utf8"), "stale schema");
+    modelFilter.loadModelFilterSettings(state);
+    assert.match(await readFile(schemaPath, "utf8"), /Pi Model Filter settings/);
 
     await writeFile(configPath, "{ not json", "utf8");
     state.configCache = undefined;
-    const malformed = modelFilter.safeReadConfig(state);
+    const malformed = modelFilter.loadModelFilterSettings(state);
     assert.match(malformed.error ?? "", /Failed to load/);
     assert.deepEqual(malformed.includeRules, []);
     assert.deepEqual(malformed.excludeRules, []);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
     await writeFile(schemaPath, "stale schema", "utf8");
     state.configCache = undefined;
-    modelFilter.safeReadConfig(state);
+    modelFilter.loadModelFilterSettings(state);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
-    assert.equal(await readFile(schemaPath, "utf8"), "stale schema");
+    assert.match(await readFile(schemaPath, "utf8"), /Pi Model Filter settings/);
 });
 
-test("safeReadConfig skips global scaffolding after the first load for a config path", async () => {
+test("loadModelFilterSettings refreshes schema while reusing an unchanged config", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -110,20 +110,20 @@ test("safeReadConfig skips global scaffolding after the first load for a config 
         "utf8",
     );
     const state: RuntimeState = {
-        loadConfig() {
-            return modelFilter.safeReadConfig(state);
+        loadSettings() {
+            return modelFilter.loadModelFilterSettings(state);
         },
     };
-    const loaded = modelFilter.safeReadConfig(state);
+    const loaded = modelFilter.loadModelFilterSettings(state);
 
     await writeFile(schemaPath, "stale after scaffold", "utf8");
-    const loadedAgain = modelFilter.safeReadConfig(state);
+    const loadedAgain = modelFilter.loadModelFilterSettings(state);
 
     assert.equal(loadedAgain, loaded);
-    assert.equal(await readFile(schemaPath, "utf8"), "stale after scaffold");
+    assert.match(await readFile(schemaPath, "utf8"), /Pi Model Filter settings/);
 });
 
-test("safeReadConfig parses and trims valid config rules", async () => {
+test("loadModelFilterSettings parses and trims valid config rules", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -133,12 +133,12 @@ test("safeReadConfig parses and trims valid config rules", async () => {
         "utf8",
     );
     const state: RuntimeState = {
-        loadConfig() {
-            return modelFilter.safeReadConfig(state);
+        loadSettings() {
+            return modelFilter.loadModelFilterSettings(state);
         },
     };
 
-    const loaded = modelFilter.safeReadConfig(state);
+    const loaded = modelFilter.loadModelFilterSettings(state);
     assert.equal(loaded.error, undefined);
     assert.deepEqual(loaded.includeRules[0]?.providerPattern, "openai");
     assert.deepEqual(loaded.includeRules[0]?.modelPatterns, ["gpt-*"]);
@@ -146,7 +146,34 @@ test("safeReadConfig parses and trims valid config rules", async () => {
     assert.deepEqual(loaded.excludeRules[0]?.modelPatterns, ["*-mini"]);
 });
 
-test("safeReadConfig rejects unknown config keys", async () => {
+test("loadModelFilterSettings migrates and selects a trusted legacy project config", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "pi-model-filter-project-"));
+    try {
+        const legacyPath = join(cwd, ".pi", "pi-model-filter", "config.json");
+        await mkdir(join(cwd, ".pi", "pi-model-filter"), { recursive: true });
+        await writeFile(
+            legacyPath,
+            JSON.stringify({ include: [{ provider: "openai", models: ["gpt-5"] }] }),
+            "utf8",
+        );
+        const state: RuntimeState = {
+            configCwd: cwd,
+            projectTrusted: true,
+            loadSettings() {
+                return modelFilter.loadModelFilterSettings(state);
+            },
+        };
+
+        const loaded = modelFilter.loadModelFilterSettings(state);
+
+        assert.equal(loaded.path, join(cwd, ".pi", "extension-settings", "pi-model-filter.json"));
+        assert.equal(loaded.includeRules[0]?.providerPattern, "openai");
+    } finally {
+        await rm(cwd, { recursive: true, force: true });
+    }
+});
+
+test("loadModelFilterSettings rejects unknown config keys", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -155,15 +182,15 @@ test("safeReadConfig rejects unknown config keys", async () => {
         "utf8",
     );
     const state: RuntimeState = {
-        loadConfig() {
-            return modelFilter.safeReadConfig(state);
+        loadSettings() {
+            return modelFilter.loadModelFilterSettings(state);
         },
     };
 
-    const loaded = modelFilter.safeReadConfig(state);
+    const loaded = modelFilter.loadModelFilterSettings(state);
     assert.deepEqual(loaded.includeRules, []);
     assert.deepEqual(loaded.excludeRules, []);
-    assert.match(loaded.error ?? "", /additional properties/);
+    assert.match(loaded.error ?? "", /schema|property|ignored/);
 });
 
 test("registry patch filters list and lookup results and remains idempotent", () => {
@@ -172,7 +199,7 @@ test("registry patch filters list and lookup results and remains idempotent", ()
         modelFilter.normalizeRules([{ provider: "*", models: ["*-mini"] }]),
     );
     const state: RuntimeState = {
-        loadConfig() {
+        loadSettings() {
             return loaded;
         },
     };

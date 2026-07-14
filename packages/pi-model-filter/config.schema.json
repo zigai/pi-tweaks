@@ -1,51 +1,69 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-model-filter/config.schema.json",
-  "title": "Pi model filter config",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-model-filter/config.schema.json",
+  "title": "Pi Model Filter settings",
+  "description": "Settings for including and excluding models from Pi's model registry.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "default": "./schemas/pi-model-filter.schema.json",
+      "description": "JSON Schema used by editors for this settings file."
     },
     "include": {
-      "$ref": "#/$defs/ruleList",
-      "default": [],
-      "description": "Allowlist rules. When any include rule matches a provider, only matching models from that provider remain visible."
-    },
-    "exclude": {
-      "$ref": "#/$defs/ruleList",
-      "default": [],
-      "description": "Blocklist rules. Exclude rules are applied after include rules, so exclude always wins."
-    }
-  },
-  "$defs": {
-    "nonBlankString": {
-      "type": "string",
-      "pattern": "\\S"
-    },
-    "ruleList": {
       "type": "array",
       "items": {
         "type": "object",
-        "additionalProperties": false,
-        "required": ["provider", "models"],
+        "required": [
+          "provider",
+          "models"
+        ],
         "properties": {
           "provider": {
-            "$ref": "#/$defs/nonBlankString",
-            "description": "Provider id or glob pattern, for example openrouter or *"
+            "type": "string",
+            "pattern": "\\S"
           },
           "models": {
             "type": "array",
-            "minItems": 1,
             "items": {
-              "$ref": "#/$defs/nonBlankString",
-              "description": "Model id or glob pattern, for example gpt-* or qwen/*"
+              "type": "string",
+              "pattern": "\\S"
             },
-            "description": "Exact model ids or glob patterns for the matched provider(s)"
+            "minItems": 1
           }
-        }
-      }
+        },
+        "additionalProperties": false
+      },
+      "default": [],
+      "description": "Provider and model glob rules that form inclusion allowlists."
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "provider",
+          "models"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "default": [],
+      "description": "Provider and model glob rules that hide matching models."
     }
   }
 }

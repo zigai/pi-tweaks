@@ -26,7 +26,7 @@ function loadedConfig(providerName: string): LoadedConfig {
 
 function runtimeState(providerName: string): RuntimeState {
     return {
-        loadConfig() {
+        loadSettings() {
             return loadedConfig(providerName);
         },
     };

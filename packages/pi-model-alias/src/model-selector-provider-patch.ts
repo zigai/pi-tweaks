@@ -165,7 +165,7 @@ function setModelSelectorDisplayProviders(
     target: ModelSelectorPatchTarget,
     state: RuntimeState,
 ): void {
-    const loaded = state.loadConfig();
+    const loaded = state.loadSettings();
     target.allModels = applyProviderDisplayNames(target.allModels, loaded);
     target.scopedModelItems = applyProviderDisplayNames(target.scopedModelItems, loaded);
 
@@ -188,7 +188,7 @@ function getModelSelectorSearchItems(
     items: ModelSelectorItem[],
     state: RuntimeState,
 ): ModelSelectorItem[] {
-    const loaded = state.loadConfig();
+    const loaded = state.loadSettings();
     if (loaded.error !== undefined || loaded.providerAliases.length === 0) {
         return items;
     }
@@ -381,7 +381,7 @@ function formatModelSelectorList(target: ModelSelectorPatchTarget, state: Runtim
         return;
     }
 
-    const loaded = state.loadConfig();
+    const loaded = state.loadSettings();
     const rows = getProviderRows(visibleRows(target.filteredModels, target.selectedIndex, 10));
     let widthRows = rows;
     if (loaded.stableProviderColumn) {
@@ -410,7 +410,7 @@ function formatScopedModelsList(
         return;
     }
 
-    const loaded = state.loadConfig();
+    const loaded = state.loadSettings();
     const maxVisible = target.maxVisible ?? 8;
     const rows = getScopedProviderRows(
         visibleRows(target.filteredItems, selectedIndex, maxVisible),
@@ -427,7 +427,7 @@ function getScopedDisplayItems(
     items: ScopedModelsSelectorItem[],
     state: RuntimeState,
 ): ScopedModelsSelectorItem[] {
-    const loaded = state.loadConfig();
+    const loaded = state.loadSettings();
     return items.map((item) => {
         const displayedModel: ModelLike = {
             ...item.model,
@@ -532,7 +532,7 @@ export function installModelSelectorProviderPatch(
         } finally {
             this.activeModels = originalActiveModels;
         }
-        const loaded = patchState.state.loadConfig();
+        const loaded = patchState.state.loadSettings();
         this.filteredModels = applyProviderDisplayNames(this.filteredModels, loaded);
         this.updateList();
     };
@@ -607,7 +607,7 @@ export function installScopedModelsProviderPatch(
             this: ScopedModelsSelectorPatchTarget,
         ): void {
             const query = this.searchInput?.getValue();
-            const loaded = patchState.state.loadConfig();
+            const loaded = patchState.state.loadSettings();
             if (query === undefined || query.length === 0 || loaded.error !== undefined) {
                 originalRefresh.call(this);
                 return;

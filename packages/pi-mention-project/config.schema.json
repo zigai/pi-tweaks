@@ -1,31 +1,55 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-mention-project/config.schema.json",
-  "title": "Pi project mention config",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-mention-project/config.schema.json",
+  "title": "Pi Mention Project settings",
+  "description": "Settings for project mentions and project discovery.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string",
+      "default": "./schemas/pi-mention-project.schema.json",
+      "description": "JSON Schema used by editors for this settings file."
+    },
     "trigger": {
       "type": "string",
       "minLength": 1,
       "maxLength": 1,
       "pattern": "^[^/\\s]$",
-      "default": "#"
+      "default": "#",
+      "description": "Single character that starts a project mention."
     },
     "roots": {
-      "oneOf": [
-        { "type": "string", "minLength": 1 },
+      "anyOf": [
         {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "type": "string",
+          "minLength": 1
         }
       ],
       "default": [],
-      "description": "Project search roots."
+      "description": "Project root directory or directories searched for projects."
     },
-    "gitReposOnly": { "type": "boolean", "default": true },
-    "includeDotFolders": { "type": "boolean", "default": false },
-    "completionSuffix": { "type": "string", "default": " " }
+    "gitReposOnly": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include only directories containing Git repositories."
+    },
+    "includeDotFolders": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include project directories whose names start with a dot."
+    },
+    "completionSuffix": {
+      "type": "string",
+      "default": " ",
+      "description": "Text inserted after a completed project mention."
+    }
   }
 }

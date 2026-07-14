@@ -29,11 +29,13 @@
     "lint:fix": "oxlint -c ./.oxlintrc.json . --fix",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "check": "npm run format:check && npm run lint && npm run typecheck",
+    "check": "npm run config:check && npm run format:check && npm run lint && npm run typecheck && npm test",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "release": "release --root .",
-    "release:dry-run": "release --dry --root ."
+    "release:dry-run": "release --dry --root .",
+    "config:generate": "pi-extension-settings generate",
+    "config:check": "pi-extension-settings check"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^0.79.0",
@@ -41,6 +43,7 @@
     "@earendil-works/pi-coding-agent": "^0.79.0",
     "@earendil-works/pi-tui": "^0.79.0",
     "@types/node": "^24.10.1",
+    "@zigai/pi-extension-settings": "file:vendor/zigai-pi-extension-settings-0.2.7.tgz",
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0",
     "oxlint-tsgolint": "^0.23.0",

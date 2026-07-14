@@ -39,31 +39,28 @@ npm run typecheck
 ## Pi Extension Config
 
 - Only extensions that need user-configurable behavior need extension-owned config. Do not put extension runtime options in Pi's core `settings.json`.
-- Use JSON config only.
-- Use extension-owned global config at the package’s concrete `getAgentDir()` path, such as `getAgentDir()/pi-mode/config.json`.
-- Use trusted project overrides at the package’s concrete project path, such as `ctx.cwd/CONFIG_DIR_NAME/pi-mode/config.json`.
-- Always use `getAgentDir()` and `CONFIG_DIR_NAME` from `@earendil-works/pi-coding-agent` instead of hardcoded `~/.pi/agent` or `.pi`.
+- Use `@zigai/pi-extension-settings` for extension-owned JSON config. Configurable packages must declare it as a runtime dependency and bundle it in their npm package.
+- Keep each extension's TypeBox source of truth and runtime settings boundary together in a flat `src/settings.ts` module using `defineExtensionSettings`. Defaults, descriptions, validation constraints, the checked-in schema, runtime decoding, and README docs derive from that module.
+- Use “settings” for the extension capability and source module; reserve “config” for concrete persisted-file concepts such as config paths and `config.schema.json`. Do not create a one-file `src/config/` directory or a parallel `config.ts`; split `settings.ts` only when a substantial domain capability earns its own specifically named module.
+- Register each definition, `config.schema.json`, and README in the package's `piExtensionSettings` manifest field.
+- Expose the package-facing loader as `load<ExtensionName>Settings`, such as `loadMentionSkillSettings`. This function owns the shared loader call and returns the extension's typed, resolved settings; ordinary extension code should call it rather than the definition or shared adapter directly.
+- Implement that loader with `loadPiExtensionSettings` or `loadPiExtensionSettingsSync`. The Pi adapter uses `getAgentDir()` and `CONFIG_DIR_NAME` from `@earendil-works/pi-coding-agent`; never hardcode `~/.pi/agent` or `.pi` in runtime code.
+- Global config lives at `getAgentDir()/extension-settings/<extension-id>.json`; editor schemas live at `getAgentDir()/extension-settings/schemas/<extension-id>.schema.json`.
+- Trusted project overrides live at `ctx.cwd/CONFIG_DIR_NAME/extension-settings/<extension-id>.json`. Never read project config for an untrusted project or create project config automatically.
 - Parse config at the boundary: `JSON.parse` to `unknown`, validate/decode with TypeBox, then pass typed config inward. Do not cast `JSON.parse` output to config types or scatter hand-written shape checks.
-- Keep a checked-in `config.schema.json` up to date with the TypeBox schema for every extension-owned config file.
-- Extensions with config should safely scaffold default global config only when missing, or provide an explicit setup command. Never overwrite existing or malformed user config.
-- Extensions with config should create `config.schema.json` when missing and refresh it from the bundled checked-in schema when stale.
-- Project config should not be auto-created unless an explicit command already does that.
+- The shared loader scaffolds default global config only when missing, never overwrites existing or malformed config, installs stale/missing schemas atomically, and non-destructively migrates the former per-extension directory layout.
+- Run `just config-generate` after changing a definition. Run `just config-check` to prove checked-in schemas and README regions are current; this check is required by pre-commit and `npm run check`.
 
 ## README Configuration Docs
 
-- README config docs are user-facing: explain settings and examples, not implementation lifecycle.
-- Only include a Configuration or Settings section for packages with meaningful user-facing settings.
-- Use this structure for package README config sections:
-  1. One short sentence naming only the package’s concrete global path, such as `~/.pi/agent/pi-mode/config.json`.
-  2. Compact option table: Option, Type, Default, Description. List actual user-editable setting keys, preferably dot paths like `tools.webSearch`; avoid vague category rows such as `tools`, `openai`, or `appearance` unless that object is edited as a single meaningful value.
-  3. One JSON example showing the full scaffolded default config.
-- README config JSON blocks must be the full default config. Do not omit settings just because their value is the default.
-- Include `$schema` in JSON examples when it is part of the scaffolded default config, but do not explain `$schema` in prose.
-- If an option has no scaffolded default, document it in the table but do not invent a default value in JSON.
-- Do not mention trusted project overrides, project-specific config paths, TypeBox, `getAgentDir()`/`CONFIG_DIR_NAME` implementation names, schema refresh mechanics, user-owned/extension-owned terminology, or malformed-config overwrite policy in READMEs.
-- Keep implementation lifecycle and project override details in `AGENTS.md`, source, tests, or dedicated advanced docs.
+- README config docs are generated between `<!-- pi-extension-settings:start -->` and `<!-- pi-extension-settings:end -->`. Do not hand-edit that region.
+- Only packages with meaningful user-facing settings should declare `piExtensionSettings` and include a generated region.
+- Generated docs contain the centralized global path, a compact option table, and the full scaffolded default JSON document.
+- Setting descriptions belong on the TypeBox definition properties; wording changes flow into the README via `just config-generate`.
+- Keep implementation lifecycle, project override, migration, trust, and malformed-file behavior in `AGENTS.md`, source, tests, or dedicated advanced docs rather than generated user-facing configuration sections.
 
 ## Packaging notes
 
 - Package manifests include `files` allowlists. If a README references an asset that must be present in the npm tarball, verify with `npm pack --dry-run -w <workspace>` before changing the manifest.
+- Configurable packages must keep the shared settings dependency in `bundleDependencies` and run `scripts/prepare-settings-bundle.ts` from `prepack`; verify the packed file list contains both `@zigai/pi-extension-settings` and its bundled `better-result` runtime.
 - Keep README install snippets and the root package table in sync when adding/removing packages.

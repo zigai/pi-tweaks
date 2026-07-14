@@ -1,15 +1,9 @@
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
+import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
-
 import { FOOTER_LAYOUT } from "./constants.ts";
 import { FOOTER_CUSTOM_SLOT_ID_PATTERN, type FooterLayout, type FooterSlotId } from "./types.ts";
-
-const EXTENSION_ID = "pi-footer";
-const CONFIG_FILE = "config.json";
-const SCHEMA_FILE = "config.schema.json";
 
 export type FooterConfig = {
     readonly separator: string;
@@ -38,7 +32,7 @@ type FooterLayoutSettings = {
     hidden?: readonly FooterSlotId[];
 };
 
-const FooterBuiltinSlotIdSchema = Type.Union([
+const builtinSlotIdSchema = Type.Union([
     Type.Literal("path"),
     Type.Literal("branch"),
     Type.Literal("provider"),
@@ -47,15 +41,55 @@ const FooterBuiltinSlotIdSchema = Type.Union([
     Type.Literal("mcp"),
     Type.Literal("context"),
 ]);
+export const footerSlotIdSchema = Type.Union([
+    builtinSlotIdSchema,
+    Type.String({ pattern: FOOTER_CUSTOM_SLOT_ID_PATTERN }),
+]);
 
-const FooterCustomSlotIdSchema = Type.String({ pattern: FOOTER_CUSTOM_SLOT_ID_PATTERN });
-const FooterSlotIdSchema = Type.Union([FooterBuiltinSlotIdSchema, FooterCustomSlotIdSchema]);
+export const footerSettingsDefinition = defineExtensionSettings({
+    id: "pi-footer",
+    title: "Pi Footer",
+    description: "Settings for footer content, ordering, and separators.",
+    schemaId:
+        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-footer/config.schema.json",
+    schema: Type.Object(
+        {
+            separator: Type.String({
+                default: "·",
+                description: "Text placed between visible footer slots.",
+            }),
+            layout: Type.Object(
+                {
+                    left: Type.Array(footerSlotIdSchema, {
+                        uniqueItems: true,
+                        default: [...FOOTER_LAYOUT.left],
+                        description: "Footer slot IDs shown on the left in display order.",
+                    }),
+                    right: Type.Array(footerSlotIdSchema, {
+                        uniqueItems: true,
+                        default: [...FOOTER_LAYOUT.right],
+                        description: "Footer slot IDs shown on the right in display order.",
+                    }),
+                    hidden: Type.Array(footerSlotIdSchema, {
+                        uniqueItems: true,
+                        default: [],
+                        description: "Footer slot IDs hidden from both sides.",
+                    }),
+                },
+                { default: {}, additionalProperties: false },
+            ),
+        },
+        { additionalProperties: false },
+    ),
+});
+
+export default footerSettingsDefinition;
 
 const FooterLayoutSchema = Type.Object(
     {
-        left: Type.Optional(Type.Array(FooterSlotIdSchema, { uniqueItems: true })),
-        right: Type.Optional(Type.Array(FooterSlotIdSchema, { uniqueItems: true })),
-        hidden: Type.Optional(Type.Array(FooterSlotIdSchema, { uniqueItems: true })),
+        left: Type.Optional(Type.Array(footerSlotIdSchema, { uniqueItems: true })),
+        right: Type.Optional(Type.Array(footerSlotIdSchema, { uniqueItems: true })),
+        hidden: Type.Optional(Type.Array(footerSlotIdSchema, { uniqueItems: true })),
     },
     { additionalProperties: false },
 );
@@ -88,16 +122,6 @@ export const DEFAULT_FOOTER_CONFIG: FooterConfig = {
         left: [...FOOTER_LAYOUT.left],
         right: [...FOOTER_LAYOUT.right],
         hidden: [],
-    },
-};
-
-const DEFAULT_FOOTER_CONFIG_FILE: ParsedFooterConfig = {
-    $schema: `./${SCHEMA_FILE}`,
-    separator: DEFAULT_FOOTER_CONFIG.separator,
-    layout: {
-        left: [...DEFAULT_FOOTER_CONFIG.layout.left],
-        right: [...DEFAULT_FOOTER_CONFIG.layout.right],
-        hidden: [...DEFAULT_FOOTER_CONFIG.layout.hidden],
     },
 };
 
@@ -314,131 +338,34 @@ export function resolveFooterConfig(
     return { config, errors };
 }
 
-function getGlobalConfigPath(): string {
-    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
-}
-
-function getProjectConfigPath(cwd: string): string {
-    return join(cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
-}
-
-function getSchemaPath(configPath: string): string {
-    return join(dirname(configPath), SCHEMA_FILE);
-}
-
-function writeIfMissing(filePath: string, content: string): void {
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
-    } catch (error: unknown) {
-        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function refreshSchemaFile(filePath: string, content: string): void {
-    let temporaryPath: string | undefined;
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        try {
-            if (readFileSync(filePath, "utf8") === content) return;
-        } catch (error: unknown) {
-            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
-                throw error;
-            }
-        }
-
-        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
-        temporaryPath = nextTemporaryPath;
-        renameSync(temporaryPath, filePath);
-        temporaryPath = undefined;
-    } catch (error: unknown) {
-        if (temporaryPath !== undefined) {
-            try {
-                unlinkSync(temporaryPath);
-            } catch {
-                // Ignore cleanup failure while reporting the original scaffold failure.
-            }
-        }
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function readBundledSchema(): string | undefined {
-    try {
-        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
-    } catch {
-        return undefined;
-    }
-}
-
-function scaffoldGlobalConfig(): void {
-    const globalConfigPath = getGlobalConfigPath();
-    const schema = readBundledSchema();
-    if (schema !== undefined) {
-        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
-    }
-    writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_FOOTER_CONFIG_FILE, null, 2)}\n`);
-}
-
-function readConfigFile(path: string, label: string): { settings?: unknown; error?: string } {
-    try {
-        const raw = readFileSync(path, "utf8");
-        const settings: unknown = JSON.parse(raw);
-        return { settings };
-    } catch (cause: unknown) {
-        if (
-            typeof cause === "object" &&
-            cause !== null &&
-            Reflect.get(cause, "code") === "ENOENT"
-        ) {
-            return {};
-        }
-
-        let message: string;
-        if (cause instanceof Error) {
-            message = cause.message;
-        } else {
-            message = String(cause);
-        }
-        return { error: `Failed to read ${label}: ${message}` };
-    }
-}
-
-export function loadFooterConfig(cwd: string, projectTrusted: boolean): LoadedFooterConfig {
-    scaffoldGlobalConfig();
-    const globalConfigPath = getGlobalConfigPath();
-    const globalConfig = readConfigFile(globalConfigPath, globalConfigPath);
+export function loadFooterSettings(cwd: string, projectTrusted: boolean): LoadedFooterConfig {
+    const settings = loadPiExtensionSettingsSync(
+        footerSettingsDefinition,
+        { cwd, isProjectTrusted: () => projectTrusted },
+        {
+            bundledSchema: {
+                kind: "url",
+                url: new URL("../config.schema.json", import.meta.url),
+            },
+        },
+    );
     const settingsSources: FooterSettingsSource[] = [];
-    const errors: string[] = [];
-
-    if (globalConfig.settings !== undefined) {
-        settingsSources.push({ label: globalConfigPath, settings: globalConfig.settings });
+    if (settings.globalSettingsLayer !== undefined) {
+        settingsSources.push({
+            label: settings.globalConfigPath,
+            settings: settings.globalSettingsLayer,
+        });
     }
-    if (globalConfig.error !== undefined) {
-        errors.push(globalConfig.error);
-    }
-
-    if (projectTrusted) {
-        const projectConfigPath = getProjectConfigPath(cwd);
-        const projectConfig = readConfigFile(projectConfigPath, projectConfigPath);
-        if (projectConfig.settings !== undefined) {
-            settingsSources.push({
-                label: projectConfigPath,
-                settings: projectConfig.settings,
-            });
-        }
-        if (projectConfig.error !== undefined) {
-            errors.push(projectConfig.error);
-        }
+    if (settings.projectSettingsLayer !== undefined && settings.projectConfigPath !== undefined) {
+        settingsSources.push({
+            label: settings.projectConfigPath,
+            settings: settings.projectSettingsLayer,
+        });
     }
 
     const loaded = resolveFooterConfig(settingsSources);
     return {
         config: loaded.config,
-        errors: [...errors, ...loaded.errors],
+        errors: [...settings.diagnostics.map((diagnostic) => diagnostic.message), ...loaded.errors],
     };
 }

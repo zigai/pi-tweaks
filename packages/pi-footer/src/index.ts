@@ -5,7 +5,7 @@ import {
     patchFooterReset,
     rememberFooterForTransition,
 } from "./footer-transition.ts";
-import { DEFAULT_FOOTER_CONFIG, loadFooterConfig, type LoadedFooterConfig } from "./settings.ts";
+import { DEFAULT_FOOTER_CONFIG, loadFooterSettings, type LoadedFooterConfig } from "./settings.ts";
 import { installFooterShrinkPaddingPatch } from "./tui-footer-shrink-padding.ts";
 
 const reportedConfigErrors = new Set<string>();
@@ -20,8 +20,8 @@ function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedFooterConfig): 
     }
 }
 
-function loadAndReportFooterConfig(ctx: ExtensionContext): LoadedFooterConfig {
-    const loaded = loadFooterConfig(ctx.cwd, ctx.isProjectTrusted());
+function loadAndReportFooterSettings(ctx: ExtensionContext): LoadedFooterConfig {
+    const loaded = loadFooterSettings(ctx.cwd, ctx.isProjectTrusted());
     reportConfigErrors(ctx, loaded);
     return loaded;
 }
@@ -34,7 +34,7 @@ export default function uiEnhancements(pi: ExtensionAPI) {
     let activeFooterConfig = DEFAULT_FOOTER_CONFIG;
 
     const installFooter = (ctx: ExtensionContext) => {
-        const loaded = loadAndReportFooterConfig(ctx);
+        const loaded = loadAndReportFooterSettings(ctx);
         activeFooterConfig = loaded.config;
         installLiveFooter(ctx, getThinkingLevel, activeFooterConfig);
     };

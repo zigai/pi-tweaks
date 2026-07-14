@@ -9,6 +9,14 @@ help:
 fmt:
     npm run format
 
+# Generate config schemas and README sections
+config-generate:
+    npm run config:generate
+
+# Check generated config artifacts
+config-check:
+    npm run config:check
+
 # Check code for lint issues
 lint:
     npm run lint

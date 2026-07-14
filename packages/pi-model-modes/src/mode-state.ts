@@ -28,9 +28,9 @@ import {
     atomicWriteUtf8,
     fileExists,
     getGlobalModesPath,
-    getLegacyProjectModesPath,
     getMtimeMs,
     getProjectModesPath,
+    prepareModesConfig,
     scaffoldGlobalModesConfig,
     withFileLock,
 } from "./storage.ts";
@@ -584,12 +584,11 @@ function isProjectTrusted(ctx: ExtensionContext): boolean {
 }
 
 async function resolveModesPath(ctx: ExtensionContext): Promise<string> {
-    if (isProjectTrusted(ctx)) {
+    const projectTrusted = isProjectTrusted(ctx);
+    await prepareModesConfig(ctx.cwd, projectTrusted);
+    if (projectTrusted) {
         const projectPath = getProjectModesPath(ctx.cwd);
         if (await fileExists(projectPath)) return projectPath;
-
-        const legacyProjectPath = getLegacyProjectModesPath(ctx.cwd);
-        if (await fileExists(legacyProjectPath)) return legacyProjectPath;
     }
     return getGlobalModesPath();
 }

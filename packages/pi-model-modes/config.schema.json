@@ -1,46 +1,93 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-model-modes/config.schema.json",
-  "title": "Pi model modes config",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-model-modes/config.schema.json",
+  "title": "Pi Model Modes settings",
+  "description": "Settings and mode definitions for switching model configurations.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "version": { "type": "number", "default": 1 },
-    "currentMode": { "type": "string", "default": "default" },
+    "$schema": {
+      "type": "string",
+      "default": "./schemas/pi-model-modes.schema.json",
+      "description": "JSON Schema used by editors for this settings file."
+    },
+    "version": {
+      "type": "number",
+      "default": 1,
+      "description": "Settings format version."
+    },
+    "currentMode": {
+      "type": "string",
+      "default": "default",
+      "description": "Currently selected mode ID."
+    },
     "defaultModel": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["provider", "modelId"],
       "properties": {
-        "provider": { "type": "string", "minLength": 1 },
-        "modelId": { "type": "string", "minLength": 1 },
-        "thinkingLevel": {}
-      }
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Default model provider."
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Default model ID."
+        },
+        "thinkingLevel": {
+          "description": "Optional default thinking level."
+        }
+      },
+      "additionalProperties": false
     },
-    "modeUseThinkingBorderColors": { "type": "boolean", "default": false },
-    "modeShowThinkingLevelStatus": { "type": "boolean", "default": false },
+    "modeUseThinkingBorderColors": {
+      "type": "boolean",
+      "default": false,
+      "description": "Use thinking-level colors instead of mode colors for borders."
+    },
+    "modeShowThinkingLevelStatus": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show thinking level alongside mode status."
+    },
     "shortcuts": {
       "type": "object",
-      "additionalProperties": false,
       "properties": {
-        "forward": { "type": "string", "minLength": 1 },
-        "backward": { "type": "string", "minLength": 1 }
-      }
+        "forward": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shortcut for cycling modes forward."
+        },
+        "backward": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shortcut for cycling modes backward."
+        }
+      },
+      "additionalProperties": false
     },
     "modes": {
       "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "provider": { "type": "string" },
-          "modelId": { "type": "string" },
-          "thinkingLevel": {},
-          "color": { "type": "string" }
+      "patternProperties": {
+        "^.*$": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "modelId": {
+              "type": "string"
+            },
+            "thinkingLevel": {},
+            "color": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
         }
       },
-      "default": {}
+      "default": {},
+      "description": "Named model-mode specifications keyed by mode ID."
     }
   }
 }

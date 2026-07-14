@@ -1,6 +1,5 @@
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
+import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
@@ -11,10 +10,6 @@ import {
     DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
     DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
 } from "./patch-state.ts";
-
-const EXTENSION_ID = "pi-ui-tweaks";
-const CONFIG_FILE = "config.json";
-const SCHEMA_FILE = "config.schema.json";
 
 export type UiTweaksConfig = {
     readonly autocompleteAboveInput: boolean;
@@ -80,6 +75,102 @@ const OptionalPasteCollapseExpandKeySchema = Type.Union([
     Type.Null(),
 ]);
 
+export const uiTweaksSettingsDefinition = defineExtensionSettings({
+    id: "pi-ui-tweaks",
+    title: "Pi UI Tweaks",
+    description: "Settings for Pi interactive-interface behavior and presentation tweaks.",
+    schemaId:
+        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-ui-tweaks/config.schema.json",
+    schema: Type.Object(
+        {
+            enabled: Type.Boolean({ default: true, description: "Enable all UI tweaks." }),
+            autocompleteAboveInput: Type.Boolean({
+                default: true,
+                description: "Render autocomplete above the input editor.",
+            }),
+            bashExecPromptSpacing: Type.Boolean({
+                default: true,
+                description: "Add spacing around bash execution prompts.",
+            }),
+            anchorInputToBottom: Type.Boolean({
+                default: false,
+                description: "Anchor the input editor to the terminal bottom.",
+            }),
+            compactModelSelector: Type.Boolean({
+                default: true,
+                description: "Use compact model-selector rows.",
+            }),
+            hideAutocompleteScrollInfo: Type.Boolean({
+                default: true,
+                description: "Hide autocomplete scroll-position text.",
+            }),
+            hideModelChangeStatus: Type.Boolean({
+                default: true,
+                description: "Hide model-change status messages.",
+            }),
+            hideModelProviderHint: Type.Boolean({
+                default: true,
+                description: "Hide provider hints in the model selector.",
+            }),
+            hideSlashCommandSourceTags: Type.Boolean({
+                default: true,
+                description: "Hide source tags in slash-command completion.",
+            }),
+            highlightSelectedModelProvider: Type.Boolean({
+                default: true,
+                description: "Highlight the selected model provider.",
+            }),
+            inputPromptPrefix: Type.String({
+                minLength: 1,
+                default: "> ",
+                description: "Prefix displayed before input text.",
+            }),
+            neutralBorderColor: Type.Boolean({
+                default: true,
+                description: "Use a neutral border color when Pi is idle.",
+            }),
+            pasteCollapseCharThreshold: Type.Integer({
+                minimum: 0,
+                default: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
+                description: "Character threshold that collapses pasted content.",
+            }),
+            pasteCollapseEnabled: Type.Boolean({
+                default: DEFAULT_PASTE_COLLAPSE_ENABLED,
+                description: "Collapse large pasted content.",
+            }),
+            pasteCollapseExpandKey: Type.Union(OptionalPasteCollapseExpandKeySchema.anyOf, {
+                default: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
+                description: "Explicit key used to expand collapsed pasted content.",
+            }),
+            pasteCollapseLineThreshold: Type.Integer({
+                minimum: 0,
+                default: DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
+                description: "Line threshold that collapses pasted content.",
+            }),
+            pasteCollapseUseToolExpandKey: Type.Boolean({
+                default: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+                description: "Reuse Pi's configured tool-expansion key for pasted content.",
+            }),
+            preserveCompactionHistory: Type.Boolean({
+                default: false,
+                description: "Keep pre-compaction messages visible in transcript history.",
+            }),
+            restoreContentAfterAutocompleteClose: Type.Boolean({
+                default: true,
+                description: "Restore editor content after closing autocomplete.",
+            }),
+            selectedOptionPrefix: Type.String({
+                minLength: 1,
+                default: "→ ",
+                description: "Prefix displayed before selected list options.",
+            }),
+        },
+        { additionalProperties: false },
+    ),
+});
+
+export default uiTweaksSettingsDefinition;
+
 const UiTweaksConfigSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
@@ -106,8 +197,6 @@ const UiTweaksConfigSchema = Type.Object(
     },
     { additionalProperties: false },
 );
-
-type ParsedUiTweaksConfig = Static<typeof UiTweaksConfigSchema>;
 
 const DEFAULT_UI_TWEAKS_CONFIG: UiTweaksConfig = {
     autocompleteAboveInput: true,
@@ -276,140 +365,35 @@ export function resolveUiTweaksConfig(
     };
 }
 
-const DEFAULT_UI_TWEAKS_CONFIG_FILE: ParsedUiTweaksConfig = {
-    $schema: `./${SCHEMA_FILE}`,
-    enabled: true,
-    ...DEFAULT_UI_TWEAKS_CONFIG,
-};
-
-function getGlobalConfigPath(): string {
-    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
-}
-
-function getProjectConfigPath(cwd: string): string {
-    return join(cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
-}
-
-function getSchemaPath(configPath: string): string {
-    return join(dirname(configPath), SCHEMA_FILE);
-}
-
-function writeIfMissing(filePath: string, content: string): void {
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
-    } catch (error: unknown) {
-        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function refreshSchemaFile(filePath: string, content: string): void {
-    let temporaryPath: string | undefined;
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        try {
-            if (readFileSync(filePath, "utf8") === content) return;
-        } catch (error: unknown) {
-            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
-                throw error;
-            }
-        }
-
-        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
-        temporaryPath = nextTemporaryPath;
-        renameSync(temporaryPath, filePath);
-        temporaryPath = undefined;
-    } catch (error: unknown) {
-        if (temporaryPath !== undefined) {
-            try {
-                unlinkSync(temporaryPath);
-            } catch {
-                // Ignore cleanup failure while reporting the original scaffold failure.
-            }
-        }
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function readBundledSchema(): string | undefined {
-    try {
-        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
-    } catch {
-        return undefined;
-    }
-}
-
-function scaffoldGlobalConfig(): void {
-    const globalConfigPath = getGlobalConfigPath();
-    const schema = readBundledSchema();
-    if (schema !== undefined) {
-        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
-    }
-    writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_UI_TWEAKS_CONFIG_FILE, null, 2)}\n`);
-}
-
-function readConfigFile(path: string, label: string): { settings?: unknown; error?: string } {
-    try {
-        const raw = readFileSync(path, "utf8");
-        const settings: unknown = JSON.parse(raw);
-        return { settings };
-    } catch (cause: unknown) {
-        if (
-            typeof cause === "object" &&
-            cause !== null &&
-            Reflect.get(cause, "code") === "ENOENT"
-        ) {
-            return {};
-        }
-
-        let message: string;
-        if (cause instanceof Error) {
-            message = cause.message;
-        } else {
-            message = String(cause);
-        }
-        return { error: `Failed to read ${label}: ${message}` };
-    }
-}
-
-/**
- * Loads UI tweak settings from extension global config and trusted project config.
- */
-export function loadUiTweaksConfig(cwd: string, projectTrusted: boolean): LoadedUiTweaksConfig {
-    scaffoldGlobalConfig();
-    const globalConfigPath = getGlobalConfigPath();
-    const globalConfig = readConfigFile(globalConfigPath, globalConfigPath);
+/** Load UI tweak settings from global and trusted-project extension settings. */
+export function loadUiTweaksSettings(cwd: string, projectTrusted: boolean): LoadedUiTweaksConfig {
+    const settings = loadPiExtensionSettingsSync(
+        uiTweaksSettingsDefinition,
+        { cwd, isProjectTrusted: () => projectTrusted },
+        {
+            bundledSchema: {
+                kind: "url",
+                url: new URL("../config.schema.json", import.meta.url),
+            },
+        },
+    );
     const settingsSources: UiTweaksSettingsSource[] = [];
-    const errors: string[] = [];
-
-    if (globalConfig.settings !== undefined) {
-        settingsSources.push({ label: globalConfigPath, settings: globalConfig.settings });
+    if (settings.globalSettingsLayer !== undefined) {
+        settingsSources.push({
+            label: settings.globalConfigPath,
+            settings: settings.globalSettingsLayer,
+        });
     }
-    if (globalConfig.error !== undefined) {
-        errors.push(globalConfig.error);
-    }
-
-    if (projectTrusted) {
-        const projectConfigPath = getProjectConfigPath(cwd);
-        const projectConfig = readConfigFile(projectConfigPath, projectConfigPath);
-        if (projectConfig.settings !== undefined) {
-            settingsSources.push({
-                label: projectConfigPath,
-                settings: projectConfig.settings,
-            });
-        }
-        if (projectConfig.error !== undefined) {
-            errors.push(projectConfig.error);
-        }
+    if (settings.projectSettingsLayer !== undefined && settings.projectConfigPath !== undefined) {
+        settingsSources.push({
+            label: settings.projectConfigPath,
+            settings: settings.projectSettingsLayer,
+        });
     }
 
     const loaded = resolveUiTweaksConfig(settingsSources);
     return {
         config: loaded.config,
-        errors: [...errors, ...loaded.errors],
+        errors: [...settings.diagnostics.map((diagnostic) => diagnostic.message), ...loaded.errors],
     };
 }

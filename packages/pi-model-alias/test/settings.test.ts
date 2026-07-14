@@ -10,9 +10,9 @@ const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(join(tmpdir(), "pi-model-alias-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-const config = await import("../src/config.ts");
-const configPath = config.getGlobalConfigPath();
-const schemaPath = join(agentDir, "pi-model-alias", "config.schema.json");
+const settings = await import("../src/settings.ts");
+const configPath = settings.getGlobalConfigPath();
+const schemaPath = join(agentDir, "extension-settings", "schemas", "pi-model-alias.schema.json");
 await mkdir(join(configPath, ".."), { recursive: true });
 
 afterAll(async () => {
@@ -26,16 +26,16 @@ afterAll(async () => {
 
 function runtimeState(): RuntimeState {
     const state: RuntimeState = {
-        loadConfig() {
-            return config.safeReadConfig(state);
+        loadSettings() {
+            return settings.loadModelAliasSettings(state);
         },
     };
     return state;
 }
 
-test("safeReadConfig scaffolds defaults for a missing aliases file", async () => {
+test("loadModelAliasSettings scaffolds defaults for a missing aliases file", async () => {
     await rm(configPath, { force: true });
-    const loaded = config.safeReadConfig(runtimeState());
+    const loaded = settings.loadModelAliasSettings(runtimeState());
 
     assert.equal(loaded.path, configPath);
     assert.equal(loaded.error, undefined);
@@ -43,23 +43,23 @@ test("safeReadConfig scaffolds defaults for a missing aliases file", async () =>
     assert.deepEqual(loaded.providerAliases, []);
     assert.equal(loaded.stableProviderColumn, true);
     assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-        $schema: "./config.schema.json",
+        $schema: "./schemas/pi-model-alias.schema.json",
         aliases: [],
         providerAliases: [],
         stableProviderColumn: true,
     });
-    assert.match(await readFile(schemaPath, "utf8"), /Pi model and provider alias config/);
+    assert.match(await readFile(schemaPath, "utf8"), /Pi Model Alias settings/);
 
     await writeFile(schemaPath, "stale schema", "utf8");
     await writeFile(configPath, "{ not json", "utf8");
-    const loadedAgain = config.safeReadConfig(runtimeState());
+    const loadedAgain = settings.loadModelAliasSettings(runtimeState());
 
     assert.match(loadedAgain.error ?? "", /Failed to load/);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
-    assert.equal(await readFile(schemaPath, "utf8"), "stale schema");
+    assert.match(await readFile(schemaPath, "utf8"), /Pi Model Alias settings/);
 });
 
-test("safeReadConfig skips global scaffolding after the first load for a config path", async () => {
+test("loadModelAliasSettings refreshes schema while reusing an unchanged config", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -70,16 +70,16 @@ test("safeReadConfig skips global scaffolding after the first load for a config 
         "utf8",
     );
     const state = runtimeState();
-    const loaded = config.safeReadConfig(state);
+    const loaded = settings.loadModelAliasSettings(state);
 
     await writeFile(schemaPath, "stale after scaffold", "utf8");
-    const loadedAgain = config.safeReadConfig(state);
+    const loadedAgain = settings.loadModelAliasSettings(state);
 
     assert.equal(loadedAgain, loaded);
-    assert.equal(await readFile(schemaPath, "utf8"), "stale after scaffold");
+    assert.match(await readFile(schemaPath, "utf8"), /Pi Model Alias settings/);
 });
 
-test("safeReadConfig parses and trims valid aliases", async () => {
+test("loadModelAliasSettings parses and trims valid aliases", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -97,7 +97,7 @@ test("safeReadConfig parses and trims valid aliases", async () => {
         "utf8",
     );
 
-    const loaded = config.safeReadConfig(runtimeState());
+    const loaded = settings.loadModelAliasSettings(runtimeState());
 
     assert.equal(loaded.error, undefined);
     assert.deepEqual(loaded.aliases, [
@@ -107,7 +107,32 @@ test("safeReadConfig parses and trims valid aliases", async () => {
     assert.equal(loaded.stableProviderColumn, false);
 });
 
-test("safeReadConfig rejects duplicate aliases without throwing", async () => {
+test("loadModelAliasSettings migrates and selects a trusted legacy project config", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "pi-model-alias-project-"));
+    try {
+        const legacyPath = join(cwd, ".pi", "pi-model-alias", "settings.json");
+        await mkdir(join(cwd, ".pi", "pi-model-alias"), { recursive: true });
+        await writeFile(
+            legacyPath,
+            JSON.stringify({
+                aliases: [{ provider: "openai", model: "gpt-5", alias: "project" }],
+            }),
+            "utf8",
+        );
+        const state = runtimeState();
+        state.configCwd = cwd;
+        state.projectTrusted = true;
+
+        const loaded = settings.loadModelAliasSettings(state);
+
+        assert.equal(loaded.path, join(cwd, ".pi", "extension-settings", "pi-model-alias.json"));
+        assert.equal(loaded.aliases[0]?.alias, "project");
+    } finally {
+        await rm(cwd, { recursive: true, force: true });
+    }
+});
+
+test("loadModelAliasSettings rejects duplicate aliases without throwing", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -119,14 +144,14 @@ test("safeReadConfig rejects duplicate aliases without throwing", async () => {
         "utf8",
     );
 
-    const loaded = config.safeReadConfig(runtimeState());
+    const loaded = settings.loadModelAliasSettings(runtimeState());
 
     assert.deepEqual(loaded.aliases, []);
     assert.deepEqual(loaded.providerAliases, []);
     assert.match(loaded.error ?? "", /duplicates aliases\[0\]/);
 });
 
-test("safeReadConfig rejects unknown config keys", async () => {
+test("loadModelAliasSettings rejects unknown config keys", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -135,14 +160,14 @@ test("safeReadConfig rejects unknown config keys", async () => {
         "utf8",
     );
 
-    const loaded = config.safeReadConfig(runtimeState());
+    const loaded = settings.loadModelAliasSettings(runtimeState());
 
     assert.deepEqual(loaded.aliases, []);
     assert.deepEqual(loaded.providerAliases, []);
-    assert.match(loaded.error ?? "", /additional properties/);
+    assert.match(loaded.error ?? "", /schema|property|ignored/);
 });
 
-test("safeReadConfig rejects duplicate provider aliases without throwing", async () => {
+test("loadModelAliasSettings rejects duplicate provider aliases without throwing", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -154,17 +179,17 @@ test("safeReadConfig rejects duplicate provider aliases without throwing", async
         "utf8",
     );
 
-    const loaded = config.safeReadConfig(runtimeState());
+    const loaded = settings.loadModelAliasSettings(runtimeState());
 
     assert.deepEqual(loaded.aliases, []);
     assert.deepEqual(loaded.providerAliases, []);
     assert.match(loaded.error ?? "", /duplicates providerAliases\[0\]/);
 });
 
-test("safeReadConfig returns a readable error for malformed JSON", async () => {
+test("loadModelAliasSettings returns a readable error for malformed JSON", async () => {
     await writeFile(configPath, "{ not json", "utf8");
 
-    const loaded = config.safeReadConfig(runtimeState());
+    const loaded = settings.loadModelAliasSettings(runtimeState());
 
     assert.deepEqual(loaded.aliases, []);
     assert.deepEqual(loaded.providerAliases, []);

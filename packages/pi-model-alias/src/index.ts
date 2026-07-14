@@ -4,7 +4,7 @@ import {
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-import { safeReadConfig } from "./config.ts";
+import { loadModelAliasSettings } from "./settings.ts";
 import { installProviderAliasUiPatches } from "./model-selector-provider-patch.ts";
 import { aliasForProviderRequest, rewritePayloadModel } from "./provider-payload.ts";
 import {
@@ -34,7 +34,7 @@ function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
 
 export default async function modelAliasExtension(pi: ExtensionAPI): Promise<void> {
     const state: RuntimeState = {
-        loadConfig: () => safeReadConfig(state),
+        loadSettings: () => loadModelAliasSettings(state),
     };
 
     installRegistryPatch(ModelRegistry.prototype as PatchedModelRegistry, state);

@@ -4,23 +4,28 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-import { loadFooterConfig, resolveFooterConfig } from "../src/settings.ts";
+import { loadFooterSettings, resolveFooterConfig } from "../src/settings.ts";
 
-test("loadFooterConfig scaffolds missing global config and schema", async () => {
+test("loadFooterSettings scaffolds missing global config and schema", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     const agentDir = await mkdtemp(path.join(tmpdir(), "pi-footer-agent-"));
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-footer-cwd-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-footer", "config.json");
-        const schemaPath = path.join(agentDir, "pi-footer", "config.schema.json");
-        const loaded = loadFooterConfig(cwd, false);
+        const configPath = path.join(agentDir, "extension-settings", "pi-footer.json");
+        const schemaPath = path.join(
+            agentDir,
+            "extension-settings",
+            "schemas",
+            "pi-footer.schema.json",
+        );
+        const loaded = loadFooterSettings(cwd, false);
 
         assert.deepEqual(loaded.errors, []);
         assert.equal(loaded.config.separator, "·");
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-            $schema: "./config.schema.json",
+            $schema: "./schemas/pi-footer.schema.json",
             separator: "·",
             layout: {
                 left: ["path", "branch", "provider", "model", "thinking"],
@@ -28,16 +33,16 @@ test("loadFooterConfig scaffolds missing global config and schema", async () => 
                 hidden: [],
             },
         });
-        assert.match(await readFile(schemaPath, "utf8"), /Pi footer config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Footer settings/);
 
         const customConfig = JSON.stringify({ separator: "/" });
         await writeFile(configPath, customConfig, "utf8");
         await writeFile(schemaPath, "stale schema", "utf8");
-        const loadedAgain = loadFooterConfig(cwd, false);
+        const loadedAgain = loadFooterSettings(cwd, false);
 
         assert.equal(loadedAgain.config.separator, "/");
         assert.equal(await readFile(configPath, "utf8"), customConfig);
-        assert.match(await readFile(schemaPath, "utf8"), /Pi footer config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Footer settings/);
     } finally {
         await rm(agentDir, { recursive: true, force: true });
         await rm(cwd, { recursive: true, force: true });

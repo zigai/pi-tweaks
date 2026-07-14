@@ -147,10 +147,10 @@ test("mention project rewrites submitted prompts and expands provider context", 
 
     try {
         await mkdir(path.join(cwd, "pi-tweaks", ".git"), { recursive: true });
-        const configDir = path.join(cwd, CONFIG_DIR_NAME, "pi-mention-project");
+        const configDir = path.join(cwd, CONFIG_DIR_NAME, "extension-settings");
         await mkdir(configDir, { recursive: true });
         await writeFile(
-            path.join(configDir, "config.json"),
+            path.join(configDir, "pi-mention-project.json"),
             JSON.stringify({ roots: ["."], gitReposOnly: true }),
             "utf8",
         );

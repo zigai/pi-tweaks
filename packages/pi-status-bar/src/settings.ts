@@ -1,5 +1,6 @@
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
+import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { Type, type Static, type TSchema } from "typebox";
@@ -7,14 +8,129 @@ import { Value } from "typebox/value";
 
 import type { StatusBarConfig } from "./status-bar-api.ts";
 
-const EXTENSION_ID = "pi-status-bar";
-const CONFIG_FILE = "config.json";
-const SCHEMA_FILE = "config.schema.json";
 const RIGHT_MESSAGES_SETTINGS_KEY = "rightMessages";
 const DEFAULT_RIGHT_MESSAGE_INTERVAL_MS = 10_000;
 const DEFAULT_RIGHT_MESSAGE_MIN_GAP = 4;
 const DEFAULT_RIGHT_MESSAGE_SCROLL_COLUMN_INTERVAL_MS = 120;
 const DEFAULT_RIGHT_MESSAGE_MIN_SCROLL_CYCLES = 1;
+
+const spinnerSettingsSchema = Type.Object(
+    {
+        frames: Type.Optional(
+            Type.Array(Type.String(), {
+                description: "Spinner frames displayed while Pi is active.",
+            }),
+        ),
+    },
+    { additionalProperties: false },
+);
+
+const timerSettingsSchema = Type.Object(
+    {
+        visible: Type.Boolean({
+            default: true,
+            description: "Show the active-run timer.",
+        }),
+        paused: Type.Boolean({
+            default: false,
+            description: "Display the active-run timer as paused.",
+        }),
+    },
+    { default: {}, additionalProperties: false },
+);
+
+const activeSettingsSchema = Type.Object(
+    {
+        text: Type.Optional(Type.String({ description: "Custom active status text." })),
+        spinner: Type.Optional(spinnerSettingsSchema),
+        timer: timerSettingsSchema,
+    },
+    { default: {}, additionalProperties: false },
+);
+
+const idleSettingsSchema = Type.Object(
+    {
+        text: Type.Optional(Type.String({ description: "Custom idle status text." })),
+        visible: Type.Boolean({
+            default: true,
+            description: "Show the status bar while Pi is idle.",
+        }),
+        showLastRunSummary: Type.Boolean({
+            default: true,
+            description: "Show the previous run summary while idle.",
+        }),
+    },
+    { default: {}, additionalProperties: false },
+);
+
+export const statusBarSettingsDefinition = defineExtensionSettings({
+    id: "pi-status-bar",
+    title: "Pi Status Bar",
+    description: "Settings for active, idle, and rotating status-bar content.",
+    schemaId:
+        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-status-bar/config.schema.json",
+    schema: Type.Object(
+        {
+            statusBar: Type.Object(
+                {
+                    active: activeSettingsSchema,
+                    idle: idleSettingsSchema,
+                },
+                { default: {}, additionalProperties: false },
+            ),
+            rightMessages: Type.Object(
+                {
+                    enabled: Type.Boolean({
+                        default: false,
+                        description: "Enable rotating messages on the right side.",
+                    }),
+                    intervalMs: Type.Integer({
+                        minimum: 1,
+                        default: DEFAULT_RIGHT_MESSAGE_INTERVAL_MS,
+                        description: "Delay between rotating messages in milliseconds.",
+                    }),
+                    minGap: Type.Integer({
+                        minimum: 0,
+                        default: DEFAULT_RIGHT_MESSAGE_MIN_GAP,
+                        description: "Minimum spaces between repeated scrolling messages.",
+                    }),
+                    minScrollCycles: Type.Integer({
+                        minimum: 1,
+                        default: DEFAULT_RIGHT_MESSAGE_MIN_SCROLL_CYCLES,
+                        description: "Minimum completed scroll cycles before advancing.",
+                    }),
+                    scrollColumnIntervalMs: Type.Integer({
+                        minimum: 1,
+                        default: DEFAULT_RIGHT_MESSAGE_SCROLL_COLUMN_INTERVAL_MS,
+                        description: "Delay between horizontal scroll columns in milliseconds.",
+                    }),
+                    dimmed: Type.Boolean({
+                        default: true,
+                        description: "Render rotating messages with dim styling.",
+                    }),
+                    italic: Type.Boolean({
+                        default: true,
+                        description: "Render rotating messages with italic styling.",
+                    }),
+                    messages: Type.Array(Type.String(), {
+                        default: [],
+                        description: "Inline rotating status messages.",
+                    }),
+                    messagesFile: Type.Optional(
+                        Type.String({
+                            minLength: 1,
+                            description: "Path to a newline-delimited messages file.",
+                        }),
+                    ),
+                },
+                { default: {}, additionalProperties: false },
+            ),
+        },
+        { additionalProperties: false },
+    ),
+});
+
+export default statusBarSettingsDefinition;
 
 export type RightMessagesConfig = {
     readonly enabled: boolean;
@@ -173,32 +289,6 @@ export const DEFAULT_STATUS_BAR_CONFIG: StatusBarConfig = {
     idle: {
         visible: true,
         showLastRunSummary: true,
-    },
-};
-
-const DEFAULT_STATUS_BAR_CONFIG_FILE: ParsedStatusBarResolvedConfig = {
-    $schema: `./${SCHEMA_FILE}`,
-    statusBar: {
-        active: {
-            timer: {
-                visible: true,
-                paused: false,
-            },
-        },
-        idle: {
-            visible: true,
-            showLastRunSummary: true,
-        },
-    },
-    rightMessages: {
-        enabled: DEFAULT_RIGHT_MESSAGES_CONFIG.enabled,
-        intervalMs: DEFAULT_RIGHT_MESSAGES_CONFIG.intervalMs,
-        minGap: DEFAULT_RIGHT_MESSAGES_CONFIG.minGap,
-        minScrollCycles: DEFAULT_RIGHT_MESSAGES_CONFIG.minScrollCycles,
-        scrollColumnIntervalMs: DEFAULT_RIGHT_MESSAGES_CONFIG.scrollColumnIntervalMs,
-        dimmed: DEFAULT_RIGHT_MESSAGES_CONFIG.dimmed,
-        italic: DEFAULT_RIGHT_MESSAGES_CONFIG.italic,
-        messages: [],
     },
 };
 
@@ -709,145 +799,37 @@ export function resolveStatusBarResolvedConfig(
     };
 }
 
-function getGlobalConfigPath(): string {
-    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
-}
-
-function getProjectConfigPath(cwd: string): string {
-    return join(cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
-}
-
-function getSchemaPath(configPath: string): string {
-    return join(dirname(configPath), SCHEMA_FILE);
-}
-
-function writeIfMissing(filePath: string, content: string): void {
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
-    } catch (error: unknown) {
-        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function refreshSchemaFile(filePath: string, content: string): void {
-    let temporaryPath: string | undefined;
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        try {
-            if (readFileSync(filePath, "utf8") === content) return;
-        } catch (error: unknown) {
-            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
-                throw error;
-            }
-        }
-
-        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
-        temporaryPath = nextTemporaryPath;
-        renameSync(temporaryPath, filePath);
-        temporaryPath = undefined;
-    } catch (error: unknown) {
-        if (temporaryPath !== undefined) {
-            try {
-                unlinkSync(temporaryPath);
-            } catch {
-                // Ignore cleanup failure while reporting the original scaffold failure.
-            }
-        }
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function readBundledSchema(): string | undefined {
-    try {
-        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
-    } catch {
-        return undefined;
-    }
-}
-
-function scaffoldGlobalConfig(): void {
-    const globalConfigPath = getGlobalConfigPath();
-    const schema = readBundledSchema();
-    if (schema !== undefined) {
-        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
-    }
-    writeIfMissing(
-        globalConfigPath,
-        `${JSON.stringify(DEFAULT_STATUS_BAR_CONFIG_FILE, null, 2)}\n`,
+/** Load status-bar settings from global and trusted-project extension settings. */
+export function loadStatusBarSettings(cwd: string, projectTrusted: boolean): LoadedStatusBarConfig {
+    const settings = loadPiExtensionSettingsSync(
+        statusBarSettingsDefinition,
+        { cwd, isProjectTrusted: () => projectTrusted },
+        {
+            bundledSchema: {
+                kind: "url",
+                url: new URL("../config.schema.json", import.meta.url),
+            },
+        },
     );
-}
-
-function readConfigFile(path: string, label: string): { settings?: unknown; error?: string } {
-    try {
-        const raw = readFileSync(path, "utf8");
-        const settings: unknown = JSON.parse(raw);
-        return { settings };
-    } catch (cause: unknown) {
-        if (
-            typeof cause === "object" &&
-            cause !== null &&
-            Reflect.get(cause, "code") === "ENOENT"
-        ) {
-            return {};
-        }
-
-        let message: string;
-        if (cause instanceof Error) {
-            message = cause.message;
-        } else {
-            message = String(cause);
-        }
-        return { error: `Failed to read ${label}: ${message}` };
-    }
-}
-
-/**
- * Loads status bar settings from extension global config and trusted project config.
- */
-export function loadStatusBarResolvedConfig(
-    cwd: string,
-    projectTrusted: boolean,
-): LoadedStatusBarConfig {
-    scaffoldGlobalConfig();
-    const globalConfigPath = getGlobalConfigPath();
-    const globalConfig = readConfigFile(globalConfigPath, globalConfigPath);
     const settingsSources: StatusBarSettingsSource[] = [];
-    const errors: string[] = [];
-
-    if (globalConfig.settings !== undefined) {
+    if (settings.globalSettingsLayer !== undefined) {
         settingsSources.push({
-            label: globalConfigPath,
-            baseDir: dirname(globalConfigPath),
-            settings: globalConfig.settings,
+            label: settings.globalConfigPath,
+            baseDir: dirname(settings.globalConfigPath),
+            settings: settings.globalSettingsLayer,
         });
     }
-    if (globalConfig.error !== undefined) {
-        errors.push(globalConfig.error);
-    }
-
-    if (projectTrusted) {
-        const projectConfigPath = getProjectConfigPath(cwd);
-        const projectConfig = readConfigFile(projectConfigPath, projectConfigPath);
-        if (projectConfig.settings !== undefined) {
-            settingsSources.push({
-                label: projectConfigPath,
-                baseDir: cwd,
-                settings: projectConfig.settings,
-            });
-        }
-        if (projectConfig.error !== undefined) {
-            errors.push(projectConfig.error);
-        }
+    if (settings.projectSettingsLayer !== undefined && settings.projectConfigPath !== undefined) {
+        settingsSources.push({
+            label: settings.projectConfigPath,
+            baseDir: cwd,
+            settings: settings.projectSettingsLayer,
+        });
     }
 
     const loaded = resolveStatusBarResolvedConfig(settingsSources);
     return {
         config: loaded.config,
-        errors: [...errors, ...loaded.errors],
+        errors: [...settings.diagnostics.map((diagnostic) => diagnostic.message), ...loaded.errors],
     };
 }

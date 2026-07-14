@@ -5,18 +5,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 
-import { loadStatusBarResolvedConfig, resolveStatusBarResolvedConfig } from "../src/settings.ts";
+import { loadStatusBarSettings, resolveStatusBarResolvedConfig } from "../src/settings.ts";
 
-test("loadStatusBarResolvedConfig scaffolds missing global config and schema", async () => {
+test("loadStatusBarSettings scaffolds missing global config and schema", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     const agentDir = mkdtempSync(join(tmpdir(), "pi-status-bar-agent-"));
     const cwd = mkdtempSync(join(tmpdir(), "pi-status-bar-cwd-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = join(agentDir, "pi-status-bar", "config.json");
-        const schemaPath = join(agentDir, "pi-status-bar", "config.schema.json");
-        const loaded = loadStatusBarResolvedConfig(cwd, false);
+        const configPath = join(agentDir, "extension-settings", "pi-status-bar.json");
+        const schemaPath = join(
+            agentDir,
+            "extension-settings",
+            "schemas",
+            "pi-status-bar.schema.json",
+        );
+        const loaded = loadStatusBarSettings(cwd, false);
 
         assert.deepEqual(loaded.errors, []);
         assert.equal(loaded.config.rightMessages.enabled, false);
@@ -33,7 +38,7 @@ test("loadStatusBarResolvedConfig scaffolds missing global config and schema", a
             },
         });
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-            $schema: "./config.schema.json",
+            $schema: "./schemas/pi-status-bar.schema.json",
             statusBar: {
                 active: {
                     timer: {
@@ -57,16 +62,16 @@ test("loadStatusBarResolvedConfig scaffolds missing global config and schema", a
                 messages: [],
             },
         });
-        assert.match(await readFile(schemaPath, "utf8"), /Pi status bar config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Status Bar settings/);
 
         const customConfig = JSON.stringify({ rightMessages: { messages: ["hello"] } });
         writeFileSync(configPath, customConfig, "utf8");
         writeFileSync(schemaPath, "stale schema", "utf8");
-        const loadedAgain = loadStatusBarResolvedConfig(cwd, false);
+        const loadedAgain = loadStatusBarSettings(cwd, false);
 
         assert.deepEqual(loadedAgain.config.rightMessages.messages, ["hello"]);
         assert.equal(await readFile(configPath, "utf8"), customConfig);
-        assert.match(await readFile(schemaPath, "utf8"), /Pi status bar config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Status Bar settings/);
     } finally {
         rmSync(agentDir, { recursive: true, force: true });
         rmSync(cwd, { recursive: true, force: true });

@@ -24,21 +24,22 @@ pi install npm:@zigai/pi-mention-project
 - Use quoted mentions for names with spaces, such as `#"My Project"`.
 - Unknown mentions stay unchanged.
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-mention-project/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project.json`.
 
-| Option              | Type                 | Default | Description                                                     |
-| ------------------- | -------------------- | ------- | --------------------------------------------------------------- |
-| `trigger`           | `string`             | `"#"`   | Single non-whitespace mention character. It cannot be `/`.      |
-| `roots`             | `string \| string[]` | `[]`    | Project search roots.                                           |
-| `gitReposOnly`      | `boolean`            | `true`  | Lists only folders that are Git repos.                          |
-| `includeDotFolders` | `boolean`            | `false` | Includes folders whose names start with `.`.                    |
-| `completionSuffix`  | `string`             | `" "`   | Text inserted after a selected mention. Use `""` for no suffix. |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `trigger` | string | `"#"` | Single character that starts a project mention. |
+| `roots` | string[] \| string | `[]` | Project root directory or directories searched for projects. |
+| `gitReposOnly` | boolean | `true` | Include only directories containing Git repositories. |
+| `includeDotFolders` | boolean | `false` | Include project directories whose names start with a dot. |
+| `completionSuffix` | string | `" "` | Text inserted after a completed project mention. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-mention-project.schema.json",
   "trigger": "#",
   "roots": [],
   "gitReposOnly": true,
@@ -46,6 +47,7 @@ Configure global settings at `~/.pi/agent/pi-mention-project/config.json`.
   "completionSuffix": " "
 }
 ```
+<!-- pi-extension-settings:end -->
 
 ## License
 

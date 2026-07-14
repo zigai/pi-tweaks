@@ -36,7 +36,7 @@ export type RuntimeState = {
     configCwd?: string;
     projectTrusted?: boolean;
     reportedErrorKey?: string;
-    loadConfig: () => LoadedConfig;
+    loadSettings: () => LoadedConfig;
 };
 
 export type BasicModelRegistry = {

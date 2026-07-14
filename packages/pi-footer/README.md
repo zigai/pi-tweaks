@@ -21,30 +21,38 @@ Footer contents:
 pi install npm:@zigai/pi-footer
 ```
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-footer/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
 
-| Option          | Type       | Default                                               | Description                                                                                  |
-| --------------- | ---------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `separator`     | `string`   | `"·"`                                                 | Visible separator placed between footer status segments. Whitespace-only values are ignored. |
-| `layout.left`   | `string[]` | `["path", "branch", "provider", "model", "thinking"]` | Left-side slot order. Earlier slots are kept first when the footer narrows.                  |
-| `layout.right`  | `string[]` | `["context"]`                                         | Right-side slot order. Later slots are kept first when the footer narrows.                   |
-| `layout.hidden` | `string[]` | `[]`                                                  | Slots omitted even when configured on a side or registered by another extension.             |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `separator` | string | `"·"` | Text placed between visible footer slots. |
+| `layout.left` | (`branch` \| `context` \| `mcp` \| `model` \| `path` \| `provider` \| `thinking` \| string)[] | `["path","branch","provider","model","thinking"]` | Footer slot IDs shown on the left in display order. |
+| `layout.right` | (`branch` \| `context` \| `mcp` \| `model` \| `path` \| `provider` \| `thinking` \| string)[] | `["context"]` | Footer slot IDs shown on the right in display order. |
+| `layout.hidden` | (`path` \| `branch` \| `provider` \| `model` \| `thinking` \| `mcp` \| `context` \| string)[] | `[]` | Footer slot IDs hidden from both sides. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-footer.schema.json",
   "separator": "·",
   "layout": {
-    "left": ["path", "branch", "provider", "model", "thinking"],
-    "right": ["context"],
+    "left": [
+      "path",
+      "branch",
+      "provider",
+      "model",
+      "thinking"
+    ],
+    "right": [
+      "context"
+    ],
     "hidden": []
   }
 }
 ```
-
-Custom slots registered by other extensions use namespaced ids such as `my-extension.status`.
+<!-- pi-extension-settings:end -->
 
 ## Extension API
 

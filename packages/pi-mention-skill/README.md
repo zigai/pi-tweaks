@@ -22,24 +22,26 @@ Type `$` in the prompt editor to open skill suggestions, then select a skill.
 
 The selected mention loads the same skill content that `/skill:name` would have loaded, while keeping skills out of the normal slash command picker.
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-mention-skill/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-skill.json`.
 
-| Option             | Type      | Default | Description                                                     |
-| ------------------ | --------- | ------- | --------------------------------------------------------------- |
-| `trigger`          | `string`  | `"$"`   | Single non-whitespace mention character. It cannot be `/`.      |
-| `hideSlashSkills`  | `boolean` | `true`  | Hides `/skill:*` entries from Pi's default slash autocomplete.  |
-| `completionSuffix` | `string`  | `" "`   | Text inserted after a selected mention. Use `""` for no suffix. |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `trigger` | string | `"$"` | Single character that starts a skill mention. |
+| `hideSlashSkills` | boolean | `true` | Hide skill commands from slash-command completion. |
+| `completionSuffix` | string | `" "` | Text inserted after a completed skill mention. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-mention-skill.schema.json",
   "trigger": "$",
   "hideSlashSkills": true,
   "completionSuffix": " "
 }
 ```
+<!-- pi-extension-settings:end -->
 
 ## License
 

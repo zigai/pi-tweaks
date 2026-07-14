@@ -3,7 +3,7 @@ import { Loader, sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
 
 import {
     DEFAULT_RIGHT_MESSAGES_CONFIG,
-    loadStatusBarResolvedConfig,
+    loadStatusBarSettings,
     type LoadedStatusBarConfig,
     type RightMessagesConfig,
 } from "./settings.ts";
@@ -461,7 +461,7 @@ function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedStatusBarConfig
 }
 
 function applyStatusBarResolvedConfig(ctx: ExtensionContext): void {
-    const loaded = loadStatusBarResolvedConfig(ctx.cwd, ctx.isProjectTrusted());
+    const loaded = loadStatusBarSettings(ctx.cwd, ctx.isProjectTrusted());
     setStatusBarBaseConfig(loaded.config.statusBar);
     setRightMessagesConfig(loaded.config.rightMessages);
     reportConfigErrors(ctx, loaded);

@@ -8,7 +8,7 @@ import { highlightMessageLines, type HighlightStyles } from "./highlight-text.ts
 import { buildHighlightStyles, type HighlightTheme } from "./highlight-styles.ts";
 import {
     DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG,
-    loadMessageHighlightsConfig,
+    loadMessageHighlightsSettings,
     type LoadedMessageHighlightsConfig,
 } from "./settings.ts";
 
@@ -327,7 +327,7 @@ function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedMessageHighligh
 }
 
 function applyMessageHighlightsConfig(ctx: ExtensionContext): void {
-    const loaded = loadMessageHighlightsConfig(ctx.cwd, ctx.isProjectTrusted());
+    const loaded = loadMessageHighlightsSettings(ctx.cwd, ctx.isProjectTrusted());
     activeConfig = loaded.config;
     reportConfigErrors(ctx, loaded);
 }

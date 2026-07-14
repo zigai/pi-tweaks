@@ -31,16 +31,28 @@
   "publishConfig": {
     "access": "public"
   },
+  "scripts": {
+    "prepack": "node ../../scripts/prepare-settings-bundle.ts"
+  },
   "dependencies": {
+    "@zigai/pi-extension-settings": "0.2.7",
     "typebox": "^1.1.38"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
   },
+  "bundleDependencies": [
+    "@zigai/pi-extension-settings"
+  ],
   "pi": {
     "extensions": [
       "./src/index.ts"
     ]
+  },
+  "piExtensionSettings": {
+    "definition": "./src/settings.ts",
+    "schema": "./config.schema.json",
+    "readme": "./README.md"
   }
 }

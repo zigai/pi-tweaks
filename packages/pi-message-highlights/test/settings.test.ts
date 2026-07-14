@@ -4,35 +4,40 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-import { loadMessageHighlightsConfig, resolveMessageHighlightsConfig } from "../src/settings.ts";
+import { loadMessageHighlightsSettings, resolveMessageHighlightsConfig } from "../src/settings.ts";
 
-test("loadMessageHighlightsConfig scaffolds missing global config and schema", async () => {
+test("loadMessageHighlightsSettings scaffolds missing global config and schema", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     const agentDir = await mkdtemp(path.join(tmpdir(), "pi-message-highlights-agent-"));
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-message-highlights-cwd-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-message-highlights", "config.json");
-        const schemaPath = path.join(agentDir, "pi-message-highlights", "config.schema.json");
-        const loaded = loadMessageHighlightsConfig(cwd, false);
+        const configPath = path.join(agentDir, "extension-settings", "pi-message-highlights.json");
+        const schemaPath = path.join(
+            agentDir,
+            "extension-settings",
+            "schemas",
+            "pi-message-highlights.schema.json",
+        );
+        const loaded = loadMessageHighlightsSettings(cwd, false);
 
         assert.deepEqual(loaded.errors, []);
         assert.deepEqual(loaded.config.urlColor, { kind: "hex", color: "#87d7ff" });
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-            $schema: "./config.schema.json",
+            $schema: "./schemas/pi-message-highlights.schema.json",
             urlColor: "#87d7ff",
         });
-        assert.match(await readFile(schemaPath, "utf8"), /Pi message highlights config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Message Highlights settings/);
 
         const customConfig = JSON.stringify({ urlColor: "mdLink" });
         await writeFile(configPath, customConfig, "utf8");
         await writeFile(schemaPath, "stale schema", "utf8");
-        const loadedAgain = loadMessageHighlightsConfig(cwd, false);
+        const loadedAgain = loadMessageHighlightsSettings(cwd, false);
 
         assert.deepEqual(loadedAgain.config.urlColor, { kind: "theme", color: "mdLink" });
         assert.equal(await readFile(configPath, "utf8"), customConfig);
-        assert.match(await readFile(schemaPath, "utf8"), /Pi message highlights config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Message Highlights settings/);
     } finally {
         await rm(agentDir, { recursive: true, force: true });
         await rm(cwd, { recursive: true, force: true });

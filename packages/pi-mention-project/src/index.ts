@@ -17,7 +17,7 @@ import {
 import { createProjectDirectorySource, listProjectDirectories } from "./projects.ts";
 import {
     applyMentionProjectCliFlags,
-    configuredMentionProjectSettings,
+    loadMentionProjectSettings,
     INCLUDE_DOT_FOLDERS_FLAG,
     INCLUDE_NON_GIT_FLAG,
     type MentionProjectSettingsContext,
@@ -28,7 +28,7 @@ function mentionProjectSettings(
     pi: Pick<ExtensionAPI, "getFlag">,
     ctx: MentionProjectSettingsContext,
 ): MentionProjectSettings {
-    return applyMentionProjectCliFlags(configuredMentionProjectSettings(ctx), {
+    return applyMentionProjectCliFlags(loadMentionProjectSettings(ctx), {
         includeNonGit: pi.getFlag(INCLUDE_NON_GIT_FLAG),
         includeDotFolders: pi.getFlag(INCLUDE_DOT_FOLDERS_FLAG),
     });

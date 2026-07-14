@@ -1,12 +1,7 @@
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { defineExtensionSettings } from "@zigai/pi-extension-settings";
+import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
-
-const EXTENSION_ID = "pi-message-highlights";
-const CONFIG_FILE = "config.json";
-const SCHEMA_FILE = "config.schema.json";
 
 export const THEME_FOREGROUND_COLORS = [
     "accent",
@@ -57,6 +52,37 @@ export const THEME_FOREGROUND_COLORS = [
 ] as const;
 
 export type ThemeForegroundColor = (typeof THEME_FOREGROUND_COLORS)[number];
+export const DEFAULT_URL_COLOR_SETTING = "#87d7ff";
+
+export const themeForegroundColorSchema = Type.Union(
+    THEME_FOREGROUND_COLORS.map((color) => Type.Literal(color)),
+);
+export const urlColorSettingSchema = Type.Union([
+    Type.Integer({ minimum: 0, maximum: 255 }),
+    Type.Literal(""),
+    Type.String({ pattern: "^#[0-9a-fA-F]{6}$" }),
+    themeForegroundColorSchema,
+]);
+
+export const messageHighlightsSettingsDefinition = defineExtensionSettings({
+    id: "pi-message-highlights",
+    title: "Pi Message Highlights",
+    description: "Settings for highlighting URLs in message output.",
+    schemaId:
+        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-message-highlights/config.schema.json",
+    schema: Type.Object(
+        {
+            urlColor: Type.Union(urlColorSettingSchema.anyOf, {
+                default: DEFAULT_URL_COLOR_SETTING,
+                description:
+                    "URL color as an ANSI-256 index, hex color, theme color name, or empty string to disable highlighting.",
+            }),
+        },
+        { additionalProperties: false },
+    ),
+});
+
+export default messageHighlightsSettingsDefinition;
 
 export type HighlightColor =
     | {
@@ -94,41 +120,22 @@ type MessageHighlightsSettings = {
     readonly urlColor?: UrlColorSetting;
 };
 
-type UrlColorSetting = Static<typeof UrlColorSettingSchema>;
-
-const ThemeForegroundColorSchema = Type.Union(
-    THEME_FOREGROUND_COLORS.map((color) => Type.Literal(color)),
-);
-const HexColorSchema = Type.String({ pattern: "^#[0-9a-fA-F]{6}$" });
-const UrlColorSettingSchema = Type.Union([
-    Type.Integer({ minimum: 0, maximum: 255 }),
-    Type.Literal(""),
-    HexColorSchema,
-    ThemeForegroundColorSchema,
-]);
+type UrlColorSetting = Static<typeof urlColorSettingSchema>;
 const MessageHighlightsConfigSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
-        urlColor: Type.Optional(UrlColorSettingSchema),
+        urlColor: Type.Optional(urlColorSettingSchema),
     },
     { additionalProperties: false },
 );
 
-type ParsedMessageHighlightsConfig = Static<typeof MessageHighlightsConfigSchema>;
 const THEME_FOREGROUND_COLOR_SET = new Set<string>(THEME_FOREGROUND_COLORS);
-
-export const DEFAULT_URL_COLOR_SETTING = "#87d7ff";
 
 export const DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG: MessageHighlightsConfig = {
     urlColor: {
         kind: "hex",
         color: DEFAULT_URL_COLOR_SETTING,
     },
-};
-
-const DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG_FILE: ParsedMessageHighlightsConfig = {
-    $schema: `./${SCHEMA_FILE}`,
-    urlColor: DEFAULT_URL_COLOR_SETTING,
 };
 
 function formatSchemaPath(instancePath: string): string {
@@ -232,134 +239,37 @@ export function resolveMessageHighlightsConfig(
     };
 }
 
-function getGlobalConfigPath(): string {
-    return join(getAgentDir(), EXTENSION_ID, CONFIG_FILE);
-}
-
-function getProjectConfigPath(cwd: string): string {
-    return join(cwd, CONFIG_DIR_NAME, EXTENSION_ID, CONFIG_FILE);
-}
-
-function getSchemaPath(configPath: string): string {
-    return join(dirname(configPath), SCHEMA_FILE);
-}
-
-function writeIfMissing(filePath: string, content: string): void {
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
-    } catch (cause: unknown) {
-        if (cause instanceof Error && (cause as NodeJS.ErrnoException).code === "EEXIST") return;
-        if (cause instanceof Error) throw cause;
-        throw new Error(String(cause));
-    }
-}
-
-function refreshSchemaFile(filePath: string, content: string): void {
-    let temporaryPath: string | undefined;
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        try {
-            if (readFileSync(filePath, "utf8") === content) return;
-        } catch (cause: unknown) {
-            if (!(cause instanceof Error) || (cause as NodeJS.ErrnoException).code !== "ENOENT") {
-                throw cause;
-            }
-        }
-
-        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
-        temporaryPath = nextTemporaryPath;
-        renameSync(temporaryPath, filePath);
-        temporaryPath = undefined;
-    } catch (cause: unknown) {
-        if (temporaryPath !== undefined) {
-            try {
-                unlinkSync(temporaryPath);
-            } catch {
-                // Ignore cleanup failure while reporting the original scaffold failure.
-            }
-        }
-        if (cause instanceof Error) throw cause;
-        throw new Error(String(cause));
-    }
-}
-
-function readBundledSchema(): string | undefined {
-    try {
-        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
-    } catch {
-        return undefined;
-    }
-}
-
-function scaffoldGlobalConfig(): void {
-    const globalConfigPath = getGlobalConfigPath();
-    const schema = readBundledSchema();
-    if (schema !== undefined) {
-        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
-    }
-    writeIfMissing(
-        globalConfigPath,
-        `${JSON.stringify(DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG_FILE, null, 2)}\n`,
-    );
-}
-
-function readConfigFile(path: string, label: string): { settings?: unknown; error?: string } {
-    try {
-        const raw = readFileSync(path, "utf8");
-        const settings: unknown = JSON.parse(raw);
-        return { settings };
-    } catch (cause: unknown) {
-        if (
-            typeof cause === "object" &&
-            cause !== null &&
-            Reflect.get(cause, "code") === "ENOENT"
-        ) {
-            return {};
-        }
-
-        let message: string;
-        if (cause instanceof Error) {
-            message = cause.message;
-        } else {
-            message = String(cause);
-        }
-        return { error: `Failed to read ${label}: ${message}` };
-    }
-}
-
-export function loadMessageHighlightsConfig(
+export function loadMessageHighlightsSettings(
     cwd: string,
     projectTrusted: boolean,
 ): LoadedMessageHighlightsConfig {
-    scaffoldGlobalConfig();
-    const globalConfigPath = getGlobalConfigPath();
-    const globalConfig = readConfigFile(globalConfigPath, globalConfigPath);
+    const settings = loadPiExtensionSettingsSync(
+        messageHighlightsSettingsDefinition,
+        { cwd, isProjectTrusted: () => projectTrusted },
+        {
+            bundledSchema: {
+                kind: "url",
+                url: new URL("../config.schema.json", import.meta.url),
+            },
+        },
+    );
     const settingsSources: MessageHighlightsSettingsSource[] = [];
-    const errors: string[] = [];
-
-    if (globalConfig.settings !== undefined) {
-        settingsSources.push({ label: globalConfigPath, settings: globalConfig.settings });
+    if (settings.globalSettingsLayer !== undefined) {
+        settingsSources.push({
+            label: settings.globalConfigPath,
+            settings: settings.globalSettingsLayer,
+        });
     }
-    if (globalConfig.error !== undefined) {
-        errors.push(globalConfig.error);
-    }
-
-    if (projectTrusted) {
-        const projectConfigPath = getProjectConfigPath(cwd);
-        const projectConfig = readConfigFile(projectConfigPath, projectConfigPath);
-        if (projectConfig.settings !== undefined) {
-            settingsSources.push({ label: projectConfigPath, settings: projectConfig.settings });
-        }
-        if (projectConfig.error !== undefined) {
-            errors.push(projectConfig.error);
-        }
+    if (settings.projectSettingsLayer !== undefined && settings.projectConfigPath !== undefined) {
+        settingsSources.push({
+            label: settings.projectConfigPath,
+            settings: settings.projectSettingsLayer,
+        });
     }
 
     const loaded = resolveMessageHighlightsConfig(settingsSources);
     return {
         config: loaded.config,
-        errors: [...errors, ...loaded.errors],
+        errors: [...settings.diagnostics.map((diagnostic) => diagnostic.message), ...loaded.errors],
     };
 }

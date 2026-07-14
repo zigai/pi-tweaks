@@ -13,7 +13,7 @@ import {
     expandSkillMentionsInMessages,
     type SkillExpansionLoader,
 } from "./expand-mentions.ts";
-import { configuredMentionSkillSettings } from "./settings.ts";
+import { loadMentionSkillSettings } from "./settings.ts";
 import { createSkillCommandSource, type SkillCommandSource } from "./skill-commands.ts";
 
 type SkillMentionContextResult = {
@@ -42,7 +42,7 @@ export function createSkillMentionContextHandler(
     loadSkillExpansion: SkillExpansionLoader,
 ): SkillMentionContextHandler {
     return async (event, ctx) => {
-        const { trigger } = configuredMentionSkillSettings(ctx);
+        const { trigger } = loadMentionSkillSettings(ctx);
         if (!contextContainsSkillMentionTrigger(event.messages, trigger)) return;
 
         const messages = await expandSkillMentionsInMessages(
@@ -62,7 +62,7 @@ export default function (pi: MentionSkillExtensionApi): void {
 
     pi.on("session_start", async (_event, ctx) => {
         if (!ctx.hasUI) return;
-        const settings = configuredMentionSkillSettings(ctx);
+        const settings = loadMentionSkillSettings(ctx);
         skillSource.refresh();
         applyMentionSkillEditor(ctx, settings.trigger, () => skillSource.getCachedSkillNames());
         ctx.ui.addAutocompleteProvider((current) =>

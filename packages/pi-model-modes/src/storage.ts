@@ -1,6 +1,13 @@
+import {
+    resolveGlobalSettingsPaths,
+    resolveProjectSettingsPaths,
+} from "@zigai/pi-extension-settings";
+import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import fs from "node:fs/promises";
 import path from "node:path";
+
+import modelModesSettingsDefinition from "./settings.ts";
 
 export function getGlobalAgentDir(): string {
     return getAgentDir();
@@ -8,36 +15,13 @@ export function getGlobalAgentDir(): string {
 
 const EXTENSION_ID = "pi-model-modes";
 const LEGACY_EXTENSION_ID = "pi-mode";
-const CONFIG_FILE = "config.json";
-const SCHEMA_FILE = "config.schema.json";
-
-const DEFAULT_MODES_CONFIG_FILE = {
-    $schema: `./${SCHEMA_FILE}`,
-    version: 1,
-    currentMode: "default",
-    modeUseThinkingBorderColors: false,
-    modeShowThinkingLevelStatus: false,
-    modes: {},
-};
-
-function getGlobalModesPathForExtension(extensionId: string): string {
-    return path.join(getGlobalAgentDir(), extensionId, CONFIG_FILE);
-}
-
-function getProjectModesPathForExtension(cwd: string, extensionId: string): string {
-    return path.join(cwd, CONFIG_DIR_NAME, extensionId, CONFIG_FILE);
-}
 
 export function getGlobalModesPath(): string {
-    return getGlobalModesPathForExtension(EXTENSION_ID);
+    return resolveGlobalSettingsPaths(getGlobalAgentDir(), EXTENSION_ID).configPath;
 }
 
 export function getProjectModesPath(cwd: string): string {
-    return getProjectModesPathForExtension(cwd, EXTENSION_ID);
-}
-
-export function getLegacyProjectModesPath(cwd: string): string {
-    return getProjectModesPathForExtension(cwd, LEGACY_EXTENSION_ID);
+    return resolveProjectSettingsPaths(cwd, CONFIG_DIR_NAME, EXTENSION_ID).configPath;
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {
@@ -53,82 +37,22 @@ export async function ensureDirForFile(filePath: string): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-function getSchemaPath(configPath: string): string {
-    return path.join(path.dirname(configPath), SCHEMA_FILE);
-}
-
-async function writeIfMissing(filePath: string, content: string): Promise<void> {
-    try {
-        await ensureDirForFile(filePath);
-        await fs.writeFile(filePath, content, { encoding: "utf8", flag: "wx" });
-    } catch (error: unknown) {
-        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-async function refreshSchemaFile(filePath: string, content: string): Promise<void> {
-    let temporaryPath: string | undefined;
-    try {
-        await ensureDirForFile(filePath);
-        try {
-            if ((await fs.readFile(filePath, "utf8")) === content) return;
-        } catch (error: unknown) {
-            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
-                throw error;
-            }
-        }
-
-        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        await fs.writeFile(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
-        temporaryPath = nextTemporaryPath;
-        await fs.rename(temporaryPath, filePath);
-        temporaryPath = undefined;
-    } catch (error: unknown) {
-        if (temporaryPath !== undefined) {
-            try {
-                await fs.unlink(temporaryPath);
-            } catch {
-                // Ignore cleanup failure while reporting the original scaffold failure.
-            }
-        }
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-async function readBundledSchema(): Promise<string | undefined> {
-    try {
-        return await fs.readFile(new URL("../config.schema.json", import.meta.url), "utf8");
-    } catch {
-        return undefined;
-    }
-}
-
-async function copyLegacyGlobalConfigIfMissing(configPath: string): Promise<void> {
-    if (await fileExists(configPath)) return;
-
-    try {
-        const legacyConfig = await fs.readFile(
-            getGlobalModesPathForExtension(LEGACY_EXTENSION_ID),
-            "utf8",
-        );
-        await writeIfMissing(configPath, legacyConfig);
-    } catch {}
+export async function prepareModesConfig(cwd: string, projectTrusted: boolean): Promise<void> {
+    await loadPiExtensionSettings(
+        modelModesSettingsDefinition,
+        { cwd, isProjectTrusted: () => projectTrusted },
+        {
+            legacySettingsIds: [LEGACY_EXTENSION_ID],
+            bundledSchema: {
+                kind: "url",
+                url: new URL("../config.schema.json", import.meta.url),
+            },
+        },
+    );
 }
 
 export async function scaffoldGlobalModesConfig(): Promise<void> {
-    const globalConfigPath = getGlobalModesPath();
-    const schema = await readBundledSchema();
-    if (schema !== undefined) {
-        await refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
-    }
-    await copyLegacyGlobalConfigIfMissing(globalConfigPath);
-    await writeIfMissing(
-        globalConfigPath,
-        `${JSON.stringify(DEFAULT_MODES_CONFIG_FILE, null, 2)}\n`,
-    );
+    await prepareModesConfig(process.cwd(), false);
 }
 
 export async function getMtimeMs(filePath: string): Promise<number | null> {

@@ -1,8 +1,6 @@
-import {
-    CONFIG_DIR_NAME,
-    getAgentDir,
-    type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import { defineExtensionSettings, resolveGlobalSettingsPaths } from "@zigai/pi-extension-settings";
+import { loadPiExtensionSettingsSync } from "@zigai/pi-extension-settings/pi";
+import { getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
     closeSync,
     mkdirSync,
@@ -14,19 +12,13 @@ import {
     writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { Type, type Static, type TSchema } from "typebox";
+import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
 export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
 export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelStatus";
 
-const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
-const STALE_SETTINGS_LOCK_MS = 30_000;
-const EXTENSION_ID = "pi-model-modes";
-const LEGACY_EXTENSION_ID = "pi-mode";
-const CONFIG_FILE = "config.json";
-const SCHEMA_FILE = "config.schema.json";
-const ModeSpecJsonSchema = Type.Object(
+export const modeSpecSchema = Type.Object(
     {
         provider: Type.Optional(Type.String()),
         modelId: Type.Optional(Type.String()),
@@ -35,50 +27,89 @@ const ModeSpecJsonSchema = Type.Object(
     },
     { additionalProperties: false },
 );
-const DefaultModelJsonSchema = Type.Object(
+
+export const defaultModelSchema = Type.Object(
     {
-        provider: Type.String({ minLength: 1 }),
-        modelId: Type.String({ minLength: 1 }),
-        thinkingLevel: Type.Optional(Type.Unknown()),
+        provider: Type.String({
+            minLength: 1,
+            description: "Default model provider.",
+        }),
+        modelId: Type.String({ minLength: 1, description: "Default model ID." }),
+        thinkingLevel: Type.Optional(
+            Type.Unknown({ description: "Optional default thinking level." }),
+        ),
     },
     { additionalProperties: false },
 );
-const ModeShortcutsJsonSchema = Type.Object(
+
+export const modeShortcutsSchema = Type.Object(
     {
-        forward: Type.Optional(Type.String({ minLength: 1 })),
-        backward: Type.Optional(Type.String({ minLength: 1 })),
+        forward: Type.Optional(
+            Type.String({ minLength: 1, description: "Shortcut for cycling modes forward." }),
+        ),
+        backward: Type.Optional(
+            Type.String({ minLength: 1, description: "Shortcut for cycling modes backward." }),
+        ),
     },
     { additionalProperties: false },
 );
-export type ModeShortcuts = Static<typeof ModeShortcutsJsonSchema>;
+
+export const modelModesSettingsDefinition = defineExtensionSettings({
+    id: "pi-model-modes",
+    title: "Pi Model Modes",
+    description: "Settings and mode definitions for switching model configurations.",
+    schemaId:
+        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-model-modes/config.schema.json",
+    schema: Type.Object(
+        {
+            version: Type.Number({ default: 1, description: "Settings format version." }),
+            currentMode: Type.String({
+                default: "default",
+                description: "Currently selected mode ID.",
+            }),
+            defaultModel: Type.Optional(defaultModelSchema),
+            [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: Type.Boolean({
+                default: false,
+                description: "Use thinking-level colors instead of mode colors for borders.",
+            }),
+            [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: Type.Boolean({
+                default: false,
+                description: "Show thinking level alongside mode status.",
+            }),
+            shortcuts: Type.Optional(modeShortcutsSchema),
+            modes: Type.Record(Type.String(), modeSpecSchema, {
+                default: {},
+                description: "Named model-mode specifications keyed by mode ID.",
+            }),
+        },
+        { additionalProperties: false },
+    ),
+});
+
+export default modelModesSettingsDefinition;
+
+const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
+const STALE_SETTINGS_LOCK_MS = 30_000;
+const EXTENSION_ID = "pi-model-modes";
+const LEGACY_EXTENSION_ID = "pi-mode";
+export type ModeShortcuts = Static<typeof modeShortcutsSchema>;
 
 const SettingsObjectSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
         version: Type.Optional(Type.Number()),
         currentMode: Type.Optional(Type.String()),
-        defaultModel: Type.Optional(DefaultModelJsonSchema),
+        defaultModel: Type.Optional(defaultModelSchema),
         [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
         [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: Type.Optional(Type.Boolean()),
-        shortcuts: Type.Optional(ModeShortcutsJsonSchema),
-        modes: Type.Optional(Type.Record(Type.String(), ModeSpecJsonSchema)),
+        shortcuts: Type.Optional(modeShortcutsSchema),
+        modes: Type.Optional(Type.Record(Type.String(), modeSpecSchema)),
     },
     { additionalProperties: false },
 );
-const BooleanSettingSchema = Type.Boolean();
-
 type SettingsReadContext = {
     cwd: string;
     projectTrusted: boolean;
-};
-
-const DEFAULT_MODE_CONFIG_FILE = {
-    $schema: `./${SCHEMA_FILE}`,
-    version: 1,
-    currentMode: "default",
-    [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: false,
-    [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: false,
-    modes: {},
 };
 
 let settingsReadContext: SettingsReadContext | undefined;
@@ -111,114 +142,26 @@ export function setSettingsContext(ctx: ExtensionContext): void {
     }
 }
 
-function getSettingsPathForExtension(extensionId: string): string {
-    return join(getAgentDir(), extensionId, CONFIG_FILE);
-}
-
-function getProjectSettingsPathForExtension(cwd: string, extensionId: string): string {
-    return join(cwd, CONFIG_DIR_NAME, extensionId, CONFIG_FILE);
-}
-
 function getSettingsPath(): string {
-    return getSettingsPathForExtension(EXTENSION_ID);
+    return resolveGlobalSettingsPaths(getAgentDir(), EXTENSION_ID).configPath;
 }
 
-function getSchemaPath(configPath: string): string {
-    return join(dirname(configPath), SCHEMA_FILE);
-}
-
-function writeIfMissing(filePath: string, content: string): void {
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content, { encoding: "utf8", flag: "wx" });
-    } catch (error: unknown) {
-        if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EEXIST") return;
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function refreshSchemaFile(filePath: string, content: string): void {
-    let temporaryPath: string | undefined;
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        try {
-            if (readFileSync(filePath, "utf8") === content) return;
-        } catch (error: unknown) {
-            if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "ENOENT") {
-                throw error;
-            }
-        }
-
-        const nextTemporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        writeFileSync(nextTemporaryPath, content, { encoding: "utf8", flag: "wx" });
-        temporaryPath = nextTemporaryPath;
-        renameSync(temporaryPath, filePath);
-        temporaryPath = undefined;
-    } catch (error: unknown) {
-        if (temporaryPath !== undefined) {
-            try {
-                unlinkSync(temporaryPath);
-            } catch {
-                // Ignore cleanup failure while reporting the original scaffold failure.
-            }
-        }
-        if (error instanceof Error) throw error;
-        throw new Error(String(error));
-    }
-}
-
-function readBundledSchema(): string | undefined {
-    try {
-        return readFileSync(new URL("../config.schema.json", import.meta.url), "utf8");
-    } catch {
-        return undefined;
-    }
-}
-
-function fileExistsSync(filePath: string): boolean {
-    try {
-        statSync(filePath);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-function copyLegacyGlobalConfigIfMissing(configPath: string): void {
-    if (fileExistsSync(configPath)) return;
-
-    try {
-        const legacyConfig = readFileSync(getSettingsPathForExtension(LEGACY_EXTENSION_ID), "utf8");
-        writeIfMissing(configPath, legacyConfig);
-    } catch {}
-}
-
-function scaffoldGlobalConfig(): void {
-    const globalConfigPath = getSettingsPath();
-    const schema = readBundledSchema();
-    if (schema !== undefined) {
-        refreshSchemaFile(getSchemaPath(globalConfigPath), schema);
-    }
-    copyLegacyGlobalConfigIfMissing(globalConfigPath);
-    writeIfMissing(globalConfigPath, `${JSON.stringify(DEFAULT_MODE_CONFIG_FILE, null, 2)}\n`);
-}
-
-function getProjectSettingsPath(): string | undefined {
-    if (settingsReadContext === undefined || !settingsReadContext.projectTrusted) {
-        return undefined;
-    }
-
-    const projectPath = getProjectSettingsPathForExtension(settingsReadContext.cwd, EXTENSION_ID);
-    if (fileExistsSync(projectPath)) return projectPath;
-
-    const legacyProjectPath = getProjectSettingsPathForExtension(
-        settingsReadContext.cwd,
-        LEGACY_EXTENSION_ID,
+export function loadModelModesSettings() {
+    const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
+    return loadPiExtensionSettingsSync(
+        modelModesSettingsDefinition,
+        {
+            cwd: context.cwd,
+            isProjectTrusted: () => context.projectTrusted,
+        },
+        {
+            legacySettingsIds: [LEGACY_EXTENSION_ID],
+            bundledSchema: {
+                kind: "url",
+                url: new URL("../config.schema.json", import.meta.url),
+            },
+        },
     );
-    if (fileExistsSync(legacyProjectPath)) return legacyProjectPath;
-
-    return projectPath;
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -236,14 +179,6 @@ function throwError(error: unknown): never {
 function sleepSync(ms: number): void {
     const buffer = new SharedArrayBuffer(4);
     Atomics.wait(new Int32Array(buffer), 0, 0, ms);
-}
-
-function parseOptionalBoolean(schema: TSchema, value: unknown): boolean | undefined {
-    if (value === undefined) return undefined;
-    if (!Value.Check(schema, value)) return undefined;
-    const parsed: unknown = Value.Parse(schema, value);
-    if (typeof parsed === "boolean") return parsed;
-    return undefined;
 }
 
 function withSettingsLock<T>(settingsPath: string, fn: () => T): T {
@@ -363,10 +298,6 @@ function readSettingsObject(
     settingsPath: string,
     options?: { throwOnInvalid?: boolean },
 ): Record<string, unknown> {
-    if (settingsPath === getSettingsPath()) {
-        scaffoldGlobalConfig();
-    }
-
     try {
         const raw = readFileSync(settingsPath, "utf8");
         const parsedJson: unknown = JSON.parse(raw);
@@ -381,7 +312,7 @@ function readSettingsObject(
 }
 
 function updateSettingsObject(update: (settings: Record<string, unknown>) => void): void {
-    scaffoldGlobalConfig();
+    loadModelModesSettings();
     const settingsPath = getSettingsPath();
     withSettingsLock(settingsPath, () => {
         const settings = readSettingsObject(settingsPath, { throwOnInvalid: true });
@@ -391,68 +322,26 @@ function updateSettingsObject(update: (settings: Record<string, unknown>) => voi
 }
 
 function parseModeShortcuts(value: unknown): ModeShortcuts {
-    if (!Value.Check(ModeShortcutsJsonSchema, value)) return {};
-    const parsed: unknown = Value.Parse(ModeShortcutsJsonSchema, value);
+    if (!Value.Check(modeShortcutsSchema, value)) return {};
+    const parsed: unknown = Value.Parse(modeShortcutsSchema, value);
     // SAFETY: Value.Check succeeded against the same schema, so this parse result has the schema's static type.
     return parsed as ModeShortcuts;
 }
 
 export function getConfiguredModeShortcuts(): ModeShortcuts {
-    const globalSettings = readSettingsObject(getSettingsPath());
-    return parseModeShortcuts(globalSettings.shortcuts);
-}
-
-function applyBooleanSetting(
-    settings: Record<string, unknown>,
-    key: string,
-    fallback: boolean,
-): boolean {
-    const parsed = parseOptionalBoolean(BooleanSettingSchema, settings[key]);
-    if (parsed === undefined) return fallback;
-    return parsed;
+    return parseModeShortcuts(loadModelModesSettings().globalSettingsLayer?.shortcuts);
 }
 
 function readModeSettings(): {
     useThinkingBorderColors: boolean;
     showThinkingLevelStatus: boolean;
 } {
-    if (cachedSettings !== undefined) {
-        return cachedSettings;
-    }
+    if (cachedSettings !== undefined) return cachedSettings;
 
-    let useThinkingBorderColors = false;
-    let showThinkingLevelStatus = false;
-
-    const globalSettings = readSettingsObject(getSettingsPath());
-    useThinkingBorderColors = applyBooleanSetting(
-        globalSettings,
-        USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
-        useThinkingBorderColors,
-    );
-    showThinkingLevelStatus = applyBooleanSetting(
-        globalSettings,
-        SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY,
-        showThinkingLevelStatus,
-    );
-
-    const projectSettingsPath = getProjectSettingsPath();
-    if (projectSettingsPath !== undefined) {
-        const projectSettings = readSettingsObject(projectSettingsPath);
-        useThinkingBorderColors = applyBooleanSetting(
-            projectSettings,
-            USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
-            useThinkingBorderColors,
-        );
-        showThinkingLevelStatus = applyBooleanSetting(
-            projectSettings,
-            SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY,
-            showThinkingLevelStatus,
-        );
-    }
-
+    const settings = loadModelModesSettings().settings;
     cachedSettings = {
-        useThinkingBorderColors,
-        showThinkingLevelStatus,
+        useThinkingBorderColors: settings[USE_THINKING_BORDER_COLORS_SETTINGS_KEY],
+        showThinkingLevelStatus: settings[SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY],
     };
     return cachedSettings;
 }

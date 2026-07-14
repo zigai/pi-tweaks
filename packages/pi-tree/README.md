@@ -23,25 +23,27 @@ pi install npm:@zigai/pi-tree
 
 ![Pi Tree preview demo](assets/tree-preview-demo.png)
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-tree/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-tree.json`.
 
-| Option                  | Type                                | Default      | Description                                                                                |
-| ----------------------- | ----------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
-| `treeTimestampMode`     | `"off" \| "relative" \| "absolute"` | `"relative"` | Initial timestamp mode.                                                                    |
-| `treeSelectedPreview`   | `boolean`                           | `false`      | Opens `/tree` with the preview pane enabled.                                               |
-| `treeMaxVisibleLines`   | `number`                            | unset        | Maximum number of tree rows to show. Omit to use Pi's native height; minimum value is `5`. |
-| `treePreviewFullHeight` | `boolean`                           | `true`       | Keeps the preview pane at full height instead of shrinking it to selected preview content. |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `treeTimestampMode` | `absolute` \| `off` \| `relative` | `"relative"` | Timestamp style shown in tree entries. |
+| `treeSelectedPreview` | boolean | `false` | Show the selected tree entry preview. |
+| `treeMaxVisibleLines` | number | — | Maximum visible lines in the tree selector. |
+| `treePreviewFullHeight` | boolean | `true` | Allow the preview to use the selector's full available height. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-tree.schema.json",
   "treeTimestampMode": "relative",
   "treeSelectedPreview": false,
   "treePreviewFullHeight": true
 }
 ```
+<!-- pi-extension-settings:end -->
 
 ## Development
 

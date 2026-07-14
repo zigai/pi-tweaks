@@ -6,7 +6,7 @@ import { afterAll, beforeEach, test } from "vitest";
 
 import {
     applyMentionProjectCliFlags,
-    configuredMentionProjectSettings,
+    loadMentionProjectSettings,
     type MentionProjectSettingsContext,
 } from "../src/settings.ts";
 
@@ -14,11 +14,16 @@ const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-agent-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-const globalConfigPath = path.join(agentDir, "pi-mention-project", "config.json");
-const globalSchemaPath = path.join(agentDir, "pi-mention-project", "config.schema.json");
+const globalConfigPath = path.join(agentDir, "extension-settings", "pi-mention-project.json");
+const globalSchemaPath = path.join(
+    agentDir,
+    "extension-settings",
+    "schemas",
+    "pi-mention-project.schema.json",
+);
 
 beforeEach(async () => {
-    await rm(path.join(agentDir, "pi-mention-project"), { recursive: true, force: true });
+    await rm(path.join(agentDir, "extension-settings"), { recursive: true, force: true });
 });
 
 afterAll(async () => {
@@ -44,10 +49,10 @@ async function writeJson(filePath: string, value: Record<string, unknown>): Prom
     await writeFile(filePath, JSON.stringify(value), "utf8");
 }
 
-test("configuredMentionProjectSettings uses defaults and scaffolds global config", async () => {
+test("loadMentionProjectSettings uses defaults and scaffolds global config", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
     try {
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
             trigger: "#",
             roots: [],
             gitReposOnly: true,
@@ -55,20 +60,20 @@ test("configuredMentionProjectSettings uses defaults and scaffolds global config
             completionSuffix: " ",
         });
         assert.deepEqual(JSON.parse(await readFile(globalConfigPath, "utf8")), {
-            $schema: "./config.schema.json",
+            $schema: "./schemas/pi-mention-project.schema.json",
             trigger: "#",
             roots: [],
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
         });
-        assert.match(await readFile(globalSchemaPath, "utf8"), /Pi project mention config/);
+        assert.match(await readFile(globalSchemaPath, "utf8"), /Pi Mention Project settings/);
 
         const customConfig = JSON.stringify({ trigger: "@", roots: ["~/Projects"] });
         await writeFile(globalConfigPath, customConfig, "utf8");
         await writeFile(globalSchemaPath, "stale schema", "utf8");
 
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
             trigger: "@",
             roots: ["~/Projects"],
             gitReposOnly: true,
@@ -76,13 +81,13 @@ test("configuredMentionProjectSettings uses defaults and scaffolds global config
             completionSuffix: " ",
         });
         assert.equal(await readFile(globalConfigPath, "utf8"), customConfig);
-        assert.match(await readFile(globalSchemaPath, "utf8"), /Pi project mention config/);
+        assert.match(await readFile(globalSchemaPath, "utf8"), /Pi Mention Project settings/);
     } finally {
         await rm(cwd, { recursive: true, force: true });
     }
 });
 
-test("configuredMentionProjectSettings caches config while file mtimes are unchanged", async () => {
+test("loadMentionProjectSettings falls back when config becomes unreadable", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
     try {
         await writeJson(globalConfigPath, {
@@ -90,7 +95,7 @@ test("configuredMentionProjectSettings caches config while file mtimes are uncha
             roots: ["~/Projects"],
         });
 
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
             trigger: "@",
             roots: ["~/Projects"],
             gitReposOnly: true,
@@ -100,9 +105,9 @@ test("configuredMentionProjectSettings caches config while file mtimes are uncha
 
         await chmod(globalConfigPath, 0);
 
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
-            trigger: "@",
-            roots: ["~/Projects"],
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
+            trigger: "#",
+            roots: [],
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
@@ -113,7 +118,7 @@ test("configuredMentionProjectSettings caches config while file mtimes are uncha
     }
 });
 
-test("configuredMentionProjectSettings applies global settings and trusted project overrides", async () => {
+test("loadMentionProjectSettings applies global settings and trusted project overrides", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
     try {
         await writeJson(globalConfigPath, {
@@ -123,7 +128,7 @@ test("configuredMentionProjectSettings applies global settings and trusted proje
             includeDotFolders: true,
             completionSuffix: "\n",
         });
-        await writeJson(path.join(cwd, ".pi", "pi-mention-project", "config.json"), {
+        await writeJson(path.join(cwd, ".pi", "extension-settings", "pi-mention-project.json"), {
             trigger: "%",
             roots: ["./local-projects"],
             gitReposOnly: true,
@@ -131,14 +136,14 @@ test("configuredMentionProjectSettings applies global settings and trusted proje
             completionSuffix: "",
         });
 
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
             trigger: "%",
             roots: ["./local-projects"],
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: "",
         });
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, false)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, false)), {
             trigger: "@",
             roots: ["~/Projects"],
             gitReposOnly: false,
@@ -150,17 +155,17 @@ test("configuredMentionProjectSettings applies global settings and trusted proje
     }
 });
 
-test("configuredMentionProjectSettings allows trusted project roots to clear global roots", async () => {
+test("loadMentionProjectSettings allows trusted project roots to clear global roots", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
     try {
         await writeJson(globalConfigPath, {
             roots: ["~/Projects"],
         });
-        await writeJson(path.join(cwd, ".pi", "pi-mention-project", "config.json"), {
+        await writeJson(path.join(cwd, ".pi", "extension-settings", "pi-mention-project.json"), {
             roots: [],
         });
 
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
             trigger: "#",
             roots: [],
             gitReposOnly: true,
@@ -194,7 +199,7 @@ test("applyMentionProjectCliFlags can relax project filters for one run", () => 
     );
 });
 
-test("configuredMentionProjectSettings ignores invalid custom keys", async () => {
+test("loadMentionProjectSettings ignores invalid custom keys", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
     try {
         await writeJson(globalConfigPath, {
@@ -205,7 +210,7 @@ test("configuredMentionProjectSettings ignores invalid custom keys", async () =>
             completionSuffix: false,
         });
 
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
             trigger: "#",
             roots: [],
             gitReposOnly: true,
@@ -217,7 +222,7 @@ test("configuredMentionProjectSettings ignores invalid custom keys", async () =>
     }
 });
 
-test("configuredMentionProjectSettings rejects unknown config keys", async () => {
+test("loadMentionProjectSettings rejects unknown config keys", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
     try {
         await writeJson(globalConfigPath, {
@@ -225,7 +230,7 @@ test("configuredMentionProjectSettings rejects unknown config keys", async () =>
             triggerTypo: "%",
         });
 
-        assert.deepEqual(configuredMentionProjectSettings(context(cwd, true)), {
+        assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
             trigger: "#",
             roots: [],
             gitReposOnly: true,

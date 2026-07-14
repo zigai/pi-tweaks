@@ -22,26 +22,31 @@ test("scaffoldGlobalModesConfig creates missing global config and schema", async
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
-        const schemaPath = path.join(agentDir, "pi-model-modes", "config.schema.json");
+        const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
+        const schemaPath = path.join(
+            agentDir,
+            "extension-settings",
+            "schemas",
+            "pi-model-modes.schema.json",
+        );
         await scaffoldGlobalModesConfig();
 
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-            $schema: "./config.schema.json",
+            $schema: "./schemas/pi-model-modes.schema.json",
             version: 1,
             currentMode: "default",
             modeUseThinkingBorderColors: false,
             modeShowThinkingLevelStatus: false,
             modes: {},
         });
-        assert.match(await readFile(schemaPath, "utf8"), /Pi model modes config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Model Modes settings/);
 
         await writeFile(configPath, "{ not json", "utf8");
         await writeFile(schemaPath, "stale schema", "utf8");
         await scaffoldGlobalModesConfig();
 
         assert.equal(await readFile(configPath, "utf8"), "{ not json");
-        assert.match(await readFile(schemaPath, "utf8"), /Pi model modes config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi Model Modes settings/);
     } finally {
         await rm(agentDir, { recursive: true, force: true });
         if (originalAgentDir === undefined) {
@@ -58,7 +63,7 @@ test("mode cycle shortcuts are optional and read from global config", async () =
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
         await scaffoldGlobalModesConfig();
         assert.deepEqual(getConfiguredModeShortcuts(), {});
 
@@ -92,7 +97,7 @@ test("scaffoldGlobalModesConfig copies legacy global config when new config is m
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
         const legacyConfigPath = path.join(agentDir, "pi-mode", "config.json");
         const legacyConfig = {
             version: 1,
@@ -111,7 +116,10 @@ test("scaffoldGlobalModesConfig copies legacy global config when new config is m
 
         await scaffoldGlobalModesConfig();
 
-        assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), legacyConfig);
+        assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
+            $schema: "./schemas/pi-model-modes.schema.json",
+            ...legacyConfig,
+        });
         assert.deepEqual(JSON.parse(await readFile(legacyConfigPath, "utf8")), legacyConfig);
     } finally {
         await rm(agentDir, { recursive: true, force: true });
@@ -129,7 +137,7 @@ test("setting writes copy legacy global config before updating new config", asyn
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
         const legacyConfigPath = path.join(agentDir, "pi-mode", "config.json");
         const legacyConfig = {
             version: 1,
@@ -179,7 +187,7 @@ test("mode config writes reject unknown config keys", async () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-model-modes", "config.json");
+        const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
         await scaffoldGlobalModesConfig();
         const invalidConfig = JSON.stringify({
             version: 1,

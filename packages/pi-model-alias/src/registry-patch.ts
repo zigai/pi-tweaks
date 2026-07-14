@@ -29,7 +29,7 @@ export function loadConfigForRegistry(
     state: RuntimeState,
     registry: PatchedModelRegistry,
 ): LoadedConfig {
-    const loaded = state.loadConfig();
+    const loaded = state.loadSettings();
     if (loaded.error !== undefined || loaded.aliases.length === 0) {
         return loaded;
     }

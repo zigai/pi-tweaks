@@ -1,61 +1,173 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-footer/config.schema.json",
-  "title": "Pi footer config",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-footer/config.schema.json",
+  "title": "Pi Footer settings",
+  "description": "Settings for footer content, ordering, and separators.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string",
+      "default": "./schemas/pi-footer.schema.json",
+      "description": "JSON Schema used by editors for this settings file."
+    },
     "separator": {
       "type": "string",
       "default": "·",
-      "description": "Visible separator placed between footer status segments. Whitespace-only values are ignored at runtime."
+      "description": "Text placed between visible footer slots."
     },
     "layout": {
       "type": "object",
-      "additionalProperties": false,
-      "default": {
-        "left": ["path", "branch", "provider", "model", "thinking"],
-        "right": ["context"],
-        "hidden": []
-      },
-      "description": "Footer slot placement. Built-in slots use their names; custom slots must use namespaced ids like my-extension.status.",
       "properties": {
         "left": {
           "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "branch"
+                  },
+                  {
+                    "type": "string",
+                    "const": "context"
+                  },
+                  {
+                    "type": "string",
+                    "const": "mcp"
+                  },
+                  {
+                    "type": "string",
+                    "const": "model"
+                  },
+                  {
+                    "type": "string",
+                    "const": "path"
+                  },
+                  {
+                    "type": "string",
+                    "const": "provider"
+                  },
+                  {
+                    "type": "string",
+                    "const": "thinking"
+                  }
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+              }
+            ]
+          },
           "uniqueItems": true,
-          "default": ["path", "branch", "provider", "model", "thinking"],
-          "items": { "$ref": "#/$defs/slotId" },
-          "description": "Left-side slot order. Earlier slots are kept first when the footer narrows."
+          "default": [
+            "path",
+            "branch",
+            "provider",
+            "model",
+            "thinking"
+          ],
+          "description": "Footer slot IDs shown on the left in display order."
         },
         "right": {
           "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "branch"
+                  },
+                  {
+                    "type": "string",
+                    "const": "context"
+                  },
+                  {
+                    "type": "string",
+                    "const": "mcp"
+                  },
+                  {
+                    "type": "string",
+                    "const": "model"
+                  },
+                  {
+                    "type": "string",
+                    "const": "path"
+                  },
+                  {
+                    "type": "string",
+                    "const": "provider"
+                  },
+                  {
+                    "type": "string",
+                    "const": "thinking"
+                  }
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+              }
+            ]
+          },
           "uniqueItems": true,
-          "default": ["context"],
-          "items": { "$ref": "#/$defs/slotId" },
-          "description": "Right-side slot order. Later slots are kept first when the footer narrows."
+          "default": [
+            "context"
+          ],
+          "description": "Footer slot IDs shown on the right in display order."
         },
         "hidden": {
           "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "path"
+                  },
+                  {
+                    "type": "string",
+                    "const": "branch"
+                  },
+                  {
+                    "type": "string",
+                    "const": "provider"
+                  },
+                  {
+                    "type": "string",
+                    "const": "model"
+                  },
+                  {
+                    "type": "string",
+                    "const": "thinking"
+                  },
+                  {
+                    "type": "string",
+                    "const": "mcp"
+                  },
+                  {
+                    "type": "string",
+                    "const": "context"
+                  }
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+              }
+            ]
+          },
           "uniqueItems": true,
           "default": [],
-          "items": { "$ref": "#/$defs/slotId" },
-          "description": "Slots omitted even if configured on a side or registered by another extension."
+          "description": "Footer slot IDs hidden from both sides."
         }
-      }
-    }
-  },
-  "$defs": {
-    "slotId": {
-      "oneOf": [
-        {
-          "enum": ["path", "branch", "provider", "model", "thinking", "mcp", "context"]
-        },
-        {
-          "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
-        }
-      ]
+      },
+      "default": {},
+      "additionalProperties": false
     }
   }
 }

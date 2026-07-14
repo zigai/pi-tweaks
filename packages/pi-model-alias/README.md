@@ -12,24 +12,26 @@ Use it when a provider model identifier is hard to type or when provider IDs are
 pi install npm:@zigai/pi-model-alias
 ```
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-model-alias/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-model-alias.json`.
 
-| Option                 | Type              | Default | Description                                                                                        |
-| ---------------------- | ----------------- | ------- | -------------------------------------------------------------------------------------------------- |
-| `aliases`              | `ModelAlias[]`    | `[]`    | Model aliases to expose in Pi model selection and rewrite before provider requests.                |
-| `providerAliases`      | `ProviderAlias[]` | `[]`    | Provider display names to show in Pi UI while preserving the real provider id.                     |
-| `stableProviderColumn` | `boolean`         | `true`  | Align provider names using the longest filtered model name instead of only currently visible rows. |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `aliases` | object[] | `[]` | Model alias entries matched by provider and model ID. |
+| `providerAliases` | object[] | `[]` | Provider display-name aliases. |
+| `stableProviderColumn` | boolean | `true` | Keep the provider column stable when aliases are displayed. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-model-alias.schema.json",
   "aliases": [],
   "providerAliases": [],
   "stableProviderColumn": true
 }
 ```
+<!-- pi-extension-settings:end -->
 
 ## License
 

@@ -10,22 +10,24 @@ Focused model lists for Pi, showing only the models you want.
 pi install npm:@zigai/pi-model-filter
 ```
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-model-filter/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-model-filter.json`.
 
-| Option    | Type     | Default | Description                                                                                              |
-| --------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| `include` | `Rule[]` | `[]`    | Allowlist rules. When any include rule matches a provider, only matching models from that provider show. |
-| `exclude` | `Rule[]` | `[]`    | Blocklist rules. Exclude rules apply after include rules, so exclude always wins.                        |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `include` | object[] | `[]` | Provider and model glob rules that form inclusion allowlists. |
+| `exclude` | object[] | `[]` | Provider and model glob rules that hide matching models. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-model-filter.schema.json",
   "include": [],
   "exclude": []
 }
 ```
+<!-- pi-extension-settings:end -->
 
 ## Rules
 

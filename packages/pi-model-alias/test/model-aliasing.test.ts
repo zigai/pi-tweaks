@@ -156,7 +156,7 @@ test("resolves provider request aliases from selected model or request payload",
 
 test("model selector provider patch aliases display providers only", async () => {
     const state: RuntimeState = {
-        loadConfig: () =>
+        loadSettings: () =>
             loadedConfig([], undefined, [{ provider: "openai", name: "OpenAI Work" }]),
     };
     const openaiModel = nativeModels[0];
@@ -285,14 +285,14 @@ test("model selector provider patch can align providers to all filtered model na
     }
 
     const stableState: RuntimeState = {
-        loadConfig: () => loadedConfig([], undefined, [], true),
+        loadSettings: () => loadedConfig([], undefined, [], true),
     };
     const stablePrototype = createPrototype();
     installModelSelectorProviderPatch(stableState, stablePrototype);
     stablePrototype.updateList();
 
     const visibleState: RuntimeState = {
-        loadConfig: () => loadedConfig([], undefined, [], false),
+        loadSettings: () => loadedConfig([], undefined, [], false),
     };
     const visiblePrototype = createPrototype();
     installModelSelectorProviderPatch(visibleState, visiblePrototype);
@@ -310,7 +310,7 @@ test("model selector provider patch can align providers to all filtered model na
 
 test("scoped models provider patch aliases rendered and searched providers only", () => {
     const state: RuntimeState = {
-        loadConfig: () =>
+        loadSettings: () =>
             loadedConfig([], undefined, [{ provider: "openai", name: "OpenAI Work" }]),
     };
     type ScopedMockItem = {
@@ -407,7 +407,7 @@ test("scoped models provider patch aliases rendered and searched providers only"
 test("registry patch aliases list and lookup methods and updates config at runtime", () => {
     let loaded = loadedConfig([aliases[0]]);
     const state: RuntimeState = {
-        loadConfig: () => loaded,
+        loadSettings: () => loaded,
     };
     const registry: PatchedModelRegistry = {
         getAll() {

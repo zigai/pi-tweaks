@@ -4,23 +4,28 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
-import { loadUiTweaksConfig, resolveUiTweaksConfig } from "../src/settings.ts";
+import { loadUiTweaksSettings, resolveUiTweaksConfig } from "../src/settings.ts";
 
-test("loadUiTweaksConfig scaffolds missing global config and schema", async () => {
+test("loadUiTweaksSettings scaffolds missing global config and schema", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     const agentDir = await mkdtemp(path.join(tmpdir(), "pi-ui-tweaks-agent-"));
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-ui-tweaks-cwd-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
 
     try {
-        const configPath = path.join(agentDir, "pi-ui-tweaks", "config.json");
-        const schemaPath = path.join(agentDir, "pi-ui-tweaks", "config.schema.json");
-        const loaded = loadUiTweaksConfig(cwd, false);
+        const configPath = path.join(agentDir, "extension-settings", "pi-ui-tweaks.json");
+        const schemaPath = path.join(
+            agentDir,
+            "extension-settings",
+            "schemas",
+            "pi-ui-tweaks.schema.json",
+        );
+        const loaded = loadUiTweaksSettings(cwd, false);
 
         assert.deepEqual(loaded.errors, []);
         assert.equal(loaded.config.autocompleteAboveInput, true);
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-            $schema: "./config.schema.json",
+            $schema: "./schemas/pi-ui-tweaks.schema.json",
             enabled: true,
             autocompleteAboveInput: true,
             bashExecPromptSpacing: true,
@@ -42,16 +47,16 @@ test("loadUiTweaksConfig scaffolds missing global config and schema", async () =
             restoreContentAfterAutocompleteClose: true,
             selectedOptionPrefix: "→ ",
         });
-        assert.match(await readFile(schemaPath, "utf8"), /Pi UI tweaks config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi UI Tweaks settings/);
 
         const customConfig = JSON.stringify({ enabled: false, selectedOptionPrefix: ">> " });
         await writeFile(configPath, customConfig, "utf8");
         await writeFile(schemaPath, "stale schema", "utf8");
-        const loadedAgain = loadUiTweaksConfig(cwd, false);
+        const loadedAgain = loadUiTweaksSettings(cwd, false);
 
         assert.equal(loadedAgain.config.autocompleteAboveInput, false);
         assert.equal(await readFile(configPath, "utf8"), customConfig);
-        assert.match(await readFile(schemaPath, "utf8"), /Pi UI tweaks config/);
+        assert.match(await readFile(schemaPath, "utf8"), /Pi UI Tweaks settings/);
     } finally {
         await rm(agentDir, { recursive: true, force: true });
         await rm(cwd, { recursive: true, force: true });

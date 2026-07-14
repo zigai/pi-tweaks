@@ -1,19 +1,33 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/main/packages/pi-mention-skill/config.schema.json",
-  "title": "Pi skill mention config",
+  "$id": "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-mention-skill/config.schema.json",
+  "title": "Pi Mention Skill settings",
+  "description": "Settings for skill mentions and slash-skill visibility.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string",
+      "default": "./schemas/pi-mention-skill.schema.json",
+      "description": "JSON Schema used by editors for this settings file."
+    },
     "trigger": {
       "type": "string",
       "minLength": 1,
       "maxLength": 1,
       "pattern": "^[^/\\s]$",
-      "default": "$"
+      "default": "$",
+      "description": "Single character that starts a skill mention."
     },
-    "hideSlashSkills": { "type": "boolean", "default": true },
-    "completionSuffix": { "type": "string", "default": " " }
+    "hideSlashSkills": {
+      "type": "boolean",
+      "default": true,
+      "description": "Hide skill commands from slash-command completion."
+    },
+    "completionSuffix": {
+      "type": "string",
+      "default": " ",
+      "description": "Text inserted after a completed skill mention."
+    }
   }
 }

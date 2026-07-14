@@ -16,32 +16,33 @@ This package intentionally stays single-line and status-focused. For richer UI a
 pi install npm:@zigai/pi-status-bar
 ```
 
+<!-- pi-extension-settings:start -->
 ## Configuration
 
-Configure global settings at `~/.pi/agent/pi-status-bar/config.json`.
+Global settings are stored in `~/.pi/agent/extension-settings/pi-status-bar.json`.
 
-| Option                                 | Type       | Default | Description                                                                                               |
-| -------------------------------------- | ---------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `statusBar.active.text`                | `string`   | unset   | Active working text override. When unset, Pi's current loader message is used.                            |
-| `statusBar.active.spinner.frames`      | `string[]` | unset   | Active spinner frame override. When unset, Pi's current loader frames are used.                           |
-| `statusBar.active.timer.visible`       | `boolean`  | `true`  | Shows elapsed time in the active line.                                                                    |
-| `statusBar.active.timer.paused`        | `boolean`  | `false` | Starts the active elapsed timer paused.                                                                   |
-| `statusBar.idle.text`                  | `string`   | unset   | Idle status text shown before the last-run summary.                                                       |
-| `statusBar.idle.visible`               | `boolean`  | `true`  | Shows the idle status widget.                                                                             |
-| `statusBar.idle.showLastRunSummary`    | `boolean`  | `true`  | Shows the default `Worked for ...` summary in the idle status bar.                                        |
-| `rightMessages.enabled`                | `boolean`  | `false` | Enables rotating right-side active messages. If omitted, messages turn on when any are loaded.            |
-| `rightMessages.intervalMs`             | `integer`  | `10000` | Time between message rotations.                                                                           |
-| `rightMessages.minGap`                 | `integer`  | `4`     | Minimum spacing between active status text and right-side message.                                        |
-| `rightMessages.minScrollCycles`        | `integer`  | `1`     | Minimum full scroll passes before a long message rotates.                                                 |
-| `rightMessages.scrollColumnIntervalMs` | `integer`  | `120`   | Horizontal scroll speed for long messages.                                                                |
-| `rightMessages.dimmed`                 | `boolean`  | `true`  | Renders messages dimmed.                                                                                  |
-| `rightMessages.italic`                 | `boolean`  | `true`  | Renders messages italic.                                                                                  |
-| `rightMessages.messages`               | `string[]` | `[]`    | Inline messages.                                                                                          |
-| `rightMessages.messagesFile`           | `string`   | unset   | Text file with one message per non-empty, non-comment line. Relative paths use the config file directory. |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `statusBar.active.text` | string | — | Custom active status text. |
+| `statusBar.active.spinner.frames` | string[] | — | Spinner frames displayed while Pi is active. |
+| `statusBar.active.timer.visible` | boolean | `true` | Show the active-run timer. |
+| `statusBar.active.timer.paused` | boolean | `false` | Display the active-run timer as paused. |
+| `statusBar.idle.text` | string | — | Custom idle status text. |
+| `statusBar.idle.visible` | boolean | `true` | Show the status bar while Pi is idle. |
+| `statusBar.idle.showLastRunSummary` | boolean | `true` | Show the previous run summary while idle. |
+| `rightMessages.enabled` | boolean | `false` | Enable rotating messages on the right side. |
+| `rightMessages.intervalMs` | integer | `10000` | Delay between rotating messages in milliseconds. |
+| `rightMessages.minGap` | integer | `4` | Minimum spaces between repeated scrolling messages. |
+| `rightMessages.minScrollCycles` | integer | `1` | Minimum completed scroll cycles before advancing. |
+| `rightMessages.scrollColumnIntervalMs` | integer | `120` | Delay between horizontal scroll columns in milliseconds. |
+| `rightMessages.dimmed` | boolean | `true` | Render rotating messages with dim styling. |
+| `rightMessages.italic` | boolean | `true` | Render rotating messages with italic styling. |
+| `rightMessages.messages` | string[] | `[]` | Inline rotating status messages. |
+| `rightMessages.messagesFile` | string | — | Path to a newline-delimited messages file. |
 
 ```json
 {
-  "$schema": "./config.schema.json",
+  "$schema": "./schemas/pi-status-bar.schema.json",
   "statusBar": {
     "active": {
       "timer": {
@@ -66,6 +67,7 @@ Configure global settings at `~/.pi/agent/pi-status-bar/config.json`.
   }
 }
 ```
+<!-- pi-extension-settings:end -->
 
 ## Extension API
 

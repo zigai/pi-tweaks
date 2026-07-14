@@ -41,7 +41,7 @@ import {
     installSelectedOptionPrefixThemePatch,
     setSelectedOptionPrefix,
 } from "./selected-option-prefix.ts";
-import { loadUiTweaksConfig, type LoadedUiTweaksConfig } from "./settings.ts";
+import { loadUiTweaksSettings, type LoadedUiTweaksConfig } from "./settings.ts";
 import {
     installSlashCommandSourcePatch,
     setHideSlashCommandSourceTags,
@@ -60,7 +60,7 @@ function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedUiTweaksConfig)
 }
 
 function applyUiTweaksConfig(ctx: ExtensionContext): void {
-    const loaded = loadUiTweaksConfig(ctx.cwd, ctx.isProjectTrusted());
+    const loaded = loadUiTweaksSettings(ctx.cwd, ctx.isProjectTrusted());
     setAutocompleteAboveInput(loaded.config.autocompleteAboveInput);
     setBashExecPromptSpacing(loaded.config.bashExecPromptSpacing);
     setAnchorInputToBottom(loaded.config.anchorInputToBottom);
