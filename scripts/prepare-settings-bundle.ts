@@ -8,7 +8,7 @@ const PackageManifestSchema = Type.Object(
     {
         name: Type.String(),
         version: Type.String(),
-        dependencies: Type.Record(Type.String(), Type.String()),
+        dependencies: Type.Optional(Type.Record(Type.String(), Type.String())),
     },
     { additionalProperties: true },
 );
@@ -30,7 +30,7 @@ const targetDir = join(workspaceDir, "node_modules", "@zigai", "pi-extension-set
 
 const workspaceManifest = readPackageManifest(join(workspaceDir, "package.json"));
 const sourceManifest = readPackageManifest(join(sourceDir, "package.json"));
-const expectedVersion = workspaceManifest.dependencies[packageName];
+const expectedVersion = workspaceManifest.dependencies?.[packageName];
 if (expectedVersion !== sourceManifest.version) {
     const expectedVersionLabel = expectedVersion ?? "an undeclared version";
     throw new Error(

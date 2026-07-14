@@ -60,5 +60,5 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 ## Packaging notes
 
 - Package manifests include `files` allowlists. If a README references an asset that must be present in the npm tarball, verify with `npm pack --dry-run -w <workspace>` before changing the manifest.
-- Configurable packages must keep the shared settings dependency in `bundleDependencies` and run `scripts/prepare-settings-bundle.ts` from `prepack`; verify the packed file list contains both `@zigai/pi-extension-settings` and its bundled `better-result` runtime.
+- Configurable packages must keep the shared settings dependency in `bundleDependencies` and run `scripts/prepare-settings-bundle.ts` from `prepack`; verify the packed file list contains `@zigai/pi-extension-settings` and its runtime files.
 - Keep README install snippets and the root package table in sync when adding/removing packages.
