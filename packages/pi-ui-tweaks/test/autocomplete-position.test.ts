@@ -147,8 +147,8 @@ test("autocomplete position patch defers forced redraw after above-input autocom
     }
 });
 
-test("autocomplete position patch does not force redraw when a slash command is confirmed", async () => {
-    const autocompletePosition = await importAutocompletePositionModule("command-confirm-redraw");
+test("autocomplete position patch does not force redraw after Tab completion", async () => {
+    const autocompletePosition = await importAutocompletePositionModule("tab-completion-redraw");
     const requestedForces: Array<boolean | undefined> = [];
     const prototype: AutocompletePositionPatchTarget = {
         render(this: AutocompletePositionPatchTarget) {
@@ -187,7 +187,7 @@ test("autocomplete position patch does not force redraw when a slash command is 
         autocompletePosition.installAutocompletePositionPatch(prototype);
 
         prototype.render.call(target, 20);
-        prototype.handleInput?.call(target, "\r");
+        prototype.handleInput?.call(target, "\t");
         prototype.render.call(target, 20);
         await waitForImmediate();
 

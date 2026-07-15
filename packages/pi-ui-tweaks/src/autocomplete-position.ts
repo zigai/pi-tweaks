@@ -78,19 +78,29 @@ function requestDeferredForceRender(target: AutocompletePositionPatchTarget): vo
     });
 }
 
-function isConfirmedSlashCommand(target: AutocompletePositionPatchTarget, data: string): boolean {
+function getSelectedAutocompleteItem(target: AutocompletePositionPatchTarget): unknown {
+    const autocompleteList = target.autocompleteList;
+    if (autocompleteList === undefined) return undefined;
+
+    const getSelectedItem: unknown = Reflect.get(autocompleteList, "getSelectedItem");
+    if (typeof getSelectedItem !== "function") return undefined;
+
+    const selectedItem: unknown = Reflect.apply(getSelectedItem, autocompleteList, []);
+    if (selectedItem === undefined || selectedItem === null) return undefined;
+    return selectedItem;
+}
+
+function isAutocompleteCompletion(target: AutocompletePositionPatchTarget, data: string): boolean {
     if (!getUiTweaksPatchState().autocompleteAboveInput) return false;
     if (target.autocompleteState === null || target.autocompleteState === undefined) return false;
     if (target.autocompleteProvider === undefined) return false;
-    if (target.autocompletePrefix?.startsWith("/") !== true) return false;
-    if (!getKeybindings().matches(data, "tui.select.confirm")) return false;
-
-    const autocompleteList = target.autocompleteList;
-    if (autocompleteList === undefined) return false;
-    const getSelectedItem: unknown = Reflect.get(autocompleteList, "getSelectedItem");
-    if (typeof getSelectedItem !== "function") return false;
-    const selectedItem: unknown = Reflect.apply(getSelectedItem, autocompleteList, []);
-    return selectedItem !== undefined && selectedItem !== null;
+    if (
+        !getKeybindings().matches(data, "tui.input.tab") &&
+        !getKeybindings().matches(data, "tui.select.confirm")
+    ) {
+        return false;
+    }
+    return getSelectedAutocompleteItem(target) !== undefined;
 }
 
 /**
@@ -143,7 +153,7 @@ export function installAutocompletePositionPatch(
             this: AutocompletePositionPatchTarget,
             data: string,
         ): void {
-            if (isConfirmedSlashCommand(this, data)) {
+            if (isAutocompleteCompletion(this, data)) {
                 this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = true;
             }
             let completed = false;
