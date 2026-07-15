@@ -5,6 +5,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { registerFooterSlot } from "@zigai/pi-footer/api";
 import { createFooterComponent } from "../src/footer-rendering.ts";
 import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
+import type { GitAheadBehindSource } from "../src/git-ahead-behind.ts";
 import type { FooterContext, FooterData } from "../src/types.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -118,6 +119,36 @@ test("createFooterComponent renders configured plain separator", () => {
 
     assert.match(plain, /pi-tweaks \/ .*main \/ .*copilot \/ .*gpt-5 \/ .*medium/);
     assert.doesNotMatch(plain, / · /);
+});
+
+test("createFooterComponent renders git ahead and behind counts beside the branch", () => {
+    let disposed = false;
+    const gitAheadBehindSource: GitAheadBehindSource = {
+        getGitAheadBehind() {
+            return { ahead: 3, behind: 2 };
+        },
+        refresh() {},
+        dispose() {
+            disposed = true;
+        },
+    };
+    const component = createFooterComponent(
+        footerContext(),
+        footerData("main", new Map()),
+        () => "medium",
+        () => undefined,
+        { ...DEFAULT_FOOTER_CONFIG, showGitAheadBehind: true },
+        undefined,
+        gitAheadBehindSource,
+    );
+
+    const line = component.render(120)[0] ?? "";
+    const plain = stripAnsi(line);
+
+    assert.match(plain, /main ↑3 ↓2/);
+
+    component.dispose();
+    assert.equal(disposed, true);
 });
 
 test("createFooterComponent prefers model display names over model ids", () => {

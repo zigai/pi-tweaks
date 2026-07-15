@@ -7,6 +7,7 @@ import { FOOTER_CUSTOM_SLOT_ID_PATTERN, type FooterLayout, type FooterSlotId } f
 
 export type FooterConfig = {
     readonly separator: string;
+    readonly showGitAheadBehind: boolean;
     readonly layout: FooterLayout;
 };
 
@@ -23,6 +24,7 @@ export type FooterSettingsSource = {
 type FooterSettings = {
     $schema?: string;
     separator?: string;
+    showGitAheadBehind?: boolean;
     layout?: FooterLayoutSettings;
 };
 
@@ -57,6 +59,11 @@ export const footerSettingsDefinition = defineExtensionSettings({
             separator: Type.String({
                 default: "·",
                 description: "Text placed between visible footer slots.",
+            }),
+            showGitAheadBehind: Type.Boolean({
+                default: false,
+                description:
+                    "Show upstream commit counts (↑ahead ↓behind) beside the branch. Hidden when the branch has no upstream.",
             }),
             layout: Type.Object(
                 {
@@ -98,6 +105,7 @@ const FooterConfigSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
         separator: Type.Optional(Type.String()),
+        showGitAheadBehind: Type.Optional(Type.Boolean()),
         layout: Type.Optional(FooterLayoutSchema),
     },
     { additionalProperties: false },
@@ -118,6 +126,7 @@ const FOOTER_CUSTOM_SLOT_ID_REGEX = new RegExp(FOOTER_CUSTOM_SLOT_ID_PATTERN);
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfig = {
     separator: "·",
+    showGitAheadBehind: false,
     layout: {
         left: [...FOOTER_LAYOUT.left],
         right: [...FOOTER_LAYOUT.right],
@@ -247,10 +256,12 @@ function parseFooterSettings(
         return { settings: {}, errors: [message] };
     }
 
-    if (parsed.separator === undefined) {
-        if (parsed.layout === undefined) {
-            return { settings: {}, errors: [] };
-        }
+    if (
+        parsed.separator === undefined &&
+        parsed.showGitAheadBehind === undefined &&
+        parsed.layout === undefined
+    ) {
+        return { settings: {}, errors: [] };
     }
 
     const nextSettings: FooterSettings = {};
@@ -263,6 +274,10 @@ function parseFooterSettings(
         } else {
             nextSettings.separator = sanitized;
         }
+    }
+
+    if (parsed.showGitAheadBehind !== undefined) {
+        nextSettings.showGitAheadBehind = parsed.showGitAheadBehind;
     }
 
     if (parsed.layout !== undefined) {
@@ -279,6 +294,7 @@ function parseFooterSettings(
 function buildFooterConfig(settings: FooterSettings): FooterConfig {
     return {
         separator: settings.separator ?? DEFAULT_FOOTER_CONFIG.separator,
+        showGitAheadBehind: settings.showGitAheadBehind ?? DEFAULT_FOOTER_CONFIG.showGitAheadBehind,
         layout: {
             left: cloneSlotIds(settings.layout?.left ?? DEFAULT_FOOTER_CONFIG.layout.left),
             right: cloneSlotIds(settings.layout?.right ?? DEFAULT_FOOTER_CONFIG.layout.right),
@@ -329,6 +345,7 @@ export function resolveFooterConfig(
         return {
             config: {
                 separator: config.separator,
+                showGitAheadBehind: config.showGitAheadBehind,
                 layout: buildDefaultFooterLayout(),
             },
             errors: [...errors, layoutError],

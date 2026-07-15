@@ -16,6 +16,11 @@
       "default": "·",
       "description": "Text placed between visible footer slots."
     },
+    "showGitAheadBehind": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show upstream commit counts (↑ahead ↓behind) beside the branch. Hidden when the branch has no upstream."
+    },
     "layout": {
       "type": "object",
       "properties": {

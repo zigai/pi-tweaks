@@ -9,7 +9,7 @@ A minimalistic, single-line replacement for Pi's footer.
 Footer contents:
 
 - current working directory
-- git branch
+- git branch, with optional upstream ahead/behind counts
 - provider and model
 - thinking level
 - MCP status
@@ -29,6 +29,7 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `separator` | string | `"·"` | Text placed between visible footer slots. |
+| `showGitAheadBehind` | boolean | `false` | Show upstream commit counts (↑ahead ↓behind) beside the branch. Hidden when the branch has no upstream. |
 | `layout.left` | (`branch` \| `context` \| `mcp` \| `model` \| `path` \| `provider` \| `thinking` \| string)[] | `["path","branch","provider","model","thinking"]` | Footer slot IDs shown on the left in display order. |
 | `layout.right` | (`branch` \| `context` \| `mcp` \| `model` \| `path` \| `provider` \| `thinking` \| string)[] | `["context"]` | Footer slot IDs shown on the right in display order. |
 | `layout.hidden` | (`path` \| `branch` \| `provider` \| `model` \| `thinking` \| `mcp` \| `context` \| string)[] | `[]` | Footer slot IDs hidden from both sides. |
@@ -37,6 +38,7 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
 {
   "$schema": "./schemas/pi-footer.schema.json",
   "separator": "·",
+  "showGitAheadBehind": false,
   "layout": {
     "left": [
       "path",

@@ -2,6 +2,11 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import { ACTIVE_FOOTER_VARIANT, BRANCH_ICON } from "./constants.ts";
 import { getFooterSlotSnapshots, subscribeFooterSlotUpdates } from "./footer-slot-api.ts";
+import {
+    createGitAheadBehindTracker,
+    formatGitAheadBehind,
+    type GitAheadBehindSource,
+} from "./git-ahead-behind.ts";
 import { DEFAULT_FOOTER_CONFIG, type FooterConfig } from "./settings.ts";
 import type {
     ContextUsage,
@@ -215,6 +220,7 @@ function buildFooterItems(
     footerData: FooterData,
     thinkingLevel: string,
     customSlots: readonly FooterSlotSnapshot[],
+    gitAheadBehindSource: GitAheadBehindSource | undefined,
 ): Map<FooterSlotId, FooterItem> {
     const branch = footerData.getGitBranch();
     const pathText = collapseHome(ctx.cwd);
@@ -253,9 +259,14 @@ function buildFooterItems(
     });
 
     if (branch !== null && branch.length > 0) {
+        const gitAheadBehind = gitAheadBehindSource?.getGitAheadBehind();
+        let branchText = `${BRANCH_ICON} ${branch}`;
+        if (gitAheadBehind !== undefined) {
+            branchText += ` ${formatGitAheadBehind(gitAheadBehind)}`;
+        }
         items.set("branch", {
             key: "branch",
-            text: `${BRANCH_ICON} ${branch}`,
+            text: branchText,
             colors: { bg: "", fg: "" },
         });
     }
@@ -321,14 +332,24 @@ export function createFooterComponent(
     requestRender: () => void,
     config: FooterConfig = DEFAULT_FOOTER_CONFIG,
     theme?: PlainFooterTheme,
+    gitAheadBehindSource?: GitAheadBehindSource,
 ) {
-    const unsubscribeBranchChange = footerData.onBranchChange(() => requestRender());
+    let activeGitAheadBehindSource: GitAheadBehindSource | undefined;
+    if (config.showGitAheadBehind) {
+        activeGitAheadBehindSource = gitAheadBehindSource;
+        activeGitAheadBehindSource ??= createGitAheadBehindTracker(ctx.cwd, requestRender);
+    }
+    const unsubscribeBranchChange = footerData.onBranchChange(() => {
+        activeGitAheadBehindSource?.refresh();
+        requestRender();
+    });
     const unsubscribeSlotUpdates = subscribeFooterSlotUpdates(() => requestRender());
 
     return {
         dispose() {
             unsubscribeBranchChange();
             unsubscribeSlotUpdates();
+            activeGitAheadBehindSource?.dispose();
         },
         invalidate() {},
         render(width: number): string[] {
@@ -341,7 +362,13 @@ export function createFooterComponent(
             const variant: FooterVariant = ACTIVE_FOOTER_VARIANT;
             const customSlots = getFooterSlotSnapshots();
             const layout = resolveFooterLayout(config.layout, customSlots);
-            const itemsByKey = buildFooterItems(ctx, footerData, getThinkingLevel(), customSlots);
+            const itemsByKey = buildFooterItems(
+                ctx,
+                footerData,
+                getThinkingLevel(),
+                customSlots,
+                activeGitAheadBehindSource,
+            );
             const leftVariants = buildSideVariants(
                 itemsByKey,
                 layout.left,

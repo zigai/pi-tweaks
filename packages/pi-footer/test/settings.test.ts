@@ -27,6 +27,7 @@ test("loadFooterSettings scaffolds missing global config and schema", async () =
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
             $schema: "./schemas/pi-footer.schema.json",
             separator: "·",
+            showGitAheadBehind: false,
             layout: {
                 left: ["path", "branch", "provider", "model", "thinking"],
                 right: ["context"],
@@ -58,6 +59,7 @@ test("resolveFooterConfig defaults to middle-dot separator", () => {
     const loaded = resolveFooterConfig([]);
 
     assert.equal(loaded.config.separator, "·");
+    assert.equal(loaded.config.showGitAheadBehind, false);
     assert.deepEqual(loaded.config.layout, {
         left: ["path", "branch", "provider", "model", "thinking"],
         right: ["context"],
@@ -77,6 +79,20 @@ test("resolveFooterConfig reads and sanitizes separator setting", () => {
     ]);
 
     assert.equal(loaded.config.separator, "·");
+    assert.deepEqual(loaded.errors, []);
+});
+
+test("resolveFooterConfig reads the git ahead/behind setting", () => {
+    const loaded = resolveFooterConfig([
+        {
+            label: "global settings",
+            settings: {
+                showGitAheadBehind: true,
+            },
+        },
+    ]);
+
+    assert.equal(loaded.config.showGitAheadBehind, true);
     assert.deepEqual(loaded.errors, []);
 });
 
