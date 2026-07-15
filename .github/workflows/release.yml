@@ -1,29 +1,30 @@
 name: Release
+run-name: Release ${{ inputs.tag || github.ref_name }}
 
 on:
   push:
     tags:
       - "@zigai/pi-*@*"
-  release:
-    types:
-      - published
   workflow_dispatch:
     inputs:
-      package:
-        description: Workspace package name to publish, for example @zigai/pi-tree
+      tag:
+        description: Existing package tag to publish, for example @zigai/pi-tree@0.1.5
         required: true
         type: string
-
-permissions:
-  contents: read
-  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ steps.package.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -41,23 +42,71 @@ jobs:
       - name: Select package
         id: package
         env:
-          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ -n "$INPUT_PACKAGE" ]; then
-            package="$INPUT_PACKAGE"
-          else
-            tag="${{ github.event.release.tag_name || github.ref_name }}"
-            package="${tag%@*}"
+          tag="${INPUT_TAG:-$REF_NAME}"
+          package="${tag%@*}"
+          version="${tag##*@}"
+
+          case "$tag" in
+            @zigai/pi-*@*) ;;
+            *)
+              echo "Unsupported package tag: $tag" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "$package" = "$tag" ] || [ "$version" = "$tag" ]; then
+            echo "Could not determine package and version from tag: $tag" >&2
+            exit 1
           fi
 
-          if [ -z "$package" ]; then
-            echo "Could not determine package to publish" >&2
+          if [[ ! "$package" =~ ^@zigai/pi-[a-z0-9-]+$ ]]; then
+            echo "Invalid workspace package name: $package" >&2
+            exit 1
+          fi
+
+          manifest="packages/${package#@zigai/}/package.json"
+          if [ ! -f "$manifest" ]; then
+            echo "Workspace manifest does not exist: $manifest" >&2
+            exit 1
+          fi
+
+          manifest_version="$(jq -r '.version' "$manifest")"
+          if [ "$manifest_version" != "$version" ]; then
+            echo "Tag version $version does not match $package manifest version $manifest_version" >&2
             exit 1
           fi
 
           echo "name=$package" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Publish package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish -w '${{ steps.package.outputs.name }}' --access public --provenance
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.publish.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release already exists for $TAG"
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --verify-tag \
+            --title "$TAG" \
+            --notes-from-tag \
+            --latest=false
