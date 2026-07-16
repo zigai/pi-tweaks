@@ -4,7 +4,7 @@ import {
     applyAlias,
     getAliasForLookup,
     getAliasForModel,
-    getAliasModelIdCollision,
+    resolveAliasesAgainstModels,
 } from "./model-aliasing.ts";
 import { getProviderDisplayName } from "./provider-aliasing.ts";
 import type { BasicModelRegistry, LoadedConfig, ModelLike, RuntimeState } from "./types.ts";
@@ -35,16 +35,7 @@ export function loadConfigForRegistry(
     }
 
     const nativeModels = registry[ORIGINAL_GET_ALL_KEY]?.call(registry) ?? [];
-    const collision = getAliasModelIdCollision(loaded.aliases, nativeModels);
-    if (collision === undefined) {
-        return loaded;
-    }
-
-    return {
-        ...loaded,
-        aliases: [],
-        error: `Failed to load ${loaded.path}: ${collision}`,
-    };
+    return resolveAliasesAgainstModels(loaded, nativeModels);
 }
 
 function requireRegistryRuntime(runtime: RuntimeState | undefined): RuntimeState {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
 import {
@@ -48,11 +49,9 @@ function scopedItem(): ScopedModelsItem {
     };
 }
 
-test("model selector provider patch uses the latest runtime state after reinstall", async () => {
+test("model selector provider patch uses the latest runtime state after reinstall", () => {
     const prototype: ModelSelectorPrototype = {
-        async loadModels() {
-            return undefined;
-        },
+        loadModelsFromSnapshot() {},
         filterModels() {},
         updateList() {},
         allModels: [],
@@ -73,7 +72,7 @@ test("model selector provider patch uses the latest runtime state after reinstal
     target.selectedIndex = 0;
     target.scope = "all";
 
-    await target.loadModels();
+    target.loadModelsFromSnapshot();
 
     assert.equal(target.allModels[0]?.provider, "New Provider");
     assert.equal(target.filteredModels[0]?.provider, "New Provider");
@@ -102,9 +101,7 @@ test("scoped models provider patch uses the latest runtime state after reinstall
 
 test("provider alias UI patch waits for scoped selector patch installation", async () => {
     const prototype: ModelSelectorPrototype = {
-        async loadModels() {
-            return undefined;
-        },
+        loadModelsFromSnapshot() {},
         filterModels() {},
         updateList() {},
         allModels: [],
@@ -137,4 +134,16 @@ test("provider alias UI patch waits for scoped selector patch installation", asy
     finishScopedInstall();
 
     await installPromise;
+});
+
+test("model selector patch matches the Pi 0.80.9 runtime prototype", () => {
+    installModelSelectorProviderPatch(runtimeState("Provider"));
+
+    assert.equal(
+        Reflect.get(
+            ModelSelectorComponent.prototype,
+            Symbol.for("zigai.pi-model-alias.model-selector-provider-patched"),
+        ),
+        true,
+    );
 });

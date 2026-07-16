@@ -1,4 +1,5 @@
 import {
+    ModelRuntime,
     ModelSelectorComponent,
     SettingsManager,
     type ExtensionAPI,
@@ -903,6 +904,17 @@ async function pickThinkingLevelForModeUI(
     return undefined;
 }
 
+function getSelectorModelRuntime(ctx: ExtensionContext): ModelRuntime | undefined {
+    // Pi 0.80.9's exported model selector requires the canonical ModelRuntime, while
+    // ExtensionContext exposes its ModelRegistry compatibility facade. The facade is
+    // backed by that same runtime; fail closed if Pi changes this internal boundary.
+    const modelRuntimeValue: unknown = Reflect.get(ctx.modelRegistry, "runtime");
+    if (modelRuntimeValue instanceof ModelRuntime) {
+        return modelRuntimeValue;
+    }
+    return undefined;
+}
+
 async function pickModelForModeUI(
     ctx: ExtensionContext,
     spec: ModeSpec,
@@ -921,6 +933,11 @@ async function pickModelForModeUI(
     }
 
     const scopedModels: ScopedModelItem[] = [];
+    const modelRuntime = getSelectorModelRuntime(ctx);
+    if (modelRuntime === undefined) {
+        ctx.ui.notify("Model picker unavailable: Pi model runtime was not found.", "error");
+        return undefined;
+    }
 
     return ctx.ui.custom<{ provider: string; modelId: string } | undefined>(
         (tui, _theme, _keybindings, done) => {
@@ -928,7 +945,7 @@ async function pickModelForModeUI(
                 tui,
                 currentModel,
                 settingsManager,
-                ctx.modelRegistry,
+                modelRuntime,
                 scopedModels,
                 (model) => done({ provider: model.provider, modelId: model.id }),
                 () => done(undefined),

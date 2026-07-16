@@ -3,6 +3,7 @@ import { fuzzyFilter, visibleWidth } from "@earendil-works/pi-tui";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { getAliasForModel, resolveAliasesAgainstModels } from "./model-aliasing.ts";
 import { applyProviderDisplayNames, getProviderAlias } from "./provider-aliasing.ts";
 import type { LoadedConfig, ModelLike, RuntimeState } from "./types.ts";
 
@@ -48,7 +49,7 @@ type RuntimeStateHolder = {
 type ModelSelectorPatchTarget = {
     [MODEL_SELECTOR_PROVIDER_PATCH_KEY]?: true;
     [MODEL_SELECTOR_PROVIDER_STATE_KEY]?: RuntimeStateHolder;
-    loadModels(this: ModelSelectorPatchTarget): Promise<unknown>;
+    loadModelsFromSnapshot(this: ModelSelectorPatchTarget): void;
     filterModels(this: ModelSelectorPatchTarget, query: string): void;
     updateList(this: ModelSelectorPatchTarget): void;
     allModels: ModelSelectorItem[];
@@ -125,7 +126,7 @@ function isModelSelectorPatchTarget(value: unknown): value is ModelSelectorPatch
     }
 
     return (
-        typeof getUnknownProperty(value, "loadModels") === "function" &&
+        typeof getUnknownProperty(value, "loadModelsFromSnapshot") === "function" &&
         typeof getUnknownProperty(value, "filterModels") === "function" &&
         typeof getUnknownProperty(value, "updateList") === "function"
     );
@@ -161,13 +162,41 @@ function setScopedModelsPatchState(
     return patchState;
 }
 
-function setModelSelectorDisplayProviders(
+function getSettingsForModels(state: RuntimeState, models: ModelLike[]): LoadedConfig {
+    return resolveAliasesAgainstModels(state.loadSettings(), models);
+}
+
+function getModelSelectorSettings(
     target: ModelSelectorPatchTarget,
     state: RuntimeState,
-): void {
-    const loaded = state.loadSettings();
-    target.allModels = applyProviderDisplayNames(target.allModels, loaded);
-    target.scopedModelItems = applyProviderDisplayNames(target.scopedModelItems, loaded);
+): LoadedConfig {
+    return getSettingsForModels(
+        state,
+        target.allModels.map((item) => item.model),
+    );
+}
+
+function applyModelSelectorAliases(
+    items: ModelSelectorItem[],
+    loaded: LoadedConfig,
+): ModelSelectorItem[] {
+    const modelAliased = items.map((item) => {
+        const alias = getAliasForModel(item.model, loaded);
+        if (alias === undefined) {
+            return item;
+        }
+        return {
+            ...item,
+            id: alias.alias,
+        };
+    });
+    return applyProviderDisplayNames(modelAliased, loaded);
+}
+
+function setModelSelectorAliases(target: ModelSelectorPatchTarget, state: RuntimeState): void {
+    const loaded = getModelSelectorSettings(target, state);
+    target.allModels = applyModelSelectorAliases(target.allModels, loaded);
+    target.scopedModelItems = applyModelSelectorAliases(target.scopedModelItems, loaded);
 
     let activeModels = target.allModels;
     if (target.scope === "scoped") {
@@ -177,40 +206,70 @@ function setModelSelectorDisplayProviders(
     target.filteredModels = activeModels;
 }
 
-function getModelDisplayId(model: ModelLike): string {
-    if (model.name === undefined || model.name.length === 0) {
-        return model.id;
+function getModelDisplayId(model: ModelLike, loaded: LoadedConfig): string {
+    const alias = getAliasForModel(model, loaded);
+    if (alias?.name !== undefined && alias.name.length > 0) {
+        return alias.name;
     }
-    return model.name;
+    if (model.name !== undefined && model.name.length > 0) {
+        return model.name;
+    }
+    return alias?.alias ?? model.id;
 }
 
 function getModelSelectorSearchItems(
-    items: ModelSelectorItem[],
+    target: ModelSelectorPatchTarget,
     state: RuntimeState,
-): ModelSelectorItem[] {
-    const loaded = state.loadSettings();
-    if (loaded.error !== undefined || loaded.providerAliases.length === 0) {
-        return items;
+): {
+    readonly items: ModelSelectorItem[];
+    readonly originals: ReadonlyMap<ModelSelectorItem, ModelSelectorItem>;
+} {
+    const items = target.activeModels;
+    const loaded = getModelSelectorSettings(target, state);
+    if (
+        loaded.error !== undefined ||
+        (loaded.providerAliases.length === 0 && loaded.aliases.length === 0)
+    ) {
+        return { items, originals: new Map() };
     }
 
-    return items.map((item) => {
-        const alias = getProviderAlias(item.model.provider, loaded);
-        if (alias === undefined) {
+    const originals = new Map<ModelSelectorItem, ModelSelectorItem>();
+    const searchItems = items.map((item) => {
+        const providerAlias = getProviderAlias(item.model.provider, loaded);
+        const modelAlias = getAliasForModel(item.model, loaded);
+        if (providerAlias === undefined && modelAlias === undefined) {
             return item;
         }
 
-        return {
+        let provider = item.provider;
+        if (providerAlias !== undefined) {
+            provider = `${providerAlias.name} ${item.model.provider}`;
+        }
+        const modelSearchTerms = [item.model.name, modelAlias?.name, item.model.id]
+            .filter((term): term is string => term !== undefined && term.length > 0)
+            .join(" ");
+        const searchItem: ModelSelectorItem = {
             ...item,
-            provider: `${alias.name} ${item.model.provider}`,
+            provider,
+            model: {
+                ...item.model,
+                name: modelSearchTerms,
+            },
         };
+        originals.set(searchItem, item);
+        return searchItem;
     });
+    return { items: searchItems, originals };
 }
 
-function getModelSelectorDisplayItems(items: ModelSelectorItem[]): ModelSelectorItem[] {
+function getModelSelectorDisplayItems(
+    items: ModelSelectorItem[],
+    loaded: LoadedConfig,
+): ModelSelectorItem[] {
     return items.map((item) => {
         return {
             ...item,
-            id: getModelDisplayId(item.model),
+            id: getModelDisplayId(item.model, loaded),
         };
     });
 }
@@ -257,14 +316,18 @@ function visibleRows<Item>(items: Item[], selectedIndex: number, maxVisible: num
 }
 
 function removeModelNameDetail(container: ListContainer): void {
-    const last = container.children.at(-1);
-    const lastText = textComponentValue(last);
-    if (lastText === undefined || !lastText.includes("Model Name:")) {
+    const detailIndex = container.children.findIndex((child) => {
+        return textComponentValue(child)?.includes("Model Name:") === true;
+    });
+    if (detailIndex === -1) {
         return;
     }
 
-    container.children.pop();
-    container.children.pop();
+    container.children.splice(detailIndex, 1);
+    const spacerIndex = detailIndex - 1;
+    if (spacerIndex >= 0 && textComponentValue(container.children[spacerIndex]) === undefined) {
+        container.children.splice(spacerIndex, 1);
+    }
 }
 
 function takeScrollCounter(container: ListContainer): string | undefined {
@@ -366,10 +429,10 @@ function formatProviderRows(
     return counter;
 }
 
-function getProviderRows(items: readonly ModelSelectorItem[]): ProviderRow[] {
+function getProviderRows(items: readonly ModelSelectorItem[], loaded: LoadedConfig): ProviderRow[] {
     return items.map((item) => {
         return {
-            modelText: item.id,
+            modelText: getModelDisplayId(item.model, loaded),
             providerText: item.provider,
         };
     });
@@ -381,21 +444,28 @@ function formatModelSelectorList(target: ModelSelectorPatchTarget, state: Runtim
         return;
     }
 
-    const loaded = state.loadSettings();
-    const rows = getProviderRows(visibleRows(target.filteredModels, target.selectedIndex, 10));
+    const loaded = getModelSelectorSettings(target, state);
+    const rows = getProviderRows(
+        visibleRows(target.filteredModels, target.selectedIndex, 10),
+        loaded,
+    );
     let widthRows = rows;
     if (loaded.stableProviderColumn) {
-        widthRows = getProviderRows(target.filteredModels);
+        widthRows = getProviderRows(target.filteredModels, loaded);
     }
     const counter = formatProviderRows(container, rows, widthRows);
     setSearchCounter(target.searchInput, counter);
 }
 
-function getScopedProviderRows(items: readonly ScopedModelsSelectorItem[]): ProviderRow[] {
+function getScopedProviderRows(
+    items: readonly ScopedModelsSelectorItem[],
+    loaded: LoadedConfig,
+): ProviderRow[] {
     return items.map((item) => {
         return {
-            modelText: item.model.id,
-            providerText: item.model.provider,
+            modelText: getModelDisplayId(item.model, loaded),
+            providerText:
+                getProviderAlias(item.model.provider, loaded)?.name ?? item.model.provider,
         };
     });
 }
@@ -410,14 +480,18 @@ function formatScopedModelsList(
         return;
     }
 
-    const loaded = state.loadSettings();
+    const loaded = getSettingsForModels(
+        state,
+        target.filteredItems.map((item) => item.model),
+    );
     const maxVisible = target.maxVisible ?? 8;
     const rows = getScopedProviderRows(
         visibleRows(target.filteredItems, selectedIndex, maxVisible),
+        loaded,
     );
     let widthRows = rows;
     if (loaded.stableProviderColumn) {
-        widthRows = getScopedProviderRows(target.filteredItems);
+        widthRows = getScopedProviderRows(target.filteredItems, loaded);
     }
     const counter = formatProviderRows(container, rows, widthRows);
     setSearchCounter(target.searchInput, counter);
@@ -427,11 +501,14 @@ function getScopedDisplayItems(
     items: ScopedModelsSelectorItem[],
     state: RuntimeState,
 ): ScopedModelsSelectorItem[] {
-    const loaded = state.loadSettings();
+    const loaded = getSettingsForModels(
+        state,
+        items.map((item) => item.model),
+    );
     return items.map((item) => {
         const displayedModel: ModelLike = {
             ...item.model,
-            id: getModelDisplayId(item.model),
+            id: getModelDisplayId(item.model, loaded),
         };
         const alias = getProviderAlias(item.model.provider, loaded);
         if (loaded.error === undefined && alias !== undefined) {
@@ -447,16 +524,20 @@ function getScopedDisplayItems(
 
 function getScopedSearchText(item: ScopedModelsSelectorItem, loaded: LoadedConfig): string {
     const model = item.model;
-    const alias = getProviderAlias(model.provider, loaded);
+    const providerAlias = getProviderAlias(model.provider, loaded);
     let provider = model.provider;
-    if (alias !== undefined) {
-        provider = `${alias.name} ${model.provider}`;
+    if (providerAlias !== undefined) {
+        provider = `${providerAlias.name} ${model.provider}`;
     }
-    let name = "";
-    if (model.name !== undefined && model.name.length > 0) {
-        name = ` ${model.name}`;
+    const modelAlias = getAliasForModel(model, loaded);
+    let ids = model.id;
+    if (modelAlias !== undefined) {
+        ids = `${modelAlias.alias} ${model.id}`;
     }
-    return `${model.id} ${provider} ${provider}/${model.id} ${provider} ${model.id}${name}`;
+    const names = [model.name, modelAlias?.name]
+        .filter((name): name is string => name !== undefined && name.length > 0)
+        .join(" ");
+    return `${ids} ${provider} ${provider}/${ids} ${provider} ${ids} ${names}`;
 }
 
 export function installModelSelectorProviderPatch(
@@ -477,13 +558,16 @@ export function installModelSelectorProviderPatch(
         return;
     }
 
-    const originalLoadModelsValue: unknown = Reflect.get(prototype, "loadModels");
+    const originalLoadModelsFromSnapshotValue: unknown = Reflect.get(
+        prototype,
+        "loadModelsFromSnapshot",
+    );
     const originalFilterModelsValue: unknown = Reflect.get(prototype, "filterModels");
     const originalUpdateListValue: unknown = Reflect.get(prototype, "updateList");
-    if (typeof originalLoadModelsValue !== "function") {
+    if (typeof originalLoadModelsFromSnapshotValue !== "function") {
         warnProviderDisplayPatchUnavailable(
             "model picker provider alias patch",
-            "missing loadModels",
+            "missing loadModelsFromSnapshot",
         );
         return;
     }
@@ -504,21 +588,20 @@ export function installModelSelectorProviderPatch(
 
     // SAFETY: Runtime guards above verify ModelSelectorComponent exposes the
     // methods this patch wraps.
-    const originalLoadModels = originalLoadModelsValue as (
+    const originalLoadModelsFromSnapshot = originalLoadModelsFromSnapshotValue as (
         this: ModelSelectorPatchTarget,
-    ) => Promise<unknown>;
+    ) => void;
     const originalFilterModels = originalFilterModelsValue as (
         this: ModelSelectorPatchTarget,
         query: string,
     ) => void;
     const originalUpdateList = originalUpdateListValue as (this: ModelSelectorPatchTarget) => void;
 
-    prototype.loadModels = async function loadModelsWithProviderAliases(
+    prototype.loadModelsFromSnapshot = function loadModelsFromSnapshotWithAliases(
         this: ModelSelectorPatchTarget,
-    ): Promise<unknown> {
-        const result = await originalLoadModels.call(this);
-        setModelSelectorDisplayProviders(this, patchState.state);
-        return result;
+    ): void {
+        originalLoadModelsFromSnapshot.call(this);
+        setModelSelectorAliases(this, patchState.state);
     };
 
     prototype.filterModels = function filterModelsWithProviderAliases(
@@ -526,20 +609,21 @@ export function installModelSelectorProviderPatch(
         query: string,
     ): void {
         const originalActiveModels = this.activeModels;
-        this.activeModels = getModelSelectorSearchItems(originalActiveModels, patchState.state);
+        const search = getModelSelectorSearchItems(this, patchState.state);
+        this.activeModels = search.items;
         try {
             originalFilterModels.call(this, query);
         } finally {
             this.activeModels = originalActiveModels;
         }
-        const loaded = patchState.state.loadSettings();
-        this.filteredModels = applyProviderDisplayNames(this.filteredModels, loaded);
+        this.filteredModels = this.filteredModels.map((item) => search.originals.get(item) ?? item);
         this.updateList();
     };
 
     prototype.updateList = function updateListWithModelNames(this: ModelSelectorPatchTarget): void {
         const originalFilteredModels = this.filteredModels;
-        this.filteredModels = getModelSelectorDisplayItems(originalFilteredModels);
+        const loaded = getModelSelectorSettings(this, patchState.state);
+        this.filteredModels = getModelSelectorDisplayItems(originalFilteredModels, loaded);
         try {
             originalUpdateList.call(this);
             formatModelSelectorList(this, patchState.state);
@@ -607,17 +691,20 @@ export function installScopedModelsProviderPatch(
             this: ScopedModelsSelectorPatchTarget,
         ): void {
             const query = this.searchInput?.getValue();
-            const loaded = patchState.state.loadSettings();
+            const items = originalBuildItems.call(this);
+            const loaded = getSettingsForModels(
+                patchState.state,
+                items.map((item) => item.model),
+            );
             if (query === undefined || query.length === 0 || loaded.error !== undefined) {
                 originalRefresh.call(this);
                 return;
             }
-            if (loaded.providerAliases.length === 0) {
+            if (loaded.providerAliases.length === 0 && loaded.aliases.length === 0) {
                 originalRefresh.call(this);
                 return;
             }
 
-            const items = originalBuildItems.call(this);
             this.filteredItems = fuzzyFilter(items, query, (item) =>
                 getScopedSearchText(item, loaded),
             );

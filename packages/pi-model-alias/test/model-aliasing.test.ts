@@ -154,10 +154,10 @@ test("resolves provider request aliases from selected model or request payload",
     assert.equal(aliasForProviderRequest({ model: "fast" }, undefined, loaded), undefined);
 });
 
-test("model selector provider patch aliases display providers only", async () => {
+test("model selector patch aliases snapshot display and search while preserving native models", () => {
     const state: RuntimeState = {
         loadSettings: () =>
-            loadedConfig([], undefined, [{ provider: "openai", name: "OpenAI Work" }]),
+            loadedConfig([aliases[0]], undefined, [{ provider: "openai", name: "OpenAI Work" }]),
     };
     const openaiModel = nativeModels[0];
     const anthropicModel = nativeModels[1];
@@ -195,14 +195,19 @@ test("model selector provider patch aliases display providers only", async () =>
         },
         selectedIndex: 0,
         scope: "all",
-        async loadModels(): Promise<void> {
+        loadModelsFromSnapshot(): void {
             this.allModels = modelItems;
             this.scopedModelItems = [];
             this.activeModels = modelItems;
             this.filteredModels = modelItems;
         },
-        filterModels(_query: string): void {
-            this.filteredModels = this.activeModels;
+        filterModels(query: string): void {
+            const normalizedQuery = query.toLowerCase();
+            this.filteredModels = this.activeModels.filter((item) => {
+                const searchable = `${item.provider} ${item.id} ${item.model.name ?? ""}`;
+                return searchable.toLowerCase().includes(normalizedQuery);
+            });
+            this.updateList();
         },
         updateList(): void {
             this.listContainer.children = this.filteredModels.map((item, index) => {
@@ -218,23 +223,85 @@ test("model selector provider patch aliases display providers only", async () =>
                 textComponent("  (1/2)"),
                 {},
                 textComponent("  Model Name: GPT-5"),
+                {},
+                textComponent("  Model catalogs refreshed."),
             );
         },
     };
 
     installModelSelectorProviderPatch(state, prototype);
-    await prototype.loadModels();
+    prototype.loadModelsFromSnapshot();
     prototype.updateList();
 
     assert.equal(prototype.allModels[0]?.provider, "OpenAI Work");
-    assert.equal(prototype.allModels[0]?.model.provider, "openai");
-    assert.equal(prototype.allModels[0]?.id, "gpt-5");
+    assert.equal(prototype.allModels[0]?.model, openaiModel);
+    assert.equal(prototype.allModels[0]?.id, "fast");
     assert.equal(prototype.activeModels[0]?.provider, "OpenAI Work");
     assert.deepEqual(textValues(prototype.listContainer.children), [
-        `→ GPT-5${successCheckmark}      OpenAI Work`,
+        `→ Fast${successCheckmark}       OpenAI Work`,
         "  Claude Opus  anthropic",
+        "  Model catalogs refreshed.",
     ]);
     assert.equal(prototype.searchInput.render(20)[0], ">              (1/2)");
+
+    prototype.filterModels("gpt-5");
+    assert.equal(prototype.filteredModels.length, 1);
+    assert.equal(prototype.filteredModels[0], prototype.allModels[0]);
+    assert.equal(prototype.filteredModels[0]?.model, openaiModel);
+
+    prototype.filterModels("OpenAI Work");
+    assert.equal(prototype.filteredModels.length, 1);
+    assert.equal(prototype.filteredModels[0], prototype.allModels[0]);
+
+    prototype.filterModels("Fast");
+    assert.equal(prototype.filteredModels.length, 1);
+    assert.equal(prototype.filteredModels[0], prototype.allModels[0]);
+});
+
+test("model selector patch reapplies aliases after a refreshed snapshot", () => {
+    let snapshot: ModelLike[] = [nativeModels[0]].filter(
+        (model): model is ModelLike => model !== undefined,
+    );
+    const state: RuntimeState = {
+        loadSettings: () => loadedConfig(aliases),
+    };
+    const prototype = {
+        allModels: [] as Array<{ provider: string; id: string; model: ModelLike }>,
+        scopedModelItems: [] as Array<{ provider: string; id: string; model: ModelLike }>,
+        activeModels: [] as Array<{ provider: string; id: string; model: ModelLike }>,
+        filteredModels: [] as Array<{ provider: string; id: string; model: ModelLike }>,
+        selectedIndex: 0,
+        scope: "all",
+        loadModelsFromSnapshot(): void {
+            this.allModels = snapshot.map((model) => ({
+                provider: model.provider,
+                id: model.id,
+                model,
+            }));
+            this.activeModels = this.allModels;
+            this.filteredModels = this.allModels;
+        },
+        filterModels(): void {},
+        updateList(): void {},
+    };
+
+    installModelSelectorProviderPatch(state, prototype);
+    prototype.loadModelsFromSnapshot();
+    assert.deepEqual(
+        prototype.allModels.map((item) => item.id),
+        ["fast"],
+    );
+
+    snapshot = [...nativeModels];
+    prototype.loadModelsFromSnapshot();
+    assert.deepEqual(
+        prototype.allModels.map((item) => item.id),
+        ["fast", "smart"],
+    );
+    assert.deepEqual(
+        prototype.allModels.map((item) => item.model.id),
+        ["gpt-5", "claude-opus"],
+    );
 });
 
 test("model selector provider patch can align providers to all filtered model names", () => {
@@ -265,9 +332,7 @@ test("model selector provider patch can align providers to all filtered model na
             listContainer: { children: [] as unknown[] },
             selectedIndex: 0,
             scope: "all",
-            async loadModels(): Promise<void> {
-                return;
-            },
+            loadModelsFromSnapshot(): void {},
             filterModels(_query: string): void {
                 return;
             },
@@ -308,10 +373,12 @@ test("model selector provider patch can align providers to all filtered model na
     );
 });
 
-test("scoped models provider patch aliases rendered and searched providers only", () => {
+test("scoped models patch aliases rendered and searched models without changing selection ids", () => {
+    let currentLoaded = loadedConfig([aliases[0]], undefined, [
+        { provider: "openai", name: "OpenAI Work" },
+    ]);
     const state: RuntimeState = {
-        loadSettings: () =>
-            loadedConfig([], undefined, [{ provider: "openai", name: "OpenAI Work" }]),
+        loadSettings: () => currentLoaded,
     };
     type ScopedMockItem = {
         fullId: string;
@@ -391,11 +458,16 @@ test("scoped models provider patch aliases rendered and searched providers only"
 
     installScopedModelsProviderPatch(state, prototype);
     prototype.updateList();
-    query = "Work";
+    assert.deepEqual(textValues(prototype.listContainer.children), [
+        `→ Fast${successCheckmark}  OpenAI Work`,
+    ]);
+
+    currentLoaded = loadedConfig([aliases[0]]);
+    query = "fast";
     prototype.refresh();
 
     assert.deepEqual(textValues(prototype.listContainer.children), [
-        `→ GPT-5${successCheckmark}  OpenAI Work`,
+        `→ Fast${successCheckmark}  openai`,
     ]);
     assert.equal(prototype.searchInput.render(20)[0], ">              (1/1)");
     assert.deepEqual(footerTexts, ["footer"]);

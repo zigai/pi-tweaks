@@ -26,6 +26,26 @@ export function getAliasModelIdCollision(
     return undefined;
 }
 
+export function resolveAliasesAgainstModels(
+    loaded: LoadedConfig,
+    nativeModels: ModelLike[],
+): LoadedConfig {
+    if (loaded.error !== undefined || loaded.aliases.length === 0) {
+        return loaded;
+    }
+
+    const collision = getAliasModelIdCollision(loaded.aliases, nativeModels);
+    if (collision === undefined) {
+        return loaded;
+    }
+
+    return {
+        ...loaded,
+        aliases: [],
+        error: `Failed to load ${loaded.path}: ${collision}`,
+    };
+}
+
 export function getAliasForModel(model: ModelLike, loaded: LoadedConfig): AliasConfig | undefined {
     return loaded.aliases.find(
         (alias) => alias.provider === model.provider && alias.model === model.id,
