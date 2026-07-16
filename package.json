@@ -38,10 +38,10 @@
     "config:check": "pi-extension-settings check"
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.79.0",
-    "@earendil-works/pi-ai": "^0.79.0",
-    "@earendil-works/pi-coding-agent": "^0.79.0",
-    "@earendil-works/pi-tui": "^0.79.0",
+    "@earendil-works/pi-agent-core": "^0.80.9",
+    "@earendil-works/pi-ai": "^0.80.9",
+    "@earendil-works/pi-coding-agent": "^0.80.9",
+    "@earendil-works/pi-tui": "^0.80.9",
     "@types/node": "^24.10.1",
     "@zigai/pi-extension-settings": "0.1.2",
     "oxfmt": "^0.44.0",
