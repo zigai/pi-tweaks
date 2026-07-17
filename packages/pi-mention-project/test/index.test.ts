@@ -8,6 +8,7 @@ import { CONFIG_DIR_NAME, type ContextEvent } from "@earendil-works/pi-coding-ag
 
 import {
     createProjectMentionContextHandler,
+    createProjectMentionInputHandler,
     registerProjectMentionExtension,
     type ProjectMentionExtensionApi,
 } from "../src/index.ts";
@@ -139,6 +140,52 @@ test("context handler scans and expands past user messages after the trigger is 
     assert.equal(latestText?.type, "text");
     if (latestText?.type !== "text") assert.fail("expected latest text content");
     assert.equal(latestText.text, "Now compare it with /tmp/projects/work-api");
+});
+
+test("input handler expands project mentions in queued follow-up messages", async () => {
+    let loadCount = 0;
+    const handler = createProjectMentionInputHandler(extensionApi(), async () => {
+        loadCount += 1;
+        return [project("skills")];
+    });
+
+    const result = await handler(
+        {
+            type: "input",
+            text: "Install the skill into my #skills repo",
+            source: "interactive",
+            streamingBehavior: "followUp",
+        },
+        context(process.cwd()),
+    );
+
+    assert.equal(loadCount, 1);
+    assert.deepEqual(result, {
+        action: "transform",
+        text: "Install the skill into my /tmp/projects/skills repo",
+        images: undefined,
+    });
+});
+
+test("input handler leaves steering messages unchanged without scanning projects", async () => {
+    let loadCount = 0;
+    const handler = createProjectMentionInputHandler(extensionApi(), async () => {
+        loadCount += 1;
+        return [project("skills")];
+    });
+
+    const result = await handler(
+        {
+            type: "input",
+            text: "Switch to #skills instead",
+            source: "interactive",
+            streamingBehavior: "steer",
+        },
+        context(process.cwd()),
+    );
+
+    assert.equal(loadCount, 0);
+    assert.deepEqual(result, { action: "continue" });
 });
 
 test("mention project rewrites submitted prompts and expands provider context", async () => {

@@ -72,7 +72,7 @@ export function createProjectMentionInputHandler(
 ): ProjectMentionInputHandler {
     return async (event, ctx) => {
         const settings = mentionProjectSettings(pi, ctx);
-        if (event.streamingBehavior !== undefined || !event.text.includes(settings.trigger)) {
+        if (event.streamingBehavior === "steer" || !event.text.includes(settings.trigger)) {
             return { action: "continue" };
         }
 
