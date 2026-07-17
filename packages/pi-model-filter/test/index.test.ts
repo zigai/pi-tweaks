@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, test } from "vitest";
 
-import type { LoadedConfig, ModelLike, PatchedModelRegistry, RuntimeState } from "../src/index.ts";
+import type {
+    LoadedConfig,
+    ModelLike,
+    PatchedModelRegistry,
+    PatchedModelRuntime,
+    RuntimeState,
+} from "../src/index.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(join(tmpdir(), "pi-model-filter-"));
@@ -205,6 +211,58 @@ test("registry patch filters list and lookup results and remains idempotent", ()
     loaded = loadedConfig([], []);
     assert.deepEqual(
         registry.getAll().map((model) => model.id),
+        ["gpt-5", "gpt-5-mini", "claude-opus", "llama"],
+    );
+});
+
+test("model runtime patch filters synchronous and asynchronous model views", async () => {
+    let loaded = loadedConfig(
+        modelFilter.normalizeRules([{ provider: "openai", models: ["gpt-5"] }]),
+        modelFilter.normalizeRules([{ provider: "*", models: ["*-mini"] }]),
+    );
+    const state: RuntimeState = {
+        loadSettings() {
+            return loaded;
+        },
+    };
+    const runtime: PatchedModelRuntime = {
+        getModels(providerId?: string) {
+            if (providerId === undefined) return models;
+            return models.filter((model) => model.provider === providerId);
+        },
+        async getAvailable(providerId?: string) {
+            if (providerId === undefined) return models;
+            return models.filter((model) => model.provider === providerId);
+        },
+        getAvailableSnapshot() {
+            return models;
+        },
+        getModel(providerId: string, modelId: string) {
+            return models.find((model) => model.provider === providerId && model.id === modelId);
+        },
+    };
+
+    modelFilter.installModelRuntimePatch(runtime, state);
+    modelFilter.installModelRuntimePatch(runtime, state);
+
+    assert.deepEqual(
+        runtime.getModels().map((model) => model.id),
+        ["gpt-5", "claude-opus", "llama"],
+    );
+    assert.deepEqual(
+        runtime.getAvailableSnapshot().map((model) => model.id),
+        ["gpt-5", "claude-opus", "llama"],
+    );
+    assert.deepEqual(
+        (await runtime.getAvailable("openai")).map((model) => model.id),
+        ["gpt-5"],
+    );
+    assert.equal(runtime.getModel("openai", "gpt-5-mini"), undefined);
+    assert.deepEqual(runtime.getModel("openai", "gpt-5"), models[0]);
+
+    loaded = loadedConfig([], []);
+    assert.deepEqual(
+        (await runtime.getAvailable()).map((model) => model.id),
         ["gpt-5", "gpt-5-mini", "claude-opus", "llama"],
     );
 });

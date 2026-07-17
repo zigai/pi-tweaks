@@ -196,7 +196,7 @@ export function isVisibleModel(model: ModelLike, loaded: LoadedConfig): boolean 
     return findMatchingRule(model, loaded.excludeRules) === undefined;
 }
 
-export function filterModels(models: ModelLike[], loaded: LoadedConfig): ModelLike[] {
+export function filterModels(models: readonly ModelLike[], loaded: LoadedConfig): ModelLike[] {
     return models.filter((model) => isVisibleModel(model, loaded));
 }
 
