@@ -15,6 +15,55 @@ import { dirname, join } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
+const MODE_COLOR_EXAMPLES = [
+    "accent",
+    "border",
+    "borderAccent",
+    "borderMuted",
+    "success",
+    "error",
+    "warning",
+    "muted",
+    "dim",
+    "text",
+    "thinkingText",
+    "userMessageText",
+    "customMessageText",
+    "customMessageLabel",
+    "toolTitle",
+    "toolOutput",
+    "mdHeading",
+    "mdLink",
+    "mdLinkUrl",
+    "mdCode",
+    "mdCodeBlock",
+    "mdCodeBlockBorder",
+    "mdQuote",
+    "mdQuoteBorder",
+    "mdHr",
+    "mdListBullet",
+    "toolDiffAdded",
+    "toolDiffRemoved",
+    "toolDiffContext",
+    "syntaxComment",
+    "syntaxKeyword",
+    "syntaxFunction",
+    "syntaxVariable",
+    "syntaxString",
+    "syntaxNumber",
+    "syntaxType",
+    "syntaxOperator",
+    "syntaxPunctuation",
+    "thinkingOff",
+    "thinkingMinimal",
+    "thinkingLow",
+    "thinkingMedium",
+    "thinkingHigh",
+    "thinkingXhigh",
+    "thinkingMax",
+    "bashMode",
+] as const;
+
 export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
 export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelStatus";
 
@@ -22,8 +71,19 @@ export const modeSpecSchema = Type.Object(
     {
         provider: Type.Optional(Type.String()),
         modelId: Type.Optional(Type.String()),
-        thinkingLevel: Type.Optional(Type.Unknown()),
-        color: Type.Optional(Type.String()),
+        thinkingLevel: Type.Optional(
+            Type.Unknown({
+                "x-control": "json-editor",
+                description: "Optional thinking level or provider-specific value for this mode.",
+            }),
+        ),
+        color: Type.Optional(
+            Type.String({
+                "x-control": "combobox",
+                examples: MODE_COLOR_EXAMPLES,
+                description: "Pi theme foreground color used for this mode.",
+            }),
+        ),
     },
     { additionalProperties: false },
 );
@@ -36,7 +96,10 @@ export const defaultModelSchema = Type.Object(
         }),
         modelId: Type.String({ minLength: 1, description: "Default model ID." }),
         thinkingLevel: Type.Optional(
-            Type.Unknown({ description: "Optional default thinking level." }),
+            Type.Unknown({
+                "x-control": "json-editor",
+                description: "Optional default thinking level or provider-specific value.",
+            }),
         ),
     },
     { additionalProperties: false },

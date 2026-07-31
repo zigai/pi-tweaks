@@ -14,14 +14,31 @@
     "urlColor": {
       "anyOf": [
         {
+          "type": "integer",
+          "title": "ANSI 256 color",
+          "minimum": 0,
+          "maximum": 255,
+          "x-control": "slider",
+          "description": "ANSI 256 color index."
+        },
+        {
+          "type": "string",
+          "const": "",
+          "title": "Disabled",
+          "description": "Disable URL highlighting."
+        },
+        {
+          "type": "string",
+          "title": "Hex color",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "x-control": "color",
+          "description": "Six-digit hexadecimal color."
+        },
+        {
           "anyOf": [
             {
               "type": "string",
               "const": "accent"
-            },
-            {
-              "type": "string",
-              "const": "bashMode"
             },
             {
               "type": "string",
@@ -37,11 +54,19 @@
             },
             {
               "type": "string",
-              "const": "customMessageLabel"
+              "const": "success"
             },
             {
               "type": "string",
-              "const": "customMessageText"
+              "const": "error"
+            },
+            {
+              "type": "string",
+              "const": "warning"
+            },
+            {
+              "type": "string",
+              "const": "muted"
             },
             {
               "type": "string",
@@ -49,7 +74,43 @@
             },
             {
               "type": "string",
-              "const": "error"
+              "const": "text"
+            },
+            {
+              "type": "string",
+              "const": "thinkingText"
+            },
+            {
+              "type": "string",
+              "const": "userMessageText"
+            },
+            {
+              "type": "string",
+              "const": "customMessageText"
+            },
+            {
+              "type": "string",
+              "const": "customMessageLabel"
+            },
+            {
+              "type": "string",
+              "const": "toolTitle"
+            },
+            {
+              "type": "string",
+              "const": "toolOutput"
+            },
+            {
+              "type": "string",
+              "const": "mdHeading"
+            },
+            {
+              "type": "string",
+              "const": "mdLink"
+            },
+            {
+              "type": "string",
+              "const": "mdLinkUrl"
             },
             {
               "type": "string",
@@ -65,26 +126,6 @@
             },
             {
               "type": "string",
-              "const": "mdHeading"
-            },
-            {
-              "type": "string",
-              "const": "mdHr"
-            },
-            {
-              "type": "string",
-              "const": "mdLink"
-            },
-            {
-              "type": "string",
-              "const": "mdLinkUrl"
-            },
-            {
-              "type": "string",
-              "const": "mdListBullet"
-            },
-            {
-              "type": "string",
               "const": "mdQuote"
             },
             {
@@ -93,11 +134,23 @@
             },
             {
               "type": "string",
-              "const": "muted"
+              "const": "mdHr"
             },
             {
               "type": "string",
-              "const": "success"
+              "const": "mdListBullet"
+            },
+            {
+              "type": "string",
+              "const": "toolDiffAdded"
+            },
+            {
+              "type": "string",
+              "const": "toolDiffRemoved"
+            },
+            {
+              "type": "string",
+              "const": "toolDiffContext"
             },
             {
               "type": "string",
@@ -105,15 +158,27 @@
             },
             {
               "type": "string",
-              "const": "syntaxFunction"
-            },
-            {
-              "type": "string",
               "const": "syntaxKeyword"
             },
             {
               "type": "string",
+              "const": "syntaxFunction"
+            },
+            {
+              "type": "string",
+              "const": "syntaxVariable"
+            },
+            {
+              "type": "string",
+              "const": "syntaxString"
+            },
+            {
+              "type": "string",
               "const": "syntaxNumber"
+            },
+            {
+              "type": "string",
+              "const": "syntaxType"
             },
             {
               "type": "string",
@@ -125,23 +190,11 @@
             },
             {
               "type": "string",
-              "const": "syntaxString"
+              "const": "thinkingOff"
             },
             {
               "type": "string",
-              "const": "syntaxType"
-            },
-            {
-              "type": "string",
-              "const": "syntaxVariable"
-            },
-            {
-              "type": "string",
-              "const": "text"
-            },
-            {
-              "type": "string",
-              "const": "thinkingHigh"
+              "const": "thinkingMinimal"
             },
             {
               "type": "string",
@@ -153,15 +206,7 @@
             },
             {
               "type": "string",
-              "const": "thinkingMinimal"
-            },
-            {
-              "type": "string",
-              "const": "thinkingOff"
-            },
-            {
-              "type": "string",
-              "const": "thinkingText"
+              "const": "thinkingHigh"
             },
             {
               "type": "string",
@@ -169,46 +214,12 @@
             },
             {
               "type": "string",
-              "const": "toolDiffAdded"
-            },
-            {
-              "type": "string",
-              "const": "toolDiffContext"
-            },
-            {
-              "type": "string",
-              "const": "toolDiffRemoved"
-            },
-            {
-              "type": "string",
-              "const": "toolOutput"
-            },
-            {
-              "type": "string",
-              "const": "toolTitle"
-            },
-            {
-              "type": "string",
-              "const": "userMessageText"
-            },
-            {
-              "type": "string",
-              "const": "warning"
+              "const": "bashMode"
             }
-          ]
-        },
-        {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 255
-        },
-        {
-          "type": "string",
-          "const": ""
-        },
-        {
-          "type": "string",
-          "pattern": "^#[0-9a-fA-F]{6}$"
+          ],
+          "title": "Theme color",
+          "x-control": "select",
+          "description": "Pi theme foreground color name."
         }
       ],
       "default": "#87d7ff",

@@ -35,7 +35,8 @@
           "description": "Default model ID."
         },
         "thinkingLevel": {
-          "description": "Optional default thinking level."
+          "x-control": "json-editor",
+          "description": "Optional default thinking level or provider-specific value."
         }
       },
       "additionalProperties": false
@@ -78,9 +79,62 @@
             "modelId": {
               "type": "string"
             },
-            "thinkingLevel": {},
+            "thinkingLevel": {
+              "x-control": "json-editor",
+              "description": "Optional thinking level or provider-specific value for this mode."
+            },
             "color": {
-              "type": "string"
+              "type": "string",
+              "x-control": "combobox",
+              "examples": [
+                "accent",
+                "border",
+                "borderAccent",
+                "borderMuted",
+                "success",
+                "error",
+                "warning",
+                "muted",
+                "dim",
+                "text",
+                "thinkingText",
+                "userMessageText",
+                "customMessageText",
+                "customMessageLabel",
+                "toolTitle",
+                "toolOutput",
+                "mdHeading",
+                "mdLink",
+                "mdLinkUrl",
+                "mdCode",
+                "mdCodeBlock",
+                "mdCodeBlockBorder",
+                "mdQuote",
+                "mdQuoteBorder",
+                "mdHr",
+                "mdListBullet",
+                "toolDiffAdded",
+                "toolDiffRemoved",
+                "toolDiffContext",
+                "syntaxComment",
+                "syntaxKeyword",
+                "syntaxFunction",
+                "syntaxVariable",
+                "syntaxString",
+                "syntaxNumber",
+                "syntaxType",
+                "syntaxOperator",
+                "syntaxPunctuation",
+                "thinkingOff",
+                "thinkingMinimal",
+                "thinkingLow",
+                "thinkingMedium",
+                "thinkingHigh",
+                "thinkingXhigh",
+                "thinkingMax",
+                "bashMode"
+              ],
+              "description": "Pi theme foreground color used for this mode."
             }
           },
           "additionalProperties": false

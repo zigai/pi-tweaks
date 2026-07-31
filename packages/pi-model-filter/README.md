@@ -20,6 +20,9 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-filter.js
 | `include` | object[] | `[]` | Provider and model glob rules that form inclusion allowlists. |
 | `exclude` | object[] | `[]` | Provider and model glob rules that hide matching models. |
 
+<details>
+<summary>Complete default settings</summary>
+
 ```json
 {
   "$schema": "./schemas/pi-model-filter.schema.json",
@@ -27,6 +30,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-filter.js
   "exclude": []
 }
 ```
+
+</details>
 <!-- pi-extension-settings:end -->
 
 ## Rules

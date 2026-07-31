@@ -32,23 +32,11 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "const": "branch"
-                  },
-                  {
-                    "type": "string",
-                    "const": "context"
-                  },
-                  {
-                    "type": "string",
-                    "const": "mcp"
-                  },
-                  {
-                    "type": "string",
-                    "const": "model"
-                  },
-                  {
-                    "type": "string",
                     "const": "path"
+                  },
+                  {
+                    "type": "string",
+                    "const": "branch"
                   },
                   {
                     "type": "string",
@@ -56,7 +44,19 @@
                   },
                   {
                     "type": "string",
+                    "const": "model"
+                  },
+                  {
+                    "type": "string",
                     "const": "thinking"
+                  },
+                  {
+                    "type": "string",
+                    "const": "mcp"
+                  },
+                  {
+                    "type": "string",
+                    "const": "context"
                   }
                 ]
               },
@@ -64,7 +64,18 @@
                 "type": "string",
                 "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
               }
-            ]
+            ],
+            "x-control": "combobox",
+            "examples": [
+              "path",
+              "branch",
+              "provider",
+              "model",
+              "thinking",
+              "mcp",
+              "context"
+            ],
+            "description": "Built-in or extension-provided footer slot ID."
           },
           "uniqueItems": true,
           "default": [
@@ -84,23 +95,11 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "const": "branch"
-                  },
-                  {
-                    "type": "string",
-                    "const": "context"
-                  },
-                  {
-                    "type": "string",
-                    "const": "mcp"
-                  },
-                  {
-                    "type": "string",
-                    "const": "model"
-                  },
-                  {
-                    "type": "string",
                     "const": "path"
+                  },
+                  {
+                    "type": "string",
+                    "const": "branch"
                   },
                   {
                     "type": "string",
@@ -108,7 +107,19 @@
                   },
                   {
                     "type": "string",
+                    "const": "model"
+                  },
+                  {
+                    "type": "string",
                     "const": "thinking"
+                  },
+                  {
+                    "type": "string",
+                    "const": "mcp"
+                  },
+                  {
+                    "type": "string",
+                    "const": "context"
                   }
                 ]
               },
@@ -116,7 +127,18 @@
                 "type": "string",
                 "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
               }
-            ]
+            ],
+            "x-control": "combobox",
+            "examples": [
+              "path",
+              "branch",
+              "provider",
+              "model",
+              "thinking",
+              "mcp",
+              "context"
+            ],
+            "description": "Built-in or extension-provided footer slot ID."
           },
           "uniqueItems": true,
           "default": [
@@ -164,7 +186,18 @@
                 "type": "string",
                 "pattern": "^[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
               }
-            ]
+            ],
+            "x-control": "combobox",
+            "examples": [
+              "path",
+              "branch",
+              "provider",
+              "model",
+              "thinking",
+              "mcp",
+              "context"
+            ],
+            "description": "Built-in or extension-provided footer slot ID."
           },
           "uniqueItems": true,
           "default": [],

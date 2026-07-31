@@ -26,7 +26,22 @@ export const mentionProjectSettingsDefinition = defineExtensionSettings({
                 description: "Single character that starts a project mention.",
             }),
             roots: Type.Union(
-                [Type.String({ minLength: 1 }), Type.Array(Type.String({ minLength: 1 }))],
+                [
+                    Type.String({
+                        title: "One directory",
+                        minLength: 1,
+                        "x-control": "path",
+                        description: "One project root directory.",
+                    }),
+                    Type.Array(
+                        Type.String({
+                            minLength: 1,
+                            "x-control": "path",
+                            description: "Project root directory.",
+                        }),
+                        { title: "Directory list" },
+                    ),
+                ],
                 {
                     default: [],
                     description: "Project root directory or directories searched for projects.",

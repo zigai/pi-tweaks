@@ -31,12 +31,15 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-ui-tweaks.json`
 | `neutralBorderColor` | boolean | `true` | Use a neutral border color when Pi is idle. |
 | `pasteCollapseCharThreshold` | integer | `1000` | Character threshold that collapses pasted content. |
 | `pasteCollapseEnabled` | boolean | `true` | Collapse large pasted content. |
-| `pasteCollapseExpandKey` | null \| string | `null` | Explicit key used to expand collapsed pasted content. |
+| `pasteCollapseExpandKey` | string \| null | `null` | Explicit key used to expand collapsed pasted content. |
 | `pasteCollapseLineThreshold` | integer | `10` | Line threshold that collapses pasted content. |
 | `pasteCollapseUseToolExpandKey` | boolean | `true` | Reuse Pi's configured tool-expansion key for pasted content. |
 | `preserveCompactionHistory` | boolean | `false` | Keep pre-compaction messages visible in transcript history. |
 | `restoreContentAfterAutocompleteClose` | boolean | `true` | Restore editor content after closing autocomplete. |
 | `selectedOptionPrefix` | string | `"→ "` | Prefix displayed before selected list options. |
+
+<details>
+<summary>Complete default settings</summary>
 
 ```json
 {
@@ -63,6 +66,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-ui-tweaks.json`
   "selectedOptionPrefix": "→ "
 }
 ```
+
+</details>
 <!-- pi-extension-settings:end -->
 
 ## Render tracing

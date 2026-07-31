@@ -32,10 +32,13 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `trigger` | string | `"#"` | Single character that starts a project mention. |
-| `roots` | string[] \| string | `[]` | Project root directory or directories searched for projects. |
+| `roots` | string \| string[] | `[]` | Project root directory or directories searched for projects. |
 | `gitReposOnly` | boolean | `true` | Include only directories containing Git repositories. |
 | `includeDotFolders` | boolean | `false` | Include project directories whose names start with a dot. |
 | `completionSuffix` | string | `" "` | Text inserted after a completed project mention. |
+
+<details>
+<summary>Complete default settings</summary>
 
 ```json
 {
@@ -47,6 +50,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project
   "completionSuffix": " "
 }
 ```
+
+</details>
 <!-- pi-extension-settings:end -->
 
 ## License

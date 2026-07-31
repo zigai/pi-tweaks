@@ -33,6 +33,9 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-skill.j
 | `hideSlashSkills` | boolean | `true` | Hide skill commands from slash-command completion. |
 | `completionSuffix` | string | `" "` | Text inserted after a completed skill mention. |
 
+<details>
+<summary>Complete default settings</summary>
+
 ```json
 {
   "$schema": "./schemas/pi-mention-skill.schema.json",
@@ -41,6 +44,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-skill.j
   "completionSuffix": " "
 }
 ```
+
+</details>
 <!-- pi-extension-settings:end -->
 
 ## License

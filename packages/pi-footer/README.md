@@ -30,9 +30,12 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
 | --- | --- | --- | --- |
 | `separator` | string | `"·"` | Text placed between visible footer slots. |
 | `showGitAheadBehind` | boolean | `false` | Show upstream commit counts (↑ahead ↓behind) beside the branch. Hidden when the branch has no upstream. |
-| `layout.left` | (`branch` \| `context` \| `mcp` \| `model` \| `path` \| `provider` \| `thinking` \| string)[] | `["path","branch","provider","model","thinking"]` | Footer slot IDs shown on the left in display order. |
-| `layout.right` | (`branch` \| `context` \| `mcp` \| `model` \| `path` \| `provider` \| `thinking` \| string)[] | `["context"]` | Footer slot IDs shown on the right in display order. |
+| `layout.left` | (`path` \| `branch` \| `provider` \| `model` \| `thinking` \| `mcp` \| `context` \| string)[] | See below | Footer slot IDs shown on the left in display order. |
+| `layout.right` | (`path` \| `branch` \| `provider` \| `model` \| `thinking` \| `mcp` \| `context` \| string)[] | See below | Footer slot IDs shown on the right in display order. |
 | `layout.hidden` | (`path` \| `branch` \| `provider` \| `model` \| `thinking` \| `mcp` \| `context` \| string)[] | `[]` | Footer slot IDs hidden from both sides. |
+
+<details>
+<summary>Complete default settings</summary>
 
 ```json
 {
@@ -54,6 +57,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
   }
 }
 ```
+
+</details>
 <!-- pi-extension-settings:end -->
 
 ## Extension API

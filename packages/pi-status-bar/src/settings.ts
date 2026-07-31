@@ -119,6 +119,7 @@ export const statusBarSettingsDefinition = defineExtensionSettings({
                     messagesFile: Type.Optional(
                         Type.String({
                             minLength: 1,
+                            "x-control": "path",
                             description: "Path to a newline-delimited messages file.",
                         }),
                     ),

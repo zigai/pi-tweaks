@@ -43,10 +43,14 @@ const builtinSlotIdSchema = Type.Union([
     Type.Literal("mcp"),
     Type.Literal("context"),
 ]);
-export const footerSlotIdSchema = Type.Union([
-    builtinSlotIdSchema,
-    Type.String({ pattern: FOOTER_CUSTOM_SLOT_ID_PATTERN }),
-]);
+export const footerSlotIdSchema = Type.Union(
+    [builtinSlotIdSchema, Type.String({ pattern: FOOTER_CUSTOM_SLOT_ID_PATTERN })],
+    {
+        "x-control": "combobox",
+        examples: ["path", "branch", "provider", "model", "thinking", "mcp", "context"],
+        description: "Built-in or extension-provided footer slot ID.",
+    },
+);
 
 export const footerSettingsDefinition = defineExtensionSettings({
     id: "pi-footer",

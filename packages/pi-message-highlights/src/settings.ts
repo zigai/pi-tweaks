@@ -56,11 +56,27 @@ export const DEFAULT_URL_COLOR_SETTING = "#87d7ff";
 
 export const themeForegroundColorSchema = Type.Union(
     THEME_FOREGROUND_COLORS.map((color) => Type.Literal(color)),
+    {
+        title: "Theme color",
+        "x-control": "select",
+        description: "Pi theme foreground color name.",
+    },
 );
 export const urlColorSettingSchema = Type.Union([
-    Type.Integer({ minimum: 0, maximum: 255 }),
-    Type.Literal(""),
-    Type.String({ pattern: "^#[0-9a-fA-F]{6}$" }),
+    Type.Integer({
+        title: "ANSI 256 color",
+        minimum: 0,
+        maximum: 255,
+        "x-control": "slider",
+        description: "ANSI 256 color index.",
+    }),
+    Type.Literal("", { title: "Disabled", description: "Disable URL highlighting." }),
+    Type.String({
+        title: "Hex color",
+        pattern: "^#[0-9a-fA-F]{6}$",
+        "x-control": "color",
+        description: "Six-digit hexadecimal color.",
+    }),
     themeForegroundColorSchema,
 ]);
 

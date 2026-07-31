@@ -15,15 +15,15 @@
       "anyOf": [
         {
           "type": "string",
-          "const": "absolute"
-        },
-        {
-          "type": "string",
           "const": "off"
         },
         {
           "type": "string",
           "const": "relative"
+        },
+        {
+          "type": "string",
+          "const": "absolute"
         }
       ],
       "default": "relative",

@@ -33,12 +33,15 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-modes.jso
 | `currentMode` | string | `"default"` | Currently selected mode ID. |
 | `defaultModel.provider` | string | — | Default model provider. |
 | `defaultModel.modelId` | string | — | Default model ID. |
-| `defaultModel.thinkingLevel` | unknown | — | Optional default thinking level. |
+| `defaultModel.thinkingLevel` | unknown | — | Optional default thinking level or provider-specific value. |
 | `modeUseThinkingBorderColors` | boolean | `false` | Use thinking-level colors instead of mode colors for borders. |
 | `modeShowThinkingLevelStatus` | boolean | `false` | Show thinking level alongside mode status. |
 | `shortcuts.forward` | string | — | Shortcut for cycling modes forward. |
 | `shortcuts.backward` | string | — | Shortcut for cycling modes backward. |
 | `modes` | object | `{}` | Named model-mode specifications keyed by mode ID. |
+
+<details>
+<summary>Complete default settings</summary>
 
 ```json
 {
@@ -50,6 +53,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-modes.jso
   "modes": {}
 }
 ```
+
+</details>
 <!-- pi-extension-settings:end -->
 
 ## License

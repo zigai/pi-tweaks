@@ -133,6 +133,7 @@
         "messagesFile": {
           "type": "string",
           "minLength": 1,
+          "x-control": "path",
           "description": "Path to a newline-delimited messages file."
         }
       },
