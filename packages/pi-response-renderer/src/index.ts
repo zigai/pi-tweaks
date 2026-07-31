@@ -458,7 +458,7 @@ function markFencesHidden(instance: object): void {
 }
 
 function getPatchState(): PatchState {
-    return globalThis as PatchState;
+    return globalThis;
 }
 
 function restoreMarkdownFencesPatch(): void {
@@ -572,7 +572,7 @@ async function patchMarkdownFences(): Promise<void> {
         return;
     }
 
-    const originalRenderValue: unknown = Reflect.get(assistantPrototype, "render") as unknown;
+    const originalRenderValue: unknown = Reflect.get(assistantPrototype, "render");
     if (typeof originalRenderValue !== "function") {
         warnInternalPatchUnavailable("assistant render patch");
         return;
@@ -596,10 +596,7 @@ async function patchMarkdownFences(): Promise<void> {
     patch.originalAssistantRender = originalRender;
     patch.patchedAssistantRender = patchedAssistantRender;
 
-    const originalUpdateContentValue: unknown = Reflect.get(
-        assistantPrototype,
-        "updateContent",
-    ) as unknown;
+    const originalUpdateContentValue: unknown = Reflect.get(assistantPrototype, "updateContent");
     if (typeof originalUpdateContentValue !== "function") {
         warnInternalPatchUnavailable("assistant content patch");
         return;

@@ -83,7 +83,7 @@ let activeConfig = DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG;
 const reportedConfigErrors = new Set<string>();
 
 function getPatchState(): PatchState {
-    return globalThis as PatchState;
+    return globalThis;
 }
 
 function restoreMessageHighlightPatch(): void {

@@ -37,7 +37,7 @@ export default async function modelAliasExtension(pi: ExtensionAPI): Promise<voi
         loadSettings: () => loadModelAliasSettings(state),
     };
 
-    installRegistryPatch(ModelRegistry.prototype as PatchedModelRegistry, state);
+    installRegistryPatch(ModelRegistry.prototype, state);
     await installProviderAliasUiPatches(state);
 
     pi.on("session_start", async (_event, ctx) => {
@@ -49,16 +49,12 @@ export default async function modelAliasExtension(pi: ExtensionAPI): Promise<voi
 
     pi.on("turn_start", (_event, ctx) => {
         setConfigContext(state, ctx);
-        reportConfigError(
-            state,
-            ctx,
-            loadConfigForRegistry(state, ctx.modelRegistry as PatchedModelRegistry),
-        );
+        reportConfigError(state, ctx, loadConfigForRegistry(state, ctx.modelRegistry));
     });
 
     pi.on("before_provider_request", (event, ctx) => {
         setConfigContext(state, ctx);
-        const loaded = loadConfigForRegistry(state, ctx.modelRegistry as PatchedModelRegistry);
+        const loaded = loadConfigForRegistry(state, ctx.modelRegistry);
         reportConfigError(state, ctx, loaded);
         const alias = aliasForProviderRequest(event.payload, ctx.model, loaded);
         if (alias === undefined) {

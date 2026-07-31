@@ -101,15 +101,9 @@ export function installRegistryPatch(registry: PatchedModelRegistry, state: Runt
 
     if (registry[REGISTRY_PATCH_MARKER] === true) return;
 
-    registry[ORIGINAL_REGISTRY_GET_ALL_KEY] = Reflect.get(registry, "getAll") as () => ModelLike[];
-    registry[ORIGINAL_REGISTRY_GET_AVAILABLE_KEY] = Reflect.get(
-        registry,
-        "getAvailable",
-    ) as () => ModelLike[];
-    registry[ORIGINAL_REGISTRY_FIND_KEY] = Reflect.get(registry, "find") as (
-        provider: string,
-        modelId: string,
-    ) => ModelLike | undefined;
+    registry[ORIGINAL_REGISTRY_GET_ALL_KEY] = Reflect.get(registry, "getAll");
+    registry[ORIGINAL_REGISTRY_GET_AVAILABLE_KEY] = Reflect.get(registry, "getAvailable");
+    registry[ORIGINAL_REGISTRY_FIND_KEY] = Reflect.get(registry, "find");
 
     registry.getAll = function getAll(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_REGISTRY_GET_ALL_KEY]?.call(this) ?? [];
@@ -156,20 +150,13 @@ export function installModelRuntimePatch(runtime: PatchedModelRuntime, state: Ru
 
     if (runtime[MODEL_RUNTIME_PATCH_MARKER] === true) return;
 
-    runtime[ORIGINAL_RUNTIME_GET_MODELS_KEY] = Reflect.get(runtime, "getModels") as (
-        providerId?: string,
-    ) => readonly ModelLike[];
-    runtime[ORIGINAL_RUNTIME_GET_AVAILABLE_KEY] = Reflect.get(runtime, "getAvailable") as (
-        providerId?: string,
-    ) => Promise<readonly ModelLike[]>;
+    runtime[ORIGINAL_RUNTIME_GET_MODELS_KEY] = Reflect.get(runtime, "getModels");
+    runtime[ORIGINAL_RUNTIME_GET_AVAILABLE_KEY] = Reflect.get(runtime, "getAvailable");
     runtime[ORIGINAL_RUNTIME_GET_AVAILABLE_SNAPSHOT_KEY] = Reflect.get(
         runtime,
         "getAvailableSnapshot",
-    ) as () => readonly ModelLike[];
-    runtime[ORIGINAL_RUNTIME_GET_MODEL_KEY] = Reflect.get(runtime, "getModel") as (
-        providerId: string,
-        modelId: string,
-    ) => ModelLike | undefined;
+    );
+    runtime[ORIGINAL_RUNTIME_GET_MODEL_KEY] = Reflect.get(runtime, "getModel");
 
     runtime.getModels = function getModels(this: PatchedModelRuntime, providerId?: string) {
         const models = this[ORIGINAL_RUNTIME_GET_MODELS_KEY]?.call(this, providerId) ?? [];
@@ -224,12 +211,12 @@ export default function providerModelFilterExtension(pi: ExtensionAPI) {
         loadSettings: () => loadModelFilterSettings(state),
     };
 
-    installModelRuntimePatch(ModelRuntime.prototype as PatchedModelRuntime, state);
-    installRegistryPatch(ModelRegistry.prototype as PatchedModelRegistry, state);
+    installModelRuntimePatch(ModelRuntime.prototype, state);
+    installRegistryPatch(ModelRegistry.prototype, state);
 
     pi.on("session_start", async (_event, ctx) => {
         setConfigContext(state, ctx);
-        installRegistryPatch(ctx.modelRegistry as PatchedModelRegistry, state);
+        installRegistryPatch(ctx.modelRegistry, state);
         reportConfigError(state, ctx, state.loadSettings());
     });
 

@@ -378,8 +378,8 @@ function shouldTryExpandPasteMarker(data: string, keybindings: KeybindingsManage
 
 function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
     const getCursor: unknown = Reflect.get(value, "getCursor") as unknown;
-    const getText: unknown = Reflect.get(value, "getText") as unknown;
-    const handleInput: unknown = Reflect.get(value, "handleInput") as unknown;
+    const getText: unknown = Reflect.get(value, "getText");
+    const handleInput: unknown = Reflect.get(value, "handleInput");
     return (
         typeof getCursor === "function" &&
         typeof getText === "function" &&

@@ -79,19 +79,13 @@ export function installRegistryPatch(registry: PatchedModelRegistry, state: Runt
     }
 
     registry[PATCH_MARKER] = true;
-    registry[ORIGINAL_GET_ALL_KEY] = Reflect.get(registry, "getAll") as () => ModelLike[];
-    registry[ORIGINAL_GET_AVAILABLE_KEY] = Reflect.get(
-        registry,
-        "getAvailable",
-    ) as () => ModelLike[];
-    registry[ORIGINAL_FIND_KEY] = Reflect.get(registry, "find") as (
-        provider: string,
-        modelId: string,
-    ) => ModelLike | undefined;
+    registry[ORIGINAL_GET_ALL_KEY] = Reflect.get(registry, "getAll");
+    registry[ORIGINAL_GET_AVAILABLE_KEY] = Reflect.get(registry, "getAvailable");
+    registry[ORIGINAL_FIND_KEY] = Reflect.get(registry, "find");
     registry[ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY] = Reflect.get(
         registry,
         "getProviderDisplayName",
-    ) as (provider: string) => string;
+    );
 
     registry.getAll = function getAll(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_ALL_KEY]?.call(this) ?? [];

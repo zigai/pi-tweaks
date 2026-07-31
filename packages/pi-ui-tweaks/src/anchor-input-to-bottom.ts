@@ -314,7 +314,7 @@ export function installAnchorInputToBottomPatch(prototype?: PatchableTuiPrototyp
     }
     // SAFETY: The guarded TUI boundary verifies the private render method before
     // patching the smallest prototype seam used by this layout adapter.
-    prototype = prototypeValue as PatchableTuiPrototype;
+    prototype = prototypeValue;
     if (prototype[ANCHOR_INPUT_TO_BOTTOM_PATCHED] === true) return;
     // SAFETY: The immediately preceding runtime guard proves the private TUI render seam is callable.
     const originalRender = originalRenderValue as PatchableTuiRender;

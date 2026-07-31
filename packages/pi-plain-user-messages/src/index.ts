@@ -215,7 +215,7 @@ class PlainMarkdownText implements Component {
 }
 
 function getPatchState(): PatchState {
-    return globalThis as PatchState;
+    return globalThis;
 }
 
 function restoreUserMessageRenderingPatch(): void {
