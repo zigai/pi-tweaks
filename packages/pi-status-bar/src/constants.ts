@@ -1,1 +1,1 @@
-export const WIDGET_KEY = "worked-for-widget";
+export const WIDGET_KEY = "pi-status-bar.worked-for";

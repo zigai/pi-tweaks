@@ -6,7 +6,7 @@ import { getStatusBarSnapshot } from "./status-bar-api.ts";
 
 export const WORKED_FOR_STATE_ENTRY = "pi-status-bar.worked-for";
 
-let workedForWidgetSignature: string | undefined;
+let workedForWidgetSignatures = new WeakMap<object, string>();
 
 type StatusBarWidgetFactory = (tui: TUI, theme: Theme) => Component & { dispose?(): void };
 
@@ -22,7 +22,7 @@ export type WorkedForWidgetContext = Pick<ExtensionContext, "hasUI"> & {
 };
 
 export function resetWorkedForWidgetCache(): void {
-    workedForWidgetSignature = undefined;
+    workedForWidgetSignatures = new WeakMap<object, string>();
 }
 
 function parseWorkedForState(data: unknown): WorkedForState | undefined {
@@ -70,7 +70,7 @@ export function getWorkedForStateFromBranch(ctx: {
 
 export function clearWorkedForWidget(ctx: WorkedForWidgetContext): void {
     if (ctx.hasUI !== true) return;
-    workedForWidgetSignature = undefined;
+    workedForWidgetSignatures.delete(ctx.ui);
     ctx.ui.setWidget(WIDGET_KEY, undefined);
 }
 
@@ -97,7 +97,7 @@ export function setWorkedForWidget(
     const snapshot = getStatusBarSnapshot();
     if (!snapshot.idle.visible) {
         ctx.ui.setWidget(WIDGET_KEY, undefined);
-        workedForWidgetSignature = undefined;
+        workedForWidgetSignatures.delete(ctx.ui);
         return;
     }
 
@@ -115,15 +115,16 @@ export function setWorkedForWidget(
     ) {
         nextSignature = `${snapshot.idle.text ?? ""}\0${idleSegments}\0${workedForText ?? ""}\0${tokensPerSecond ?? ""}\0${snapshot.idle.showLastRunSummary}`;
     }
-    if (nextSignature === workedForWidgetSignature) {
+    if (nextSignature === workedForWidgetSignatures.get(ctx.ui)) {
         return;
     }
-    workedForWidgetSignature = nextSignature;
 
     if (nextSignature === undefined) {
+        workedForWidgetSignatures.delete(ctx.ui);
         ctx.ui.setWidget(WIDGET_KEY, undefined);
         return;
     }
+    workedForWidgetSignatures.set(ctx.ui, nextSignature);
 
     ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) => ({
         render(width: number): string[] {

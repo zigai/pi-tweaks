@@ -25,18 +25,39 @@ import {
 
 const LOADER_TIME_PATCH_KEY = Symbol.for("zigai.pi-status-bar.loader-time-patched");
 const LOADER_TIME_PATCH_VERSION_KEY = Symbol.for("zigai.pi-status-bar.loader-time-patch-version");
+const LOADER_TIME_PATCH_CONTROLLER_KEY = Symbol.for(
+    "zigai.pi-status-bar.loader-time-patch-controller",
+);
 const RIGHT_MESSAGES_CONFIG_KEY = Symbol.for("zigai.pi-status-bar.right-messages-config");
-const LOADER_TIME_PATCH_VERSION = 3;
+const LOADER_TIME_PATCH_VERSION = 4;
 const MIN_VISIBLE_RIGHT_MESSAGE_WIDTH = 4;
+const STATIC_LOADER_REFRESH_INTERVAL_MS = 1_000;
 
 const loaderTimers = new WeakMap<object, LoaderTimer>();
 const loaderDisplays = new WeakMap<object, LoaderDisplay>();
 const activeLoaders = new Set<Loader>();
 const reportedConfigErrors = new Set<string>();
+let activeLoaderRefreshInterval: ReturnType<typeof setInterval> | undefined;
+
+type LoaderMethod = (this: Loader) => void;
+type LoaderRenderMethod = (this: Loader, width: number) => string[];
+
+type LoaderPrototype = {
+    start?: LoaderMethod;
+    stop?: LoaderMethod;
+    updateDisplay?: LoaderMethod;
+    render?: LoaderRenderMethod;
+};
+
+type LoaderPatchController = {
+    readonly version: number;
+    acquire(): () => void;
+};
 
 type PatchState = typeof globalThis & {
     [LOADER_TIME_PATCH_KEY]?: boolean;
     [LOADER_TIME_PATCH_VERSION_KEY]?: number;
+    [LOADER_TIME_PATCH_CONTROLLER_KEY]?: LoaderPatchController;
     [RIGHT_MESSAGES_CONFIG_KEY]?: RightMessagesConfig;
 };
 
@@ -54,7 +75,7 @@ type LoaderTimer = {
 };
 
 function getPatchState(): PatchState {
-    return globalThis as PatchState;
+    return globalThis;
 }
 
 function getRightMessagesConfig(): RightMessagesConfig {
@@ -342,7 +363,7 @@ type LoaderInternals = {
     ui: { requestRender(): void } | null;
 };
 
-function updateDisplay(loader: Loader): void {
+function applyStatusBarDisplay(loader: Loader): void {
     const loaderInternals: unknown = loader;
     // SAFETY: Loader instances are created by Pi and this adapter consumes only the
     // documented-at-runtime fields required to replace its display text.
@@ -376,68 +397,116 @@ function updateDisplay(loader: Loader): void {
         startedAt: elapsed.startedAt,
     });
     l.setText(leftText);
-    l.ui?.requestRender();
+}
+
+function requestLoaderUpdate(loader: Loader): void {
+    const updateDisplay: unknown = Reflect.get(loader, "updateDisplay");
+    if (typeof updateDisplay !== "function") return;
+    Reflect.apply(updateDisplay, loader, []);
 }
 
 function requestActiveLoaderRenders(): void {
     for (const loader of activeLoaders) {
-        updateDisplay(loader);
+        requestLoaderUpdate(loader);
     }
 }
 
-function patchLoaderTime(): void {
-    const state = getPatchState();
-    if ((state[LOADER_TIME_PATCH_VERSION_KEY] ?? 0) >= LOADER_TIME_PATCH_VERSION) {
+function clearActiveLoaderRefreshInterval(): void {
+    if (activeLoaderRefreshInterval === undefined) return;
+    clearInterval(activeLoaderRefreshInterval);
+    activeLoaderRefreshInterval = undefined;
+}
+
+function updateActiveLoaderRefreshInterval(): void {
+    if (activeLoaders.size === 0) {
+        clearActiveLoaderRefreshInterval();
         return;
     }
+    if (activeLoaderRefreshInterval !== undefined) return;
+
+    activeLoaderRefreshInterval = setInterval(
+        requestActiveLoaderRenders,
+        STATIC_LOADER_REFRESH_INTERVAL_MS,
+    );
+    activeLoaderRefreshInterval.unref?.();
+}
+
+function patchLoaderTime(): () => void {
+    const state = getPatchState();
+    const existingController = state[LOADER_TIME_PATCH_CONTROLLER_KEY];
+    if (existingController?.version === LOADER_TIME_PATCH_VERSION) {
+        return existingController.acquire();
+    }
+
     const loaderPrototype: unknown = Loader.prototype;
     // SAFETY: The patch validates every prototype method before wrapping it; Pi's
     // public Loader declaration does not expose the patchable method surface.
-    const prototype = loaderPrototype as {
-        start?: () => void;
-        stop?: () => void;
-        updateDisplay?: () => void;
-        render?: (width: number) => string[];
-    };
-    const originalStart = Reflect.get(prototype, "start") as ((this: Loader) => void) | undefined;
-    const originalStop = Reflect.get(prototype, "stop") as ((this: Loader) => void) | undefined;
-    const originalUpdateDisplay = Reflect.get(prototype, "updateDisplay") as
-        | ((this: Loader) => void)
-        | undefined;
-    const originalRender = Reflect.get(prototype, "render") as
-        | ((this: Loader, width: number) => string[])
-        | undefined;
+    const prototype = loaderPrototype as LoaderPrototype;
+    const originalStart = Reflect.get(prototype, "start");
+    const originalStop = Reflect.get(prototype, "stop");
+    const originalUpdateDisplay = Reflect.get(prototype, "updateDisplay");
+    const originalRender = Reflect.get(prototype, "render");
     if (
         typeof originalStart !== "function" ||
         typeof originalStop !== "function" ||
         typeof originalUpdateDisplay !== "function" ||
         typeof originalRender !== "function"
     ) {
-        return;
+        return () => {};
     }
 
-    prototype.start = function patchedStart(this: Loader): void {
-        activeLoaders.add(this);
-        loaderTimers.set(this, {
-            startedAt: Date.now(),
-            accumulatedPausedMs: 0,
-            resetVersion: getStatusBarSnapshot().active.timerResetVersion,
-        });
+    let active = false;
+    let leaseCount = 0;
+    let unsubscribeStatusBarUpdates: (() => void) | undefined;
+
+    const patchedStart: LoaderMethod = function patchedStart(this: Loader): void {
+        if (!active) {
+            originalStart.call(this);
+            return;
+        }
+
+        const existingTimer = loaderTimers.get(this);
+        const startedAt = Date.now();
         originalStart.call(this);
+        activeLoaders.add(this);
+        if (existingTimer === undefined) {
+            loaderTimers.set(this, {
+                startedAt,
+                accumulatedPausedMs: 0,
+                resetVersion: getStatusBarSnapshot().active.timerResetVersion,
+            });
+        } else {
+            loaderTimers.set(this, existingTimer);
+        }
+        updateActiveLoaderRefreshInterval();
+        requestLoaderUpdate(this);
     };
 
-    prototype.stop = function patchedStop(this: Loader): void {
-        activeLoaders.delete(this);
-        loaderTimers.delete(this);
-        loaderDisplays.delete(this);
-        originalStop.call(this);
+    const patchedStop: LoaderMethod = function patchedStop(this: Loader): void {
+        try {
+            originalStop.call(this);
+        } finally {
+            activeLoaders.delete(this);
+            loaderTimers.delete(this);
+            loaderDisplays.delete(this);
+            updateActiveLoaderRefreshInterval();
+        }
     };
 
-    prototype.updateDisplay = function patchedUpdateDisplay(this: Loader): void {
-        updateDisplay(this);
+    const patchedUpdateDisplay: LoaderMethod = function patchedUpdateDisplay(this: Loader): void {
+        originalUpdateDisplay.call(this);
+        if (active && activeLoaders.has(this)) {
+            applyStatusBarDisplay(this);
+        }
     };
 
-    prototype.render = function patchedRender(this: Loader, width: number): string[] {
+    const patchedRender: LoaderRenderMethod = function patchedRender(
+        this: Loader,
+        width: number,
+    ): string[] {
+        if (!active) {
+            return originalRender.call(this, width);
+        }
         const display = loaderDisplays.get(this);
         if (display === undefined) {
             return originalRender.call(this, width);
@@ -445,9 +514,63 @@ function patchLoaderTime(): void {
         return renderDisplayWithRightMessage(this, display, width, originalRender);
     };
 
+    prototype.start = patchedStart;
+    prototype.stop = patchedStop;
+    prototype.updateDisplay = patchedUpdateDisplay;
+    prototype.render = patchedRender;
+
+    const controller: LoaderPatchController = {
+        version: LOADER_TIME_PATCH_VERSION,
+        acquire(): () => void {
+            leaseCount += 1;
+            if (!active) {
+                active = true;
+                unsubscribeStatusBarUpdates ??= subscribeStatusBarUpdates(
+                    requestActiveLoaderRenders,
+                );
+            }
+
+            let released = false;
+            return () => {
+                if (released) return;
+                released = true;
+                leaseCount = Math.max(0, leaseCount - 1);
+                if (leaseCount > 0 || !active) return;
+
+                active = false;
+                unsubscribeStatusBarUpdates?.();
+                unsubscribeStatusBarUpdates = undefined;
+                clearActiveLoaderRefreshInterval();
+
+                const loaders = [...activeLoaders];
+                activeLoaders.clear();
+                for (const loader of loaders) {
+                    loaderTimers.delete(loader);
+                    loaderDisplays.delete(loader);
+                }
+
+                if (prototype.start === patchedStart) prototype.start = originalStart;
+                if (prototype.stop === patchedStop) prototype.stop = originalStop;
+                if (prototype.updateDisplay === patchedUpdateDisplay) {
+                    prototype.updateDisplay = originalUpdateDisplay;
+                }
+                if (prototype.render === patchedRender) prototype.render = originalRender;
+
+                for (const loader of loaders) requestLoaderUpdate(loader);
+
+                if (state[LOADER_TIME_PATCH_CONTROLLER_KEY] === controller) {
+                    delete state[LOADER_TIME_PATCH_CONTROLLER_KEY];
+                    delete state[LOADER_TIME_PATCH_KEY];
+                    delete state[LOADER_TIME_PATCH_VERSION_KEY];
+                }
+            };
+        },
+    };
+
     state[LOADER_TIME_PATCH_KEY] = true;
     state[LOADER_TIME_PATCH_VERSION_KEY] = LOADER_TIME_PATCH_VERSION;
-    subscribeStatusBarUpdates(requestActiveLoaderRenders);
+    state[LOADER_TIME_PATCH_CONTROLLER_KEY] = controller;
+    return controller.acquire();
 }
 
 function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedStatusBarConfig): void {
@@ -468,7 +591,7 @@ function applyStatusBarResolvedConfig(ctx: ExtensionContext): void {
 }
 
 export default function statusBarExtension(pi: ExtensionAPI): void {
-    patchLoaderTime();
+    const deactivateLoaderTimePatch = patchLoaderTime();
 
     let agentStartedAt: number | undefined;
     let messageStart: number | undefined;
@@ -597,5 +720,6 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
         idleTokensPerSecond = undefined;
         setRightMessagesConfig(DEFAULT_RIGHT_MESSAGES_CONFIG);
         clearWorkedForWidget(ctx);
+        deactivateLoaderTimePatch();
     });
 }

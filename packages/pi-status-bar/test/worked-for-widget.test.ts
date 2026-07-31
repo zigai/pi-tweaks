@@ -142,6 +142,17 @@ test("setWorkedForWidget skips unchanged widget updates", () => {
     assert.equal(updateCount(), 3);
 });
 
+test("setWorkedForWidget tracks separate Pi UI contexts independently", () => {
+    const first = widgetContext();
+    const second = widgetContext();
+
+    setWorkedForWidget(first.ctx, "10s", 2);
+    setWorkedForWidget(second.ctx, "10s", 2);
+
+    assert.equal(first.updateCount(), 1);
+    assert.equal(second.updateCount(), 1);
+});
+
 test("setWorkedForWidget renders duration and token rate within the provided width", () => {
     const { ctx, currentWidget } = widgetContext();
     setWorkedForWidget(ctx, "1m 05s", 42);
