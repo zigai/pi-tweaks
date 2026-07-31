@@ -34,9 +34,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
 | `layout.right` | (`path` \| `branch` \| `provider` \| `model` \| `thinking` \| `mcp` \| `context` \| string)[] | See below | Footer slot IDs shown on the right in display order. |
 | `layout.hidden` | (`path` \| `branch` \| `provider` \| `model` \| `thinking` \| `mcp` \| `context` \| string)[] | `[]` | Footer slot IDs hidden from both sides. |
 
-<details>
-<summary>Complete default settings</summary>
-
 ```json
 {
   "$schema": "./schemas/pi-footer.schema.json",
@@ -57,8 +54,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
   }
 }
 ```
-
-</details>
 <!-- pi-extension-settings:end -->
 
 ## Extension API

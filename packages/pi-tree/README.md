@@ -35,9 +35,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-tree.json`.
 | `treeMaxVisibleLines` | number | — | Maximum visible lines in the tree selector. |
 | `treePreviewFullHeight` | boolean | `true` | Allow the preview to use the selector's full available height. |
 
-<details>
-<summary>Complete default settings</summary>
-
 ```json
 {
   "$schema": "./schemas/pi-tree.schema.json",
@@ -46,8 +43,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-tree.json`.
   "treePreviewFullHeight": true
 }
 ```
-
-</details>
 <!-- pi-extension-settings:end -->
 
 ## Development

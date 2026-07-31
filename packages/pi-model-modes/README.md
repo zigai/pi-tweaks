@@ -40,9 +40,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-modes.jso
 | `shortcuts.backward` | string | — | Shortcut for cycling modes backward. |
 | `modes` | object | `{}` | Named model-mode specifications keyed by mode ID. |
 
-<details>
-<summary>Complete default settings</summary>
-
 ```json
 {
   "$schema": "./schemas/pi-model-modes.schema.json",
@@ -53,8 +50,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-modes.jso
   "modes": {}
 }
 ```
-
-</details>
 <!-- pi-extension-settings:end -->
 
 ## License

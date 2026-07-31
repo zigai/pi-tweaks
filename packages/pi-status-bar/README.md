@@ -40,9 +40,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-status-bar.json
 | `rightMessages.messages` | string[] | `[]` | Inline rotating status messages. |
 | `rightMessages.messagesFile` | string | — | Path to a newline-delimited messages file. |
 
-<details>
-<summary>Complete default settings</summary>
-
 ```json
 {
   "$schema": "./schemas/pi-status-bar.schema.json",
@@ -70,8 +67,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-status-bar.json
   }
 }
 ```
-
-</details>
 <!-- pi-extension-settings:end -->
 
 ## Extension API

@@ -23,9 +23,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-alias.jso
 | `providerAliases` | object[] | `[]` | Provider display-name aliases. |
 | `stableProviderColumn` | boolean | `true` | Keep the provider column stable when aliases are displayed. |
 
-<details>
-<summary>Complete default settings</summary>
-
 ```json
 {
   "$schema": "./schemas/pi-model-alias.schema.json",
@@ -34,8 +31,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-alias.jso
   "stableProviderColumn": true
 }
 ```
-
-</details>
 <!-- pi-extension-settings:end -->
 
 ## License

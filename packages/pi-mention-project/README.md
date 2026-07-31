@@ -37,9 +37,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project
 | `includeDotFolders` | boolean | `false` | Include project directories whose names start with a dot. |
 | `completionSuffix` | string | `" "` | Text inserted after a completed project mention. |
 
-<details>
-<summary>Complete default settings</summary>
-
 ```json
 {
   "$schema": "./schemas/pi-mention-project.schema.json",
@@ -50,8 +47,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project
   "completionSuffix": " "
 }
 ```
-
-</details>
 <!-- pi-extension-settings:end -->
 
 ## License

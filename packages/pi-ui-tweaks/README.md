@@ -38,9 +38,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-ui-tweaks.json`
 | `restoreContentAfterAutocompleteClose` | boolean | `true` | Restore editor content after closing autocomplete. |
 | `selectedOptionPrefix` | string | `"→ "` | Prefix displayed before selected list options. |
 
-<details>
-<summary>Complete default settings</summary>
-
 ```json
 {
   "$schema": "./schemas/pi-ui-tweaks.schema.json",
@@ -66,8 +63,6 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-ui-tweaks.json`
   "selectedOptionPrefix": "→ "
 }
 ```
-
-</details>
 <!-- pi-extension-settings:end -->
 
 ## Render tracing
