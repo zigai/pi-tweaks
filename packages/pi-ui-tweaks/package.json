@@ -31,6 +31,7 @@
     "access": "public"
   },
   "scripts": {
+    "prepublishOnly": "pi-extension-settings check --root .",
     "prepack": "node ../../scripts/prepare-settings-bundle.ts"
   },
   "dependencies": {
