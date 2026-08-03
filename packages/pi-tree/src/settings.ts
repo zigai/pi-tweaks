@@ -101,12 +101,10 @@ let cachedPreviewFullHeight: boolean | undefined;
 let cachedThemeName: string | undefined;
 let cachedThemeNameLoaded = false;
 
-export type TreeSettingsContext = Pick<ExtensionContext, "cwd"> & {
-    isProjectTrusted?: () => boolean;
-};
+export type TreeSettingsContext = Pick<ExtensionContext, "cwd" | "isProjectTrusted">;
 
 function isProjectTrusted(ctx: TreeSettingsContext): boolean {
-    return ctx.isProjectTrusted?.() ?? true;
+    return ctx.isProjectTrusted();
 }
 
 function clearReadCaches(): void {

@@ -13,22 +13,28 @@ import type { AliasConfig, LoadedConfig, ProviderAliasConfig, RuntimeState } fro
 export const EXTENSION_ID = "pi-model-alias";
 export const CONFIG_FILE = `${EXTENSION_ID}.json`;
 
-const nonBlankStringSchema = Type.String({ pattern: "\\S" });
+function nonBlankStringSchema(description: string) {
+    return Type.String({ pattern: "\\S", description });
+}
 
 export const aliasConfigSchema = Type.Object(
     {
-        provider: nonBlankStringSchema,
-        model: nonBlankStringSchema,
-        alias: nonBlankStringSchema,
-        name: Type.Optional(nonBlankStringSchema),
+        provider: nonBlankStringSchema("Provider ID that owns the model."),
+        model: nonBlankStringSchema("Original model ID sent to the provider."),
+        alias: nonBlankStringSchema("Short local model ID accepted by Pi."),
+        name: Type.Optional(
+            nonBlankStringSchema(
+                "Optional displayed model name; omit it to keep Pi's native label.",
+            ),
+        ),
     },
     { additionalProperties: false },
 );
 
 export const providerAliasConfigSchema = Type.Object(
     {
-        provider: nonBlankStringSchema,
-        name: nonBlankStringSchema,
+        provider: nonBlankStringSchema("Provider ID whose displayed name should change."),
+        name: nonBlankStringSchema("Provider name displayed by Pi."),
     },
     { additionalProperties: false },
 );
@@ -43,11 +49,11 @@ export const modelAliasSettingsDefinition = defineExtensionSettings({
         {
             aliases: Type.Array(aliasConfigSchema, {
                 default: [],
-                description: "Model alias entries matched by provider and model ID.",
+                description: "Short model IDs with optional display-name overrides.",
             }),
             providerAliases: Type.Array(providerAliasConfigSchema, {
                 default: [],
-                description: "Provider display-name aliases.",
+                description: "Provider display-name overrides; provider IDs remain unchanged.",
             }),
             stableProviderColumn: Type.Boolean({
                 default: true,
@@ -56,6 +62,22 @@ export const modelAliasSettingsDefinition = defineExtensionSettings({
         },
         { additionalProperties: false },
     ),
+    exampleSettings: {
+        aliases: [
+            {
+                provider: "anthropic",
+                model: "claude-sonnet-4-5",
+                alias: "sonnet",
+                name: "Claude Sonnet 4.5",
+            },
+            {
+                provider: "openai-codex",
+                model: "gpt-5.6-sol",
+                alias: "sol",
+            },
+        ],
+        providerAliases: [{ provider: "openai-codex", name: "Codex" }],
+    },
 });
 
 export default modelAliasSettingsDefinition;

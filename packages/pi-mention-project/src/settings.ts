@@ -66,9 +66,7 @@ export const mentionProjectSettingsDefinition = defineExtensionSettings({
 
 export default mentionProjectSettingsDefinition;
 
-export type MentionProjectSettingsContext = Pick<ExtensionContext, "cwd"> & {
-    isProjectTrusted?: () => boolean;
-};
+export type MentionProjectSettingsContext = Pick<ExtensionContext, "cwd" | "isProjectTrusted">;
 
 /** Load validated global and trusted-project project-mention settings. */
 export function loadMentionProjectSettings(
@@ -78,7 +76,7 @@ export function loadMentionProjectSettings(
         mentionProjectSettingsDefinition,
         {
             cwd: ctx.cwd,
-            isProjectTrusted: () => ctx.isProjectTrusted?.() ?? true,
+            isProjectTrusted: () => ctx.isProjectTrusted(),
         },
         {
             bundledSchema: {

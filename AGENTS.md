@@ -55,6 +55,8 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 - Only packages with meaningful user-facing settings should declare `piExtensionSettings` and include a generated region.
 - Generated docs contain the centralized global path, a compact option table, and the full scaffolded default JSON document.
 - Setting descriptions belong on the TypeBox definition properties; wording changes flow into the README via `just config-generate`.
+- `exampleSettings` is optional. Define it only when complex settings—such as structured arrays, nested objects, maps, unions, or meaningful interactions between options—need a realistic advanced example. Omit it for simple or self-explanatory settings. Keep examples valid, focused, and free of secrets and maintainer-specific paths.
+- Give complex array-item and record-value object schemas a concise PascalCase `title`, such as `ModelMode`, so generated tables show a named type instead of an oversized structural declaration.
 - Keep implementation lifecycle, project override, trust, and malformed-file behavior in `AGENTS.md`, source, tests, or dedicated advanced docs rather than generated user-facing configuration sections.
 
 ## Packaging notes

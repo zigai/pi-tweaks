@@ -6,7 +6,7 @@ import {
     type ExtensionContext,
     type SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import fs from "node:fs/promises";
 import { Type, type Static, type TSchema } from "typebox";
@@ -36,6 +36,8 @@ import {
     withFileLock,
 } from "./storage.ts";
 import {
+    defaultThinkingLevelSchema,
+    modeThinkingLevelSchema,
     setShowThinkingLevelStatus,
     setUseThinkingBorderColors,
     shouldShowThinkingLevelStatus,
@@ -107,7 +109,7 @@ const ModeSpecJsonSchema = Type.Object(
     {
         provider: Type.Optional(Type.String()),
         modelId: Type.Optional(Type.String()),
-        thinkingLevel: Type.Optional(Type.Unknown()),
+        thinkingLevel: Type.Optional(modeThinkingLevelSchema),
         color: Type.Optional(Type.String()),
     },
     { additionalProperties: false },
@@ -116,7 +118,7 @@ const DefaultModelJsonSchema = Type.Object(
     {
         provider: Type.String({ minLength: 1 }),
         modelId: Type.String({ minLength: 1 }),
-        thinkingLevel: Type.Optional(Type.Unknown()),
+        thinkingLevel: Type.Optional(defaultThinkingLevelSchema),
     },
     { additionalProperties: false },
 );
@@ -576,12 +578,8 @@ function formatModeLabel(mode: string): string {
     return mode;
 }
 
-type ProjectTrustContext = ExtensionContext & {
-    isProjectTrusted?: () => boolean;
-};
-
 function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return (ctx as ProjectTrustContext).isProjectTrusted?.() ?? true;
+    return ctx.isProjectTrusted();
 }
 
 async function resolveModesPath(ctx: ExtensionContext): Promise<string> {
@@ -887,14 +885,22 @@ function validateModeNameOrError(
     return null;
 }
 
+export function getModeThinkingLevels(model: Model<Api> | undefined): readonly ThinkingLevel[] {
+    if (model === undefined) return ALL_THINKING_LEVELS;
+    return getSupportedThinkingLevels(model);
+}
+
 async function pickThinkingLevelForModeUI(
     ctx: ExtensionContext,
     current: ThinkingLevel | undefined,
+    model: Model<Api> | undefined,
 ): Promise<ThinkingLevel | null | undefined> {
     if (!ctx.hasUI) return undefined;
 
-    const defaultValue = current ?? "off";
-    const options = [...ALL_THINKING_LEVELS, THINKING_UNSET_LABEL];
+    const supportedLevels = getModeThinkingLevels(model);
+    let defaultValue = supportedLevels[0] ?? "off";
+    if (current !== undefined && supportedLevels.includes(current)) defaultValue = current;
+    const options = [...supportedLevels, THINKING_UNSET_LABEL];
     const ordered = [defaultValue, ...options.filter((value) => value !== defaultValue)];
 
     const choice = await ctx.ui.select("Thinking level", ordered);
@@ -969,7 +975,13 @@ async function setDefaultModelUI(pi: ExtensionAPI, ctx: ExtensionContext): Promi
     if (selectedModel === undefined) return;
 
     const currentThinkingLevel = currentDefault?.thinkingLevel ?? pi.getThinkingLevel();
-    const thinkingLevel = await pickThinkingLevelForModeUI(ctx, currentThinkingLevel);
+    const selectedModelDefinition =
+        ctx.modelRegistry.find(selectedModel.provider, selectedModel.modelId) ?? ctx.model;
+    const thinkingLevel = await pickThinkingLevelForModeUI(
+        ctx,
+        currentThinkingLevel,
+        selectedModelDefinition,
+    );
     if (thinkingLevel === undefined) return;
 
     const defaultModel: DefaultModelSpec = {
@@ -1091,7 +1103,12 @@ async function editModeUI(pi: ExtensionAPI, ctx: ExtensionContext, mode: string)
         }
 
         if (action === "Change thinking level") {
-            const level = await pickThinkingLevelForModeUI(ctx, spec.thinkingLevel);
+            let selectedModel = ctx.model;
+            if (spec.provider !== undefined && spec.modelId !== undefined) {
+                selectedModel =
+                    ctx.modelRegistry.find(spec.provider, spec.modelId) ?? selectedModel;
+            }
+            const level = await pickThinkingLevelForModeUI(ctx, spec.thinkingLevel, selectedModel);
             if (level === undefined) continue;
 
             if (level === null) {

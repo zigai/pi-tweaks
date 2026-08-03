@@ -33,12 +33,14 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-modes.jso
 | `currentMode` | string | `"default"` | Currently selected mode ID. |
 | `defaultModel.provider` | string | — | Default model provider. |
 | `defaultModel.modelId` | string | — | Default model ID. |
-| `defaultModel.thinkingLevel` | unknown | — | Optional default thinking level or provider-specific value. |
+| `defaultModel.thinkingLevel` | `off` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` \| `max` | — | Pi thinking level for the default model, clamped to that model's capabilities. |
 | `modeUseThinkingBorderColors` | boolean | `false` | Use thinking-level colors instead of mode colors for borders. |
 | `modeShowThinkingLevelStatus` | boolean | `false` | Show thinking level alongside mode status. |
 | `shortcuts.forward` | string | — | Shortcut for cycling modes forward. |
 | `shortcuts.backward` | string | — | Shortcut for cycling modes backward. |
-| `modes` | object | `{}` | Named model-mode specifications keyed by mode ID. |
+| `modes` | Record<string, ModelMode> | `{}` | Named model-mode specifications keyed by mode ID. |
+
+### Defaults
 
 ```json
 {
@@ -48,6 +50,29 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-modes.jso
   "modeUseThinkingBorderColors": false,
   "modeShowThinkingLevelStatus": false,
   "modes": {}
+}
+```
+
+### Advanced example
+
+```json
+{
+  "$schema": "./schemas/pi-model-modes.schema.json",
+  "currentMode": "deep",
+  "modes": {
+    "fast": {
+      "provider": "openai-codex",
+      "modelId": "gpt-5.4-mini",
+      "thinkingLevel": "low",
+      "color": "thinkingLow"
+    },
+    "deep": {
+      "provider": "openai-codex",
+      "modelId": "gpt-5.6-sol",
+      "thinkingLevel": "high",
+      "color": "thinkingHigh"
+    }
+  }
 }
 ```
 <!-- pi-extension-settings:end -->

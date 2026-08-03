@@ -2,9 +2,9 @@
 
 <a href="https://www.npmjs.com/package/@zigai/pi-model-alias"><img alt="npm version" src="https://img.shields.io/npm/v/@zigai/pi-model-alias.svg?color=blue" style="display:inline-block;border:0" /></a> <a href="https://www.npmjs.com/package/@zigai/pi-model-alias"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@zigai/pi-model-alias.svg" style="display:inline-block;border:0" /></a> <a href="https://github.com/zigai/pi-tweaks/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@zigai/pi-model-alias.svg" style="display:inline-block;border:0" /></a>
 
-Add aliases for long provider model IDs and provider display names.
+Shorter local model IDs and customizable model and provider labels for Pi.
 
-Use it when a provider model identifier is hard to type or when provider IDs are hard to scan in Pi UI. Model aliases are shown and accepted by Pi, then rewritten back to the original model ID before provider requests are sent. Provider aliases are visual only; Pi still uses the real provider ID for auth, lookup, and requests.
+A model alias maps a provider's real `model` ID to the shorter `alias` accepted by Pi. Its optional `name` changes only the displayed label; omitting it preserves Pi's native model name. Pi rewrites aliases to real model IDs before provider requests. Provider aliases change displayed provider names without changing provider IDs.
 
 ## Install
 
@@ -19,9 +19,11 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-alias.jso
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `aliases` | object[] | `[]` | Model alias entries matched by provider and model ID. |
-| `providerAliases` | object[] | `[]` | Provider display-name aliases. |
+| `aliases` | { provider: string; model: string; alias: string; name?: string }[] | `[]` | Short model IDs with optional display-name overrides. |
+| `providerAliases` | { provider: string; name: string }[] | `[]` | Provider display-name overrides; provider IDs remain unchanged. |
 | `stableProviderColumn` | boolean | `true` | Keep the provider column stable when aliases are displayed. |
+
+### Defaults
 
 ```json
 {
@@ -29,6 +31,33 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-alias.jso
   "aliases": [],
   "providerAliases": [],
   "stableProviderColumn": true
+}
+```
+
+### Advanced example
+
+```json
+{
+  "$schema": "./schemas/pi-model-alias.schema.json",
+  "aliases": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "alias": "sonnet",
+      "name": "Claude Sonnet 4.5"
+    },
+    {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "alias": "sol"
+    }
+  ],
+  "providerAliases": [
+    {
+      "provider": "openai-codex",
+      "name": "Codex"
+    }
+  ]
 }
 ```
 <!-- pi-extension-settings:end -->

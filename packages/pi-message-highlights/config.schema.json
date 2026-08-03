@@ -214,6 +214,10 @@
             },
             {
               "type": "string",
+              "const": "thinkingMax"
+            },
+            {
+              "type": "string",
               "const": "bashMode"
             }
           ],

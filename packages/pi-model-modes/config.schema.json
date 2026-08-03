@@ -35,8 +35,17 @@
           "description": "Default model ID."
         },
         "thinkingLevel": {
-          "x-control": "json-editor",
-          "description": "Optional default thinking level or provider-specific value."
+          "enum": [
+            "off",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "x-control": "select",
+          "description": "Pi thinking level for the default model, clamped to that model's capabilities."
         }
       },
       "additionalProperties": false
@@ -80,8 +89,17 @@
               "type": "string"
             },
             "thinkingLevel": {
-              "x-control": "json-editor",
-              "description": "Optional thinking level or provider-specific value for this mode."
+              "enum": [
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "x-control": "select",
+              "description": "Pi thinking level for this mode, clamped to the selected model's capabilities."
             },
             "color": {
               "type": "string",
@@ -137,7 +155,8 @@
               "description": "Pi theme foreground color used for this mode."
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "title": "ModelMode"
         }
       },
       "default": {},

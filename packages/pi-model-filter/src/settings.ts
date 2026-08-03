@@ -79,6 +79,10 @@ export const modelFilterSettingsDefinition = defineExtensionSettings({
         },
         { additionalProperties: false },
     ),
+    exampleSettings: {
+        include: [{ provider: "openai-codex", models: ["gpt-5.*"] }],
+        exclude: [{ provider: "openai-codex", models: ["*-mini"] }],
+    },
 });
 
 export default modelFilterSettingsDefinition;
@@ -93,10 +97,6 @@ const FilterConfigSchema = Type.Object(
 );
 
 type ParsedFilterRuleConfig = Static<typeof filterRuleSchema>;
-
-type ProjectTrustContext = ExtensionContext & {
-    isProjectTrusted?: () => boolean;
-};
 
 function formatSchemaPath(instancePath: string): string {
     if (instancePath.length === 0) return "root";
@@ -146,7 +146,7 @@ function parseFilterConfig(config: unknown): FilterConfig {
 }
 
 function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return (ctx as ProjectTrustContext).isProjectTrusted?.() ?? true;
+    return ctx.isProjectTrusted();
 }
 
 function findMatchingRule(

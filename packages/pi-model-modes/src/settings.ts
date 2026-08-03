@@ -14,6 +14,7 @@ import {
 import { dirname, join } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { ALL_THINKING_LEVELS } from "./constants.ts";
 
 const MODE_COLOR_EXAMPLES = [
     "accent",
@@ -67,16 +68,21 @@ const MODE_COLOR_EXAMPLES = [
 export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
 export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelStatus";
 
+export const modeThinkingLevelSchema = Type.Enum(ALL_THINKING_LEVELS, {
+    "x-control": "select",
+    description: "Pi thinking level for this mode, clamped to the selected model's capabilities.",
+});
+
+export const defaultThinkingLevelSchema = Type.Enum(ALL_THINKING_LEVELS, {
+    "x-control": "select",
+    description: "Pi thinking level for the default model, clamped to that model's capabilities.",
+});
+
 export const modeSpecSchema = Type.Object(
     {
         provider: Type.Optional(Type.String()),
         modelId: Type.Optional(Type.String()),
-        thinkingLevel: Type.Optional(
-            Type.Unknown({
-                "x-control": "json-editor",
-                description: "Optional thinking level or provider-specific value for this mode.",
-            }),
-        ),
+        thinkingLevel: Type.Optional(modeThinkingLevelSchema),
         color: Type.Optional(
             Type.String({
                 "x-control": "combobox",
@@ -85,7 +91,7 @@ export const modeSpecSchema = Type.Object(
             }),
         ),
     },
-    { additionalProperties: false },
+    { additionalProperties: false, title: "ModelMode" },
 );
 
 export const defaultModelSchema = Type.Object(
@@ -95,12 +101,7 @@ export const defaultModelSchema = Type.Object(
             description: "Default model provider.",
         }),
         modelId: Type.String({ minLength: 1, description: "Default model ID." }),
-        thinkingLevel: Type.Optional(
-            Type.Unknown({
-                "x-control": "json-editor",
-                description: "Optional default thinking level or provider-specific value.",
-            }),
-        ),
+        thinkingLevel: Type.Optional(defaultThinkingLevelSchema),
     },
     { additionalProperties: false },
 );
@@ -147,6 +148,23 @@ export const modelModesSettingsDefinition = defineExtensionSettings({
         },
         { additionalProperties: false },
     ),
+    exampleSettings: {
+        currentMode: "deep",
+        modes: {
+            fast: {
+                provider: "openai-codex",
+                modelId: "gpt-5.4-mini",
+                thinkingLevel: "low",
+                color: "thinkingLow",
+            },
+            deep: {
+                provider: "openai-codex",
+                modelId: "gpt-5.6-sol",
+                thinkingLevel: "high",
+                color: "thinkingHigh",
+            },
+        },
+    },
 });
 
 export default modelModesSettingsDefinition;
@@ -182,12 +200,8 @@ let cachedSettings:
       }
     | undefined;
 
-type ProjectTrustContext = ExtensionContext & {
-    isProjectTrusted?: () => boolean;
-};
-
 function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return (ctx as ProjectTrustContext).isProjectTrusted?.() ?? true;
+    return ctx.isProjectTrusted();
 }
 
 export function setSettingsContext(ctx: ExtensionContext): void {

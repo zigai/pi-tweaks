@@ -23,25 +23,29 @@
         "properties": {
           "provider": {
             "type": "string",
-            "pattern": "\\S"
+            "pattern": "\\S",
+            "description": "Provider ID that owns the model."
           },
           "model": {
             "type": "string",
-            "pattern": "\\S"
+            "pattern": "\\S",
+            "description": "Original model ID sent to the provider."
           },
           "alias": {
             "type": "string",
-            "pattern": "\\S"
+            "pattern": "\\S",
+            "description": "Short local model ID accepted by Pi."
           },
           "name": {
             "type": "string",
-            "pattern": "\\S"
+            "pattern": "\\S",
+            "description": "Optional displayed model name; omit it to keep Pi's native label."
           }
         },
         "additionalProperties": false
       },
       "default": [],
-      "description": "Model alias entries matched by provider and model ID."
+      "description": "Short model IDs with optional display-name overrides."
     },
     "providerAliases": {
       "type": "array",
@@ -54,17 +58,19 @@
         "properties": {
           "provider": {
             "type": "string",
-            "pattern": "\\S"
+            "pattern": "\\S",
+            "description": "Provider ID whose displayed name should change."
           },
           "name": {
             "type": "string",
-            "pattern": "\\S"
+            "pattern": "\\S",
+            "description": "Provider name displayed by Pi."
           }
         },
         "additionalProperties": false
       },
       "default": [],
-      "description": "Provider display-name aliases."
+      "description": "Provider display-name overrides; provider IDs remain unchanged."
     },
     "stableProviderColumn": {
       "type": "boolean",

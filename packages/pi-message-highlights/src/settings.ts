@@ -1,9 +1,16 @@
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
+import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-export const THEME_FOREGROUND_COLORS = [
+function defineThemeColors<const Colors extends readonly ThemeColor[]>(
+    colors: Colors & ([ThemeColor] extends [Colors[number]] ? unknown : never),
+): Colors {
+    return colors;
+}
+
+export const THEME_FOREGROUND_COLORS = defineThemeColors([
     "accent",
     "border",
     "borderAccent",
@@ -48,8 +55,9 @@ export const THEME_FOREGROUND_COLORS = [
     "thinkingMedium",
     "thinkingHigh",
     "thinkingXhigh",
+    "thinkingMax",
     "bashMode",
-] as const;
+] as const);
 
 export type ThemeForegroundColor = (typeof THEME_FOREGROUND_COLORS)[number];
 export const DEFAULT_URL_COLOR_SETTING = "#87d7ff";

@@ -73,6 +73,12 @@ test("resolveMessageHighlightsConfig accepts supported URL color settings", () =
         { kind: "theme", color: "mdLink" },
     );
     assert.deepEqual(
+        resolveMessageHighlightsConfig([
+            { label: "settings", settings: { urlColor: "thinkingMax" } },
+        ]).config.urlColor,
+        { kind: "theme", color: "thinkingMax" },
+    );
+    assert.deepEqual(
         resolveMessageHighlightsConfig([{ label: "settings", settings: { urlColor: "" } }]).config
             .urlColor,
         { kind: "none" },

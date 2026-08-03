@@ -39,7 +39,7 @@
     "prepack": "node ../../scripts/prepare-settings-bundle.ts"
   },
   "dependencies": {
-    "@zigai/pi-extension-settings": "0.2.4"
+    "@zigai/pi-extension-settings": "0.3.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

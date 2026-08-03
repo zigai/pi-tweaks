@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { Model } from "@earendil-works/pi-ai";
 import { test } from "vitest";
 
 import {
@@ -6,6 +7,7 @@ import {
     computeModesPatch,
     ensureDefaultModeEntries,
     findModeForModel,
+    getModeThinkingLevels,
     shouldApplyDefaultModel,
 } from "../src/mode-state.ts";
 import type { ModesFile } from "../src/types.ts";
@@ -28,6 +30,48 @@ function baseModesFile(): ModesFile {
         },
     };
 }
+
+function thinkingModel(
+    overrides: Partial<Model<"openai-completions">> = {},
+): Model<"openai-completions"> {
+    return {
+        id: "reasoning-model",
+        name: "Reasoning Model",
+        api: "openai-completions",
+        provider: "openai",
+        baseUrl: "https://example.test/v1",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128_000,
+        maxTokens: 32_000,
+        ...overrides,
+    };
+}
+
+test("mode thinking levels follow the selected model's capabilities", () => {
+    assert.deepEqual(getModeThinkingLevels(undefined), [
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]);
+    assert.deepEqual(getModeThinkingLevels(thinkingModel({ reasoning: false })), ["off"]);
+    assert.deepEqual(getModeThinkingLevels(thinkingModel()), [
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+    ]);
+    assert.deepEqual(
+        getModeThinkingLevels(thinkingModel({ thinkingLevelMap: { xhigh: "xhigh", max: null } })),
+        ["off", "minimal", "low", "medium", "high", "xhigh"],
+    );
+});
 
 test("computeModesPatch returns null when there are no persisted changes", () => {
     const base = baseModesFile();

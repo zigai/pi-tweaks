@@ -17,14 +17,40 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-filter.js
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `include` | object[] | `[]` | Provider and model glob rules that form inclusion allowlists. |
-| `exclude` | object[] | `[]` | Provider and model glob rules that hide matching models. |
+| `include` | { provider: string; models: string[] }[] | `[]` | Provider and model glob rules that form inclusion allowlists. |
+| `exclude` | { provider: string; models: string[] }[] | `[]` | Provider and model glob rules that hide matching models. |
+
+### Defaults
 
 ```json
 {
   "$schema": "./schemas/pi-model-filter.schema.json",
   "include": [],
   "exclude": []
+}
+```
+
+### Advanced example
+
+```json
+{
+  "$schema": "./schemas/pi-model-filter.schema.json",
+  "include": [
+    {
+      "provider": "openai-codex",
+      "models": [
+        "gpt-5.*"
+      ]
+    }
+  ],
+  "exclude": [
+    {
+      "provider": "openai-codex",
+      "models": [
+        "*-mini"
+      ]
+    }
+  ]
 }
 ```
 <!-- pi-extension-settings:end -->

@@ -15,12 +15,8 @@ import {
 } from "./registry-patch.ts";
 import type { RuntimeState } from "./types.ts";
 
-type ProjectTrustContext = ExtensionContext & {
-    isProjectTrusted?: () => boolean;
-};
-
 function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return (ctx as ProjectTrustContext).isProjectTrusted?.() ?? true;
+    return ctx.isProjectTrusted();
 }
 
 function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
