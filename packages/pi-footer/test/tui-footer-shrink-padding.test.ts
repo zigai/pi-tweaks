@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { Container, TUI, type Component, type Terminal } from "@earendil-works/pi-tui";
+import {
+    Container,
+    TuiMainScreen as TUI,
+    type Component,
+    type Terminal,
+} from "@earendil-works/pi-tui";
 import {
     installAnchorInputToBottomPatch,
     setAnchorInputToBottom,

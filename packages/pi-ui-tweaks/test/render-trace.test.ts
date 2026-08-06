@@ -7,9 +7,17 @@ import { test } from "vitest";
 import { installRenderTracePatch, recordRenderTraceMarker } from "../src/render-trace.ts";
 
 type RecordingTerminal = {
+    columns?: number;
     rows: number;
     writes: string[];
     write(data: string): void;
+};
+
+type FakeFullscreenTui = FakeTui & {
+    mode: "fullscreen";
+    previousScreen: string[];
+    previousScreenHeight: number;
+    previousScreenWidth: number;
 };
 
 type FakeTui = {
@@ -69,6 +77,24 @@ function createFakeTuiPrototype(): FakeTui {
             this.previousLines = lines;
             this.previousWidth = 40;
             this.previousHeight = this.terminal.rows;
+            this.renderRequested = false;
+        },
+    };
+}
+
+function createFakeFullscreenPrototype(): FakeFullscreenTui {
+    return {
+        ...createFakeTuiPrototype(),
+        mode: "fullscreen",
+        previousScreen: [],
+        previousScreenHeight: 0,
+        previousScreenWidth: 0,
+        doRender(): void {
+            const lines = ["fullscreen transcript", "fullscreen footer"];
+            this.terminal.write(`\x1b[?2026h${lines.join("\r\n")}\x1b[?2026l`);
+            this.previousScreen = lines;
+            this.previousScreenWidth = this.terminal.columns ?? 40;
+            this.previousScreenHeight = this.terminal.rows;
             this.renderRequested = false;
         },
     };
@@ -158,6 +184,79 @@ test("render trace preserves inherited terminal write methods", () => {
         instance.doRender();
         assert.equal(Object.hasOwn(terminal, "write"), false);
         trace.stop();
+    } finally {
+        rmSync(temporaryDirectory, { force: true, recursive: true });
+    }
+});
+
+test("render trace captures regular and fullscreen renderers in one trace", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "pi-ui-tweaks-render-trace-"));
+    const filePath = join(temporaryDirectory, "trace.jsonl");
+    const regularBase = createFakeTuiPrototype();
+    const regularPrototype = Object.create(regularBase) as FakeTui;
+    const fullscreenPrototype = createFakeFullscreenPrototype();
+    const regularInstance = createInheritedTestInstance(regularPrototype, {
+        terminal: {
+            columns: 40,
+            rows: 3,
+            writes: [] as string[],
+            write(data: string): void {
+                this.writes.push(data);
+            },
+        },
+    });
+    const fullscreenInstance = createInheritedTestInstance(fullscreenPrototype, {
+        terminal: {
+            columns: 40,
+            rows: 3,
+            writes: [] as string[],
+            write(data: string): void {
+                this.writes.push(data);
+            },
+        },
+    });
+
+    try {
+        const trace = installRenderTracePatch({
+            enabled: true,
+            filePath,
+            prototypes: [regularPrototype, fullscreenPrototype],
+        });
+        if (trace === undefined) assert.fail("expected render trace to be installed");
+
+        regularInstance.doRender();
+        fullscreenInstance.doRender();
+        trace.flush();
+
+        const events = readFileSync(filePath, "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line) as Record<string, unknown>);
+        const frames = events.filter((event) => event.type === "render-frame");
+        const renderStarts = events.filter(
+            (event) => event.type === "do-render" && event.phase === "start",
+        );
+        assert.equal(frames.length, 2);
+        assert.deepEqual(
+            renderStarts.map((event) => event.renderId),
+            [1, 2],
+        );
+        assert.equal(
+            frames.some((event) => {
+                const state = event.state as Record<string, unknown>;
+                return state.tuiMode === "fullscreen" && state.previousLinesLength === 2;
+            }),
+            true,
+        );
+        assert.doesNotMatch(JSON.stringify(events), /fullscreen transcript|fullscreen footer/);
+
+        trace.stop();
+        assert.equal(Object.hasOwn(regularPrototype, "render"), false);
+        assert.equal(Object.hasOwn(regularPrototype, "requestRender"), false);
+        assert.equal(Object.hasOwn(regularPrototype, "doRender"), false);
+        assert.equal(fullscreenPrototype.render.name, "render");
+        assert.equal(fullscreenPrototype.requestRender.name, "requestRender");
+        assert.equal(fullscreenPrototype.doRender.name, "doRender");
     } finally {
         rmSync(temporaryDirectory, { force: true, recursive: true });
     }

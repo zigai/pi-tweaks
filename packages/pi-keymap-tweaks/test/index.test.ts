@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { TUI, type EditorComponent, type EditorTheme, type Terminal } from "@earendil-works/pi-tui";
+import {
+    TuiMainScreen as TUI,
+    type EditorComponent,
+    type EditorTheme,
+    type Terminal,
+} from "@earendil-works/pi-tui";
 import { KeybindingsManager } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import { applyKeymapEditor, type KeymapEditorContext } from "../src/index.ts";
 

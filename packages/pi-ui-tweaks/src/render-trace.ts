@@ -1,5 +1,5 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { TuiAltScreen, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -26,6 +26,7 @@ type RenderTraceState = {
     readonly previousViewportTop?: number;
     readonly previousWidth?: number;
     readonly renderRequested?: boolean;
+    readonly tuiMode?: string;
 };
 
 type RenderLineSummary = {
@@ -91,6 +92,7 @@ type RenderTraceEvent = RenderTraceEventBody & {
 };
 
 type PatchableTerminal = {
+    columns?: number;
     rows?: number;
     write(data: string): void;
 };
@@ -103,12 +105,17 @@ type PatchableTuiInstance = {
     overlayStack?: unknown[];
     previousHeight?: number;
     previousLines?: unknown[];
+    previousScreen?: unknown[];
+    previousScreenHeight?: number;
+    previousScreenWidth?: number;
     previousViewportTop?: number;
     previousWidth?: number;
     renderRequested?: boolean;
     renderTimer?: unknown;
     requestRender?(force?: boolean): void;
     terminal?: PatchableTerminal;
+    mode?: string;
+    viewportTop?: number;
 };
 
 type PatchableTuiRender = (this: PatchableTuiInstance, width: number) => string[];
@@ -123,6 +130,10 @@ type RenderTracePatchRecord = {
     readonly patchedRender: PatchableTuiRender;
     readonly patchedRequestRender: PatchableTuiRequestRender;
     readonly patchedDoRender: PatchableTuiDoRender;
+    readonly originalRenderOwnDescriptor: PropertyDescriptor | undefined;
+    readonly originalRequestRenderOwnDescriptor: PropertyDescriptor | undefined;
+    readonly originalDoRenderOwnDescriptor: PropertyDescriptor | undefined;
+    readonly restoreOwnDescriptors?: true;
 };
 
 type PatchableTuiPrototype = {
@@ -143,6 +154,7 @@ export type InstallRenderTraceOptions = {
     readonly env?: NodeJS.ProcessEnv;
     readonly filePath?: string;
     readonly prototype?: PatchableTuiPrototype;
+    readonly prototypes?: readonly PatchableTuiPrototype[];
 };
 
 export type RenderTraceController = {
@@ -167,8 +179,22 @@ function tuiState(tui: PatchableTuiInstance): RenderTraceState {
     let overlayCount: number | undefined;
     if (Array.isArray(tui.overlayStack)) overlayCount = tui.overlayStack.length;
 
-    let previousLinesLength: number | undefined;
-    if (Array.isArray(tui.previousLines)) previousLinesLength = tui.previousLines.length;
+    const fullscreen = tui.mode === "fullscreen";
+    let previousLines: unknown[] | undefined;
+    let previousHeight: number | undefined;
+    let previousWidth: number | undefined;
+    if (fullscreen) {
+        if (Array.isArray(tui.previousScreen)) previousLines = tui.previousScreen;
+        else if (Array.isArray(tui.previousLines)) previousLines = tui.previousLines;
+        previousHeight = finiteNumber(tui.previousScreenHeight) ?? finiteNumber(tui.previousHeight);
+        previousWidth = finiteNumber(tui.previousScreenWidth) ?? finiteNumber(tui.previousWidth);
+    } else {
+        if (Array.isArray(tui.previousLines)) previousLines = tui.previousLines;
+        else if (Array.isArray(tui.previousScreen)) previousLines = tui.previousScreen;
+        previousHeight = finiteNumber(tui.previousHeight) ?? finiteNumber(tui.previousScreenHeight);
+        previousWidth = finiteNumber(tui.previousWidth) ?? finiteNumber(tui.previousScreenWidth);
+    }
+    const previousLinesLength = previousLines?.length;
 
     let renderRequested: boolean | undefined;
     if (typeof tui.renderRequested === "boolean") renderRequested = tui.renderRequested;
@@ -180,11 +206,12 @@ function tuiState(tui: PatchableTuiInstance): RenderTraceState {
         hasRenderTimer: tui.renderTimer !== undefined,
         maxLinesRendered: finiteNumber(tui.maxLinesRendered),
         overlayCount,
-        previousHeight: finiteNumber(tui.previousHeight),
+        previousHeight,
         previousLinesLength,
-        previousViewportTop: finiteNumber(tui.previousViewportTop),
-        previousWidth: finiteNumber(tui.previousWidth),
+        previousViewportTop: finiteNumber(tui.previousViewportTop) ?? finiteNumber(tui.viewportTop),
+        previousWidth,
         renderRequested,
+        tuiMode: tui.mode,
     };
 }
 
@@ -356,6 +383,7 @@ function summarizeTerminalWrite(value: string): TerminalWriteSummary {
 class RenderTraceRecorder {
     readonly filePath: string;
     private readonly startedAt = performance.now();
+    private renderId = 0;
     private sequence = 0;
     private pending: RenderTraceEvent[] = [];
     private flushTimer: NodeJS.Timeout | undefined;
@@ -381,6 +409,11 @@ class RenderTraceRecorder {
             timestamp: new Date().toISOString(),
         });
         this.scheduleFlush();
+    }
+
+    nextRenderId(): number {
+        this.renderId += 1;
+        return this.renderId;
     }
 
     flush(): void {
@@ -463,13 +496,51 @@ function visibleFrameLines(
     };
 }
 
-function restorePatch(prototype: PatchableTuiPrototype, patch: RenderTracePatchRecord): void {
-    if (prototype.render === patch.patchedRender) prototype.render = patch.originalRender;
-    if (prototype.requestRender === patch.patchedRequestRender) {
-        prototype.requestRender = patch.originalRequestRender;
+function restorePatchedMethod(
+    prototype: PatchableTuiPrototype,
+    property: "render" | "requestRender" | "doRender",
+    patchedMethod: PatchableTuiRender | PatchableTuiRequestRender | PatchableTuiDoRender,
+    originalMethod: PatchableTuiRender | PatchableTuiRequestRender | PatchableTuiDoRender,
+    originalOwnDescriptor: PropertyDescriptor | undefined,
+    restoreOwnDescriptor: boolean,
+): void {
+    if (Reflect.get(prototype, property) !== patchedMethod) return;
+    if (originalOwnDescriptor === undefined) {
+        if (restoreOwnDescriptor) Reflect.deleteProperty(prototype, property);
+        else Reflect.set(prototype, property, originalMethod);
+        return;
     }
-    if (prototype.doRender === patch.patchedDoRender) prototype.doRender = patch.originalDoRender;
-    if (prototype[RENDER_TRACE_PATCHED] === patch) prototype[RENDER_TRACE_PATCHED] = undefined;
+    Object.defineProperty(prototype, property, originalOwnDescriptor);
+}
+
+function restorePatch(prototype: PatchableTuiPrototype, patch: RenderTracePatchRecord): void {
+    restorePatchedMethod(
+        prototype,
+        "render",
+        patch.patchedRender,
+        patch.originalRender,
+        patch.originalRenderOwnDescriptor,
+        patch.restoreOwnDescriptors === true,
+    );
+    restorePatchedMethod(
+        prototype,
+        "requestRender",
+        patch.patchedRequestRender,
+        patch.originalRequestRender,
+        patch.originalRequestRenderOwnDescriptor,
+        patch.restoreOwnDescriptors === true,
+    );
+    restorePatchedMethod(
+        prototype,
+        "doRender",
+        patch.patchedDoRender,
+        patch.originalDoRender,
+        patch.originalDoRenderOwnDescriptor,
+        patch.restoreOwnDescriptors === true,
+    );
+    if (prototype[RENDER_TRACE_PATCHED] === patch) {
+        Reflect.deleteProperty(prototype, RENDER_TRACE_PATCHED);
+    }
 }
 
 /** Records a safe marker in an active render trace without serializing editor content. */
@@ -488,63 +559,50 @@ export function recordRenderTraceMarker(
     });
 }
 
-/**
- * Installs opt-in render tracing for diagnosing terminal repaint failures.
- * Trace output contains control/layout metadata only; visible text is never serialized.
- */
-export function installRenderTracePatch(
-    options: InstallRenderTraceOptions = {},
-): RenderTraceController | undefined {
-    const env = options.env ?? process.env;
-    const enabled = options.enabled ?? traceEnabled(env);
-    if (!enabled) return undefined;
+function recordRenderFrame(
+    recorder: RenderTraceRecorder,
+    tui: PatchableTuiInstance,
+    lines: readonly string[],
+    width: number,
+    renderId: number | undefined,
+): void {
+    const visible = visibleFrameLines(tui, lines);
+    recorder.record({
+        type: "render-frame",
+        renderId,
+        state: tuiState(tui),
+        totalLines: lines.length,
+        viewportStart: visible.viewportStart,
+        width,
+        lines: visible.lines,
+    });
+}
 
-    const prototypeValue: unknown = options.prototype ?? TUI.prototype;
-    if (!isValidatedTuiPrototype(prototypeValue)) {
-        console.warn("[pi-ui-tweaks] render trace unavailable; Pi TUI internals may have changed");
-        return undefined;
-    }
-    const prototype = prototypeValue;
+function completedFullscreenFrame(tui: PatchableTuiInstance): readonly string[] | undefined {
+    if (tui.mode !== "fullscreen" || !Array.isArray(tui.previousScreen)) return undefined;
+    if (!tui.previousScreen.every((line) => typeof line === "string")) return undefined;
+    return tui.previousScreen;
+}
+
+function applyRenderTracePatch(
+    prototype: ValidatedTuiPrototype,
+    recorder: RenderTraceRecorder,
+): RenderTracePatchRecord {
     const originalRender = prototype.render;
     const originalRequestRender = prototype.requestRender;
     const originalDoRender = prototype.doRender;
+    const originalRenderOwnDescriptor = Object.getOwnPropertyDescriptor(prototype, "render");
+    const originalRequestRenderOwnDescriptor = Object.getOwnPropertyDescriptor(
+        prototype,
+        "requestRender",
+    );
+    const originalDoRenderOwnDescriptor = Object.getOwnPropertyDescriptor(prototype, "doRender");
+    let lastRenderFrameId: number | undefined;
 
-    const existingPatch = prototype[RENDER_TRACE_PATCHED];
-    if (existingPatch !== undefined) {
-        activeRecorder = existingPatch.recorder;
-        return {
-            filePath: existingPatch.recorder.filePath,
-            flush: () => existingPatch.recorder.flush(),
-            stop: () => {
-                existingPatch.recorder.stop();
-                restorePatch(prototype, existingPatch);
-                if (activeRecorder === existingPatch.recorder) activeRecorder = undefined;
-            },
-        };
-    }
-
-    const filePath = options.filePath ?? defaultTracePath(env);
-    let recorder: RenderTraceRecorder;
-    try {
-        recorder = new RenderTraceRecorder(filePath);
-    } catch {
-        console.warn(`[pi-ui-tweaks] failed to create render trace at ${filePath}`);
-        return undefined;
-    }
-
-    let nextRenderId = 0;
     const patchedRender: PatchableTuiRender = function renderTraceRender(width) {
         const lines = originalRender.call(this, width);
-        const visible = visibleFrameLines(this, lines);
-        recorder.record({
-            type: "render-frame",
-            renderId: activeRenderId,
-            state: tuiState(this),
-            totalLines: lines.length,
-            viewportStart: visible.viewportStart,
-            width,
-            lines: visible.lines,
-        });
+        recordRenderFrame(recorder, this, lines, width, activeRenderId);
+        lastRenderFrameId = activeRenderId;
         return lines;
     };
     const patchedRequestRender: PatchableTuiRequestRender = function renderTraceRequestRender(
@@ -563,8 +621,7 @@ export function installRenderTracePatch(
         }
     };
     const patchedDoRender: PatchableTuiDoRender = function renderTraceDoRender() {
-        nextRenderId += 1;
-        const renderId = nextRenderId;
+        const renderId = recorder.nextRenderId();
         const previousActiveRenderId = activeRenderId;
         activeRenderId = renderId;
         recorder.record({
@@ -586,12 +643,14 @@ export function installRenderTracePatch(
             }
         }
         let patchedWrite: PatchableTerminal["write"] | undefined;
+        let wroteToTerminal = false;
         if (terminal !== undefined && typeof originalWrite === "function") {
             patchedWrite = function renderTraceTerminalWrite(
                 this: PatchableTerminal,
                 data: string,
             ): void {
                 originalWrite.call(this, data);
+                wroteToTerminal = true;
                 recorder.record({
                     type: "terminal-write",
                     renderId,
@@ -605,6 +664,18 @@ export function installRenderTracePatch(
         try {
             originalDoRender.call(this);
             outcome = "returned";
+
+            // TuiAltScreen builds its frame directly in doRender(), bypassing render().
+            // Capture its completed screen buffer after the terminal write instead.
+            if (lastRenderFrameId !== renderId && wroteToTerminal) {
+                const lines = completedFullscreenFrame(this);
+                const width =
+                    finiteNumber(terminal?.columns) ?? finiteNumber(this.previousScreenWidth);
+                if (lines !== undefined && width !== undefined && width > 0) {
+                    recordRenderFrame(recorder, this, lines, Math.floor(width), renderId);
+                    lastRenderFrameId = renderId;
+                }
+            }
         } finally {
             if (
                 terminal !== undefined &&
@@ -637,19 +708,80 @@ export function installRenderTracePatch(
         patchedRender,
         patchedRequestRender,
         patchedDoRender,
+        originalRenderOwnDescriptor,
+        originalRequestRenderOwnDescriptor,
+        originalDoRenderOwnDescriptor,
+        restoreOwnDescriptors: true,
     };
     prototype.render = patchedRender;
     prototype.requestRender = patchedRequestRender;
     prototype.doRender = patchedDoRender;
     prototype[RENDER_TRACE_PATCHED] = patch;
+    return patch;
+}
+
+/**
+ * Installs opt-in render tracing for diagnosing terminal repaint failures.
+ * Trace output contains control/layout metadata only; visible text is never serialized.
+ */
+export function installRenderTracePatch(
+    options: InstallRenderTraceOptions = {},
+): RenderTraceController | undefined {
+    const env = options.env ?? process.env;
+    const enabled = options.enabled ?? traceEnabled(env);
+    if (!enabled) return undefined;
+
+    let prototypeValues: readonly unknown[];
+    if (options.prototype !== undefined) prototypeValues = [options.prototype];
+    else prototypeValues = options.prototypes ?? [TuiMainScreen.prototype, TuiAltScreen.prototype];
+    const prototypes = [...new Set(prototypeValues)];
+    if (prototypes.length === 0 || !prototypes.every(isValidatedTuiPrototype)) {
+        console.warn("[pi-ui-tweaks] render trace unavailable; Pi TUI internals may have changed");
+        return undefined;
+    }
+
+    const filePath = options.filePath ?? defaultTracePath(env);
+    for (const prototype of prototypes) {
+        const existingPatch = prototype[RENDER_TRACE_PATCHED];
+        if (existingPatch !== undefined && existingPatch.restoreOwnDescriptors !== true) {
+            existingPatch.recorder.stop();
+            restorePatch(prototype, existingPatch);
+        }
+    }
+    const existingPatches = prototypes
+        .map((prototype) => prototype[RENDER_TRACE_PATCHED])
+        .filter((patch): patch is RenderTracePatchRecord => patch !== undefined);
+    const existingRecorders = new Set(existingPatches.map((patch) => patch.recorder));
+    if (existingRecorders.size > 1) {
+        console.warn("[pi-ui-tweaks] render trace unavailable; conflicting TUI patches detected");
+        return undefined;
+    }
+    let recorder = existingPatches[0]?.recorder;
+    if (recorder === undefined) {
+        try {
+            recorder = new RenderTraceRecorder(filePath);
+        } catch {
+            console.warn(`[pi-ui-tweaks] failed to create render trace at ${filePath}`);
+            return undefined;
+        }
+    }
+
+    const patches = prototypes.map((prototype) => {
+        const existingPatch = prototype[RENDER_TRACE_PATCHED];
+        return existingPatch ?? applyRenderTracePatch(prototype, recorder);
+    });
     activeRecorder = recorder;
 
     return {
-        filePath,
+        filePath: recorder.filePath,
         flush: () => recorder.flush(),
         stop: () => {
             recorder.stop();
-            restorePatch(prototype, patch);
+            for (let index = 0; index < prototypes.length; index += 1) {
+                const prototype = prototypes[index];
+                const patch = patches[index];
+                if (prototype !== undefined && patch !== undefined) restorePatch(prototype, patch);
+            }
             if (activeRecorder === recorder) activeRecorder = undefined;
         },
     };

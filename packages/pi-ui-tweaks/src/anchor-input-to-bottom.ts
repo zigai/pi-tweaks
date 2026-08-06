@@ -1,4 +1,4 @@
-import { TUI, type Component } from "@earendil-works/pi-tui";
+import { TuiMainScreen, type Component } from "@earendil-works/pi-tui";
 
 import { getUiTweaksPatchState } from "./patch-state.ts";
 
@@ -299,7 +299,7 @@ export function setAnchorInputToBottom(enabled: boolean): void {
  * Installs an idempotent patch that keeps the focused input/footer at the terminal bottom.
  */
 export function installAnchorInputToBottomPatch(prototype?: PatchableTuiPrototype): void {
-    const prototypeValue: unknown = prototype ?? TUI.prototype;
+    const prototypeValue: unknown = prototype ?? TuiMainScreen.prototype;
     if (
         (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
         prototypeValue === null

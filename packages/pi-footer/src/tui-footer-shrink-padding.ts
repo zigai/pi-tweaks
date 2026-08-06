@@ -1,4 +1,4 @@
-import { TUI, type Component } from "@earendil-works/pi-tui";
+import { TuiMainScreen, type Component } from "@earendil-works/pi-tui";
 
 import { getFooterComponentKind } from "./footer-component.ts";
 
@@ -379,7 +379,7 @@ function padAtVisibleBoundary(
  * pads shrinking transcripts above it so status/widgets, editor, and footer stay attached.
  */
 export function installFooterShrinkPaddingPatch(): void {
-    const prototypeValue: unknown = TUI.prototype;
+    const prototypeValue: unknown = TuiMainScreen.prototype;
     if (
         (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
         prototypeValue === null
