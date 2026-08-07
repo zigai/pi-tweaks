@@ -13,7 +13,7 @@ const USER_MESSAGE_PLAINTEXT_PATCH_KEY = Symbol.for(
 );
 const RENDER_PATCH_PREDECESSOR_KEY = Symbol.for("zigai.pi-tweaks.render-patch-predecessor");
 
-const plainTextUserMessages = new WeakSet<object>();
+const plainTextUserMessageBoxes = new WeakMap<object, BoxLike>();
 
 type PatchState = typeof globalThis & {
     [USER_MESSAGE_PLAINTEXT_PATCH_KEY]?: UserMessagePatchRecord | true;
@@ -29,6 +29,7 @@ type MarkdownInternals = {
 
 type UserMessageComponentInstance = Component & {
     contentBox?: unknown;
+    children?: unknown[];
 };
 
 type UserMessageComponentPrototype = {
@@ -290,17 +291,45 @@ function replaceMarkdownChildrenWithPlainText(contentBox: BoxLike): boolean {
     return replaced;
 }
 
+function findUserMessageContentBox(instance: UserMessageComponentInstance): BoxLike | undefined {
+    const candidates: unknown[] = [getUnknownProperty(instance, "contentBox"), instance];
+    const visited = new Set<object>();
+
+    while (candidates.length > 0) {
+        const candidate = candidates.pop();
+        if (!isObject(candidate) || visited.has(candidate)) {
+            continue;
+        }
+        visited.add(candidate);
+
+        if (!isBoxLike(candidate)) {
+            continue;
+        }
+
+        if (candidate.children.some((child) => isMarkdownLike(child))) {
+            return candidate;
+        }
+
+        for (const child of candidate.children) {
+            candidates.push(child);
+        }
+    }
+
+    return undefined;
+}
+
 function ensurePlainTextUserMessage(instance: UserMessageComponentInstance): void {
-    if (plainTextUserMessages.has(instance)) {
+    const contentBox = findUserMessageContentBox(instance);
+    if (contentBox === undefined) {
         return;
     }
 
-    const contentBox = instance.contentBox;
-    if (isBoxLike(contentBox)) {
-        replaceMarkdownChildrenWithPlainText(contentBox);
+    if (plainTextUserMessageBoxes.get(instance) === contentBox) {
+        return;
     }
 
-    plainTextUserMessages.add(instance);
+    replaceMarkdownChildrenWithPlainText(contentBox);
+    plainTextUserMessageBoxes.set(instance, contentBox);
 }
 
 async function patchUserMessageRendering(): Promise<void> {
