@@ -1,9 +1,12 @@
-import { TuiMainScreen, type Component } from "@earendil-works/pi-tui";
+import { TuiAltScreen, TuiMainScreen, type Component } from "@earendil-works/pi-tui";
 
 import { getUiTweaksPatchState } from "./patch-state.ts";
 
 const ANCHOR_INPUT_TO_BOTTOM_PATCHED = Symbol.for(
     "zigai.pi-ui-tweaks.anchor-input-to-bottom-patched",
+);
+const FULLSCREEN_ANCHOR_INPUT_TO_BOTTOM_PATCHED = Symbol.for(
+    "zigai.pi-ui-tweaks.fullscreen-anchor-input-to-bottom-patched",
 );
 const CHILD_LINE_RANGES_FRAME_KEY = Symbol.for("zigai.pi-tweaks.tui-child-line-ranges-frame");
 const BOTTOM_CHROME_PRECEDING_SIBLINGS = 2;
@@ -45,6 +48,18 @@ type BottomChromeSpacing = {
 type PatchableTuiPrototype = {
     render?: PatchableTuiRender;
     [ANCHOR_INPUT_TO_BOTTOM_PATCHED]?: true;
+};
+
+type PatchableFullscreenTuiInstance = {
+    focusedComponent?: Component | null;
+    layoutRoot?: Component;
+};
+
+type PatchableFullscreenDoRender = (this: PatchableFullscreenTuiInstance) => void;
+
+type PatchableFullscreenTuiPrototype = {
+    doRender?: PatchableFullscreenDoRender;
+    [FULLSCREEN_ANCHOR_INPUT_TO_BOTTOM_PATCHED]?: true;
 };
 
 function warnAnchorInputToBottomPatchUnavailable(reason?: string): void {
@@ -184,6 +199,94 @@ function hasVisibleLine(lines: readonly string[], start: number, end: number): b
     return false;
 }
 
+function findComponentPath(
+    root: Component,
+    target: Component,
+    visited = new Set<Component>(),
+): Component[] | undefined {
+    if (root === target) return [root];
+    if (visited.has(root)) return undefined;
+    visited.add(root);
+    if (!isComponentContainer(root)) return undefined;
+
+    for (const child of root.children) {
+        const path = findComponentPath(child, target, visited);
+        if (path !== undefined) return [root, ...path];
+    }
+    return undefined;
+}
+
+function isVerticalLayoutStack(component: Component): component is ComponentContainer {
+    if (!isComponentContainer(component)) return false;
+    return Reflect.get(component, "layoutType") === "vstack";
+}
+
+function getFullscreenBlankPrecedingComponent(
+    tui: PatchableFullscreenTuiInstance,
+): Component | undefined {
+    const layoutRoot = tui.layoutRoot;
+    const focusedComponent = tui.focusedComponent;
+    if (layoutRoot === undefined || focusedComponent === undefined || focusedComponent === null) {
+        return undefined;
+    }
+
+    const path = findComponentPath(layoutRoot, focusedComponent);
+    if (path === undefined) return undefined;
+
+    for (let pathIndex = path.length - 2; pathIndex >= 0; pathIndex -= 1) {
+        const parent = path[pathIndex];
+        const child = path[pathIndex + 1];
+        if (parent === undefined || child === undefined) continue;
+        if (!isVerticalLayoutStack(parent)) continue;
+
+        const childIndex = parent.children.indexOf(child);
+        if (childIndex <= BOTTOM_CHROME_PRECEDING_SIBLINGS) continue;
+
+        const precedingComponent = parent.children[childIndex - 1];
+        if (precedingComponent !== undefined) return precedingComponent;
+    }
+
+    return undefined;
+}
+
+function temporarilyCompactBlankComponent(
+    component: Component | undefined,
+): (() => void) | undefined {
+    if (component === undefined) return undefined;
+
+    const originalRenderValue: unknown = Reflect.get(component, "render");
+    if (typeof originalRenderValue !== "function") return undefined;
+
+    const originalRender = originalRenderValue as Component["render"];
+    const ownDescriptor = Object.getOwnPropertyDescriptor(component, "render");
+    const compactedRender: Component["render"] = function compactedBlankComponentRender(
+        this: Component,
+        width: number,
+    ): string[] {
+        const lines = originalRender.call(this, width);
+        if (lines.length === 0 || hasVisibleLine(lines, 0, lines.length)) return lines;
+        return [];
+    };
+
+    if (!Reflect.set(component, "render", compactedRender)) return undefined;
+
+    return () => {
+        if (ownDescriptor === undefined) {
+            Reflect.deleteProperty(component, "render");
+        } else {
+            Object.defineProperty(component, "render", ownDescriptor);
+        }
+    };
+}
+
+function compactFullscreenChromeForRender(
+    tui: PatchableFullscreenTuiInstance,
+): (() => void) | undefined {
+    if (!getUiTweaksPatchState().anchorInputToBottom) return undefined;
+
+    return temporarilyCompactBlankComponent(getFullscreenBlankPrecedingComponent(tui));
+}
+
 function compactBottomChromeSpacing(
     tui: PatchableTuiInstance,
     lines: readonly string[],
@@ -298,7 +401,7 @@ export function setAnchorInputToBottom(enabled: boolean): void {
 /**
  * Installs an idempotent patch that keeps the focused input/footer at the terminal bottom.
  */
-export function installAnchorInputToBottomPatch(prototype?: PatchableTuiPrototype): void {
+function installMainAnchorInputToBottomPatch(prototype?: PatchableTuiPrototype): void {
     const prototypeValue: unknown = prototype ?? TuiMainScreen.prototype;
     if (
         (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
@@ -331,4 +434,49 @@ export function installAnchorInputToBottomPatch(prototype?: PatchableTuiPrototyp
         }
     };
     prototype[ANCHOR_INPUT_TO_BOTTOM_PATCHED] = true;
+}
+
+function installFullscreenAnchorInputToBottomPatch(): void {
+    const prototypeValue: unknown = TuiAltScreen.prototype;
+    if (
+        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
+        prototypeValue === null
+    ) {
+        warnAnchorInputToBottomPatchUnavailable("missing fullscreen prototype");
+        return;
+    }
+
+    const originalDoRenderValue: unknown = Reflect.get(prototypeValue, "doRender") as unknown;
+    if (typeof originalDoRenderValue !== "function") {
+        warnAnchorInputToBottomPatchUnavailable("missing fullscreen doRender");
+        return;
+    }
+
+    // SAFETY: The guarded fullscreen TUI boundary verifies the private render
+    // method before patching the smallest seam that owns layout-frame rendering.
+    const prototype = prototypeValue as PatchableFullscreenTuiPrototype;
+    if (prototype[FULLSCREEN_ANCHOR_INPUT_TO_BOTTOM_PATCHED] === true) return;
+
+    // SAFETY: The immediately preceding runtime guard proves the private TUI
+    // render seam is callable.
+    const originalDoRender = originalDoRenderValue as PatchableFullscreenDoRender;
+    prototype.doRender = function fullscreenAnchorInputToBottomRender(
+        this: PatchableFullscreenTuiInstance,
+    ): void {
+        const restore = compactFullscreenChromeForRender(this);
+        try {
+            originalDoRender.call(this);
+        } finally {
+            restore?.();
+        }
+    };
+    prototype[FULLSCREEN_ANCHOR_INPUT_TO_BOTTOM_PATCHED] = true;
+}
+
+/**
+ * Installs idempotent patches that keep the focused input/footer at the terminal bottom.
+ */
+export function installAnchorInputToBottomPatch(prototype?: PatchableTuiPrototype): void {
+    installMainAnchorInputToBottomPatch(prototype);
+    if (prototype === undefined) installFullscreenAnchorInputToBottomPatch();
 }

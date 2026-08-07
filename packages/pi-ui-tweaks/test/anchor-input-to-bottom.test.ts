@@ -3,7 +3,10 @@ import { test } from "vitest";
 
 import {
     Container,
+    ScrollView,
+    TuiAltScreen,
     TuiMainScreen as TUI,
+    VStack,
     type Component,
     type Terminal,
 } from "@earendil-works/pi-tui";
@@ -15,6 +18,7 @@ import {
 class FakeTerminal implements Terminal {
     columns = 30;
     rows = 10;
+    writes: string[] = [];
 
     get kittyProtocolActive(): boolean {
         return false;
@@ -26,7 +30,9 @@ class FakeTerminal implements Terminal {
 
     async drainInput(): Promise<void> {}
 
-    write(): void {}
+    write(data: string): void {
+        this.writes.push(data);
+    }
 
     moveBy(): void {}
 
@@ -79,6 +85,54 @@ class TestEditor implements Component {
     }
 
     invalidate(): void {}
+}
+
+function stripTerminalLineReset(line: string): string {
+    return line.replaceAll("\u001b[0m\u001b]8;;\u0007", "");
+}
+
+function getFullscreenScreen(tui: TuiAltScreen): string[] {
+    const previousScreen: unknown = Reflect.get(tui, "previousScreen") as unknown;
+    if (
+        !Array.isArray(previousScreen) ||
+        !previousScreen.every((line) => typeof line === "string")
+    ) {
+        throw new Error("Expected fullscreen TUI render internals.");
+    }
+    const screen: string[] = [];
+    for (const line of previousScreen) {
+        if (typeof line !== "string") throw new Error("Expected fullscreen screen line.");
+        screen.push(line);
+    }
+    // SAFETY: This integration-test adapter checks the private fullscreen buffer
+    // used to observe the renderer's actual screen output.
+    return screen;
+}
+
+function createFullscreenLayout(editor: Component): VStack {
+    const document = new Container();
+    const transcript = new ScrollView(document, { follow: "end", primary: true });
+    const pendingMessages = new Container();
+    const status = new FixedLines(["", "⠴ Working..."]);
+    const aboveEditor = new Container();
+    aboveEditor.addChild(new FixedLines([""]));
+    const editorContainer = new Container();
+    editorContainer.addChild(editor);
+    const belowEditor = new Container();
+    const footer = new FixedLines(["FOOTER"]);
+    const dock = new VStack([
+        { component: pendingMessages, shrink: 1, minSize: 0 },
+        { component: status, shrink: 1, minSize: 0 },
+        { component: aboveEditor, shrink: 1, minSize: 0 },
+        { component: editorContainer, shrink: 1, minSize: 3 },
+        { component: belowEditor, shrink: 1, minSize: 0 },
+        { component: footer, shrink: 1, minSize: 1 },
+    ]);
+
+    return new VStack([
+        { component: transcript, basis: 0, grow: 1, shrink: 1, minSize: 1 },
+        { component: dock, basis: "auto", grow: 0, shrink: 1, minSize: 1 },
+    ]);
 }
 
 test("anchor input to bottom pads short screens above focused bottom chrome", () => {
@@ -201,4 +255,59 @@ test("anchor input to bottom compacts full-height working loader spacing", () =>
     ]);
 
     setAnchorInputToBottom(false);
+});
+
+test("anchor input to bottom compacts the fullscreen spacer below the working loader", () => {
+    installAnchorInputToBottomPatch();
+    setAnchorInputToBottom(true);
+
+    const terminal = new FakeTerminal();
+    terminal.rows = 8;
+    const tui = new TuiAltScreen(terminal);
+    const editor = new TestEditor();
+    tui.setLayoutRoot(createFullscreenLayout(editor));
+    tui.setFocus(editor);
+
+    try {
+        tui.start();
+        tui.renderNow();
+
+        const screen = getFullscreenScreen(tui).map((line) => stripTerminalLineReset(line).trim());
+        const workingIndex = screen.indexOf("⠴ Working...");
+        const editorIndex = screen.indexOf("EDITOR TOP");
+
+        assert.notEqual(workingIndex, -1);
+        assert.notEqual(editorIndex, -1);
+        assert.equal(editorIndex - workingIndex, 1);
+    } finally {
+        tui.stop();
+        setAnchorInputToBottom(false);
+    }
+});
+
+test("fullscreen anchoring leaves the spacer below the working loader disabled", () => {
+    installAnchorInputToBottomPatch();
+    setAnchorInputToBottom(false);
+
+    const terminal = new FakeTerminal();
+    terminal.rows = 8;
+    const tui = new TuiAltScreen(terminal);
+    const editor = new TestEditor();
+    tui.setLayoutRoot(createFullscreenLayout(editor));
+    tui.setFocus(editor);
+
+    try {
+        tui.start();
+        tui.renderNow();
+
+        const screen = getFullscreenScreen(tui).map((line) => stripTerminalLineReset(line).trim());
+        const workingIndex = screen.indexOf("⠴ Working...");
+        const editorIndex = screen.indexOf("EDITOR TOP");
+
+        assert.notEqual(workingIndex, -1);
+        assert.notEqual(editorIndex, -1);
+        assert.equal(editorIndex - workingIndex, 2);
+    } finally {
+        tui.stop();
+    }
 });
