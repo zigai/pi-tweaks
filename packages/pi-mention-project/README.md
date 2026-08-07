@@ -49,6 +49,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project
 ```
 <!-- pi-extension-settings:end -->
 
+Older installations that configured `mentionProjectRoots` and the related keys in Pi's `settings.json` continue to work. Values in the extension settings file take precedence.
+
 ## License
 
 MIT
