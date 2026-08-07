@@ -30,8 +30,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-footer.json`.
 | --- | --- | --- | --- |
 | `separator` | string | `"·"` | Text placed between visible footer slots. |
 | `showGitAheadBehind` | boolean | `false` | Show upstream commit counts (↑ahead ↓behind) beside the branch. Hidden when the branch has no upstream. |
-| `layout.left` | string[] | *See JSON below ↓* | Footer slot IDs shown on the left in display order. |
-| `layout.right` | string[] | *See JSON below ↓* | Footer slot IDs shown on the right in display order. |
+| `layout.left` | string[] | *See JSON below* | Footer slot IDs shown on the left in display order. |
+| `layout.right` | string[] | *See JSON below* | Footer slot IDs shown on the right in display order. |
 | `layout.hidden` | string[] | `[]` | Footer slot IDs hidden from both sides. |
 
 ```json
