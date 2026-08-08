@@ -11,7 +11,7 @@ import { getConfiguredModeShortcuts, setSettingsContext } from "./settings.ts";
 import { isShortcutId } from "./shortcut-id.ts";
 import { applyThinkingLevelStatusPatch, restoreThinkingLevelStatusPatch } from "./status.ts";
 
-const MODE_SELECTOR_SHORTCUTS = ["ctrl+k", "ctrl+shift+m"] as const;
+const MODE_SELECTOR_SHORTCUTS = ["ctrl+shift+m"] as const;
 
 type ShortcutRegistrar = Pick<ExtensionAPI, "registerShortcut">;
 type ShortcutHandler = Parameters<ExtensionAPI["registerShortcut"]>[1]["handler"];

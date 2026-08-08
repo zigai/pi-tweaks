@@ -13,7 +13,7 @@ pi install npm:@zigai/pi-model-modes
 ## Features
 
 - Adds `/mode` for selecting and configuring prompt modes.
-- Adds `Ctrl+K` and `Ctrl+Shift+M` to select a mode.
+- Adds `Ctrl+Shift+M` to select a mode.
 - Supports optional forward and backward shortcuts for cycling modes.
 - Colors the prompt editor border from the active mode, with an opt-in setting for thinking-derived border colors.
 - Applies an optional persistent default model to fresh sessions without changing it when the session model changes.

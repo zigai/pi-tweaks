@@ -6,7 +6,7 @@ import { registerModeSelectorShortcuts } from "../src/index.ts";
 
 type ShortcutOptions = Parameters<ExtensionAPI["registerShortcut"]>[1];
 
-test("Ctrl+K opens the mode selector instead of cycling modes", () => {
+test("Ctrl+K remains available for configured mode cycling", () => {
     const shortcuts = new Map<string, ShortcutOptions>();
     const registrar: Pick<ExtensionAPI, "registerShortcut"> = {
         registerShortcut(shortcut, options): void {
@@ -17,7 +17,7 @@ test("Ctrl+K opens the mode selector instead of cycling modes", () => {
 
     registerModeSelectorShortcuts(registrar, selectMode);
 
-    assert.equal(shortcuts.get("ctrl+k")?.description, "Select prompt mode");
-    assert.equal(shortcuts.get("ctrl+k")?.handler, selectMode);
+    assert.equal(shortcuts.has("ctrl+k"), false);
+    assert.equal(shortcuts.get("ctrl+shift+m")?.description, "Select prompt mode");
     assert.equal(shortcuts.get("ctrl+shift+m")?.handler, selectMode);
 });
