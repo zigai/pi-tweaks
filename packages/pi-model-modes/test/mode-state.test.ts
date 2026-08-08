@@ -178,11 +178,12 @@ test("ensureDefaultModeEntries preserves an explicit mode order", () => {
     assert.deepEqual(Object.keys(file.modes), ["luna", "terra", "sol"]);
 });
 
-test("shouldApplyDefaultModel recognizes Pi's initial fresh-session entries", () => {
+test("shouldApplyDefaultModel recognizes fresh sessions with startup metadata", () => {
     assert.equal(
         shouldApplyDefaultModel({ reason: "startup" }, [
             { type: "model_change" },
             { type: "thinking_level_change" },
+            { type: "custom" },
         ]),
         true,
     );
@@ -202,8 +203,8 @@ test("shouldApplyDefaultModel preserves existing session model selections", () =
         shouldApplyDefaultModel({ reason: "startup" }, [
             { type: "model_change" },
             { type: "thinking_level_change" },
-            { type: "model_change" },
-            { type: "thinking_level_change" },
+            { type: "custom" },
+            { type: "message" },
         ]),
         false,
     );

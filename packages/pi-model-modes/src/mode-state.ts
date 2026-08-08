@@ -557,21 +557,9 @@ export function shouldApplyDefaultModel(
     if (event.reason === "new") return true;
     if (event.reason !== "startup") return false;
 
-    let modelChangeCount = 0;
-    let thinkingLevelChangeCount = 0;
-    for (const entry of entries) {
-        if (entry.type === "model_change") {
-            modelChangeCount += 1;
-            continue;
-        }
-        if (entry.type === "thinking_level_change") {
-            thinkingLevelChangeCount += 1;
-            continue;
-        }
-        return false;
-    }
-
-    return modelChangeCount <= 1 && thinkingLevelChangeCount <= 1;
+    // Pi restores a startup session only when it has conversation messages.
+    // Fresh sessions may already contain model, thinking, tool, or extension metadata.
+    return !entries.some((entry) => entry.type === "message");
 }
 
 function formatModeLabel(mode: string): string {
