@@ -67,7 +67,6 @@ const MODE_COLOR_EXAMPLES = [
 
 export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
 export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelStatus";
-export const DEFAULT_FORWARD_MODE_SHORTCUT = "ctrl+k";
 
 export const modeThinkingLevelSchema = Type.Enum(ALL_THINKING_LEVELS, {
     "x-control": "select",
@@ -405,14 +404,7 @@ function parseModeShortcuts(value: unknown): ModeShortcuts {
 }
 
 export function resolveModeShortcuts(value: unknown): ModeShortcuts {
-    const configured = parseModeShortcuts(value);
-    const shortcuts: ModeShortcuts = {
-        forward: configured.forward ?? DEFAULT_FORWARD_MODE_SHORTCUT,
-    };
-    if (configured.backward !== undefined) {
-        shortcuts.backward = configured.backward;
-    }
-    return shortcuts;
+    return parseModeShortcuts(value);
 }
 
 export function getConfiguredModeShortcuts(): ModeShortcuts {

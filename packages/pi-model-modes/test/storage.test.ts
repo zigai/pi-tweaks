@@ -57,7 +57,7 @@ test("scaffoldGlobalModesConfig creates missing global config and schema", async
     }
 });
 
-test("mode cycle shortcuts default forward to Ctrl+K and read overrides from global config", async () => {
+test("mode cycle shortcuts are optional and read from global config", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     const agentDir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-agent-"));
     process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -65,7 +65,7 @@ test("mode cycle shortcuts default forward to Ctrl+K and read overrides from glo
     try {
         const configPath = path.join(agentDir, "extension-settings", "pi-model-modes.json");
         await scaffoldGlobalModesConfig();
-        assert.deepEqual(getConfiguredModeShortcuts(), { forward: "ctrl+k" });
+        assert.deepEqual(getConfiguredModeShortcuts(), {});
 
         await writeFile(
             configPath,

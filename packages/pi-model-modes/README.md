@@ -13,12 +13,12 @@ pi install npm:@zigai/pi-model-modes
 ## Features
 
 - Adds `/mode` for selecting and configuring prompt modes.
-- Adds `Ctrl+Shift+M` to select a mode.
-- Uses `Ctrl+K` to cycle modes forward by default, with optional forward and backward shortcut overrides.
+- Adds `Ctrl+K` and `Ctrl+Shift+M` to select a mode.
+- Supports optional forward and backward shortcuts for cycling modes.
 - Colors the prompt editor border from the active mode, with an opt-in setting for thinking-derived border colors.
 - Applies an optional persistent default model to fresh sessions without changing it when the session model changes.
 
-Modes can store a provider, model, thinking level, and optional color. Their JSON object order is the exact cycle order; with configured modes, no implicit entries are added. Mode cycling matches the active provider and model, ignoring thinking level, and wraps from the last mode to the first and vice versa. Set `shortcuts.forward` or `shortcuts.backward` to override the default forward shortcut or add a backward shortcut.
+Modes can store a provider, model, thinking level, and optional color. Their JSON object order is the exact cycle order; with configured modes, no implicit entries are added. Mode cycling matches the active provider and model, ignoring thinking level, and wraps from the last mode to the first and vice versa. Set `shortcuts.forward` or `shortcuts.backward` to add cycling shortcuts.
 
 Set the persistent default through `/mode` → `Configure modes…` → `Set default model…`, or edit `defaultModel` in the configuration file.
 

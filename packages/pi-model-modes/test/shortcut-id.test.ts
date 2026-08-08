@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { DEFAULT_FORWARD_MODE_SHORTCUT, resolveModeShortcuts } from "../src/settings.ts";
+import { resolveModeShortcuts } from "../src/settings.ts";
 import { isShortcutId } from "../src/shortcut-id.ts";
 
-test("uses Ctrl+K when no forward mode shortcut is configured", () => {
-    assert.equal(resolveModeShortcuts(undefined).forward, DEFAULT_FORWARD_MODE_SHORTCUT);
+test("leaves mode cycling unbound when no shortcut is configured", () => {
+    assert.deepEqual(resolveModeShortcuts(undefined), {});
 });
 
 test("preserves explicit mode shortcut overrides", () => {

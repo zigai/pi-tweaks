@@ -11,6 +11,23 @@ import { getConfiguredModeShortcuts, setSettingsContext } from "./settings.ts";
 import { isShortcutId } from "./shortcut-id.ts";
 import { applyThinkingLevelStatusPatch, restoreThinkingLevelStatusPatch } from "./status.ts";
 
+const MODE_SELECTOR_SHORTCUTS = ["ctrl+k", "ctrl+shift+m"] as const;
+
+type ShortcutRegistrar = Pick<ExtensionAPI, "registerShortcut">;
+type ShortcutHandler = Parameters<ExtensionAPI["registerShortcut"]>[1]["handler"];
+
+export function registerModeSelectorShortcuts(
+    pi: ShortcutRegistrar,
+    handler: ShortcutHandler,
+): void {
+    for (const shortcut of MODE_SELECTOR_SHORTCUTS) {
+        pi.registerShortcut(shortcut, {
+            description: "Select prompt mode",
+            handler,
+        });
+    }
+}
+
 export default function (pi: ExtensionAPI) {
     void applyThinkingLevelStatusPatch();
 
@@ -39,11 +56,8 @@ export default function (pi: ExtensionAPI) {
         },
     });
 
-    pi.registerShortcut("ctrl+shift+m", {
-        description: "Select prompt mode",
-        handler: async (ctx) => {
-            await selectModeUI(pi, ctx);
-        },
+    registerModeSelectorShortcuts(pi, async (ctx) => {
+        await selectModeUI(pi, ctx);
     });
 
     pi.on("session_start", async (event, ctx) => {
