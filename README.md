@@ -19,7 +19,7 @@ A collection of small Pi extensions for improving interaction, display, and mode
 | [@zigai/pi-message-highlights](packages/pi-message-highlights)   | Highlights URLs and file paths in messages and the prompt editor.     | `pi install npm:@zigai/pi-message-highlights`  |
 | [@zigai/pi-status-bar](packages/pi-status-bar)                   | Provides a programmable active and idle status bar with timing stats. | `pi install npm:@zigai/pi-status-bar`          |
 | [@zigai/pi-model-modes](packages/pi-model-modes)                 | Mode presets for switching models and thinking levels in Pi.          | `pi install npm:@zigai/pi-model-modes`         |
-| [@zigai/pi-prompt-history](packages/pi-prompt-history)           | Cross-session prompt history for Pi's prompt editor.                  | `pi install npm:@zigai/pi-prompt-history`      |
+| [@zigai/pi-prompt-history](packages/pi-prompt-history)           | Current-session prompt history for Pi's prompt editor.                | `pi install npm:@zigai/pi-prompt-history`      |
 | [@zigai/pi-trust-all-folders](packages/pi-trust-all-folders)     | Automatically trust all folders in Pi.                                | `pi install npm:@zigai/pi-trust-all-folders`   |
 
 ## License
