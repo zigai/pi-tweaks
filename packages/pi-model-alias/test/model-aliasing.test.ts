@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { test } from "vitest";
 
 import {
@@ -57,11 +58,24 @@ type TestTextComponent = {
     setText(text: string): void;
 };
 
+type RenderableTestTextComponent = TestTextComponent & {
+    render(width: number): string[];
+};
+
 function textComponent(text: string): TestTextComponent {
     return {
         text,
         setText(nextText: string) {
             this.text = nextText;
+        },
+    };
+}
+
+function renderableTextComponent(text: string): RenderableTestTextComponent {
+    return {
+        ...textComponent(text),
+        render() {
+            return [this.text];
         },
     };
 }
@@ -242,6 +256,7 @@ test("model selector patch aliases snapshot display and search while preserving 
         "  Claude Opus  anthropic",
         "  Model catalogs refreshed.",
     ]);
+    assert.equal(prototype.listContainer.children.length, 3);
     assert.equal(prototype.searchInput.render(20)[0], ">              (1/2)");
 
     prototype.filterModels("gpt-5");
@@ -371,6 +386,61 @@ test("model selector provider patch can align providers to all filtered model na
         textValues(visiblePrototype.listContainer.children)[0],
         `→ Short${" ".repeat(5)}p`,
     );
+});
+
+test("model selector provider rows stay single-line at narrow widths", () => {
+    const modelItems = [
+        {
+            provider: "openai-codex",
+            id: "short",
+            model: { provider: "openai-codex", id: "short", name: "Short" },
+        },
+        {
+            provider: "fireworks",
+            id: "long",
+            model: {
+                provider: "fireworks",
+                id: "long",
+                name: "An Extremely Long Model Name Used For Stable Alignment",
+            },
+        },
+    ];
+    const prototype = {
+        allModels: modelItems,
+        scopedModelItems: [],
+        activeModels: modelItems,
+        filteredModels: modelItems,
+        listContainer: { children: [] as unknown[] },
+        selectedIndex: 0,
+        scope: "all",
+        loadModelsFromSnapshot(): void {},
+        filterModels(): void {},
+        updateList(): void {
+            this.listContainer.children = this.filteredModels.map((item, index) => {
+                let prefix = "  ";
+                if (index === this.selectedIndex) prefix = "→ ";
+                return renderableTextComponent(`${prefix}${item.id} [${item.provider}]`);
+            });
+        },
+    };
+    const state: RuntimeState = {
+        loadSettings: () => loadedConfig([], undefined, [], true),
+    };
+
+    installModelSelectorProviderPatch(state, prototype);
+    prototype.updateList();
+
+    const first = prototype.listContainer.children[0] as RenderableTestTextComponent;
+    const second = prototype.listContainer.children[1] as RenderableTestTextComponent;
+    for (const component of [first, second]) {
+        const lines = component.render(40);
+        assert.equal(lines.length, 1);
+        assert.ok(visibleWidth(lines[0] ?? "") <= 40);
+    }
+    assert.match(first.render(40)[0] ?? "", /openai-codex$/);
+    const narrowLongModel = second.render(40)[0] ?? "";
+    assert.match(narrowLongModel, /…/);
+    assert.match(narrowLongModel, /fireworks$/);
 });
 
 test("scoped models patch aliases rendered and searched models without changing selection ids", () => {

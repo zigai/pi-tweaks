@@ -1,5 +1,5 @@
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
-import { fuzzyFilter, visibleWidth } from "@earendil-works/pi-tui";
+import { fuzzyFilter, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -26,6 +26,8 @@ const SEARCH_COUNTER_RENDER_PATCH_KEY = Symbol.for(
 );
 
 const searchCounterByInput = new WeakMap<object, string>();
+const providerRowLayoutByComponent = new WeakMap<object, ProviderRowLayout>();
+const responsiveProviderRowComponents = new WeakSet<object>();
 
 type ModelSelectorItem = {
     provider: string;
@@ -279,6 +281,17 @@ type ProviderRow = {
     readonly providerText: string;
 };
 
+type ProviderRowLayout = {
+    readonly fullText: string;
+    readonly modelPrefix: string;
+    readonly checkmark: string;
+    readonly providerText: string;
+};
+
+type RenderableTextComponent = {
+    render(width: number): string[];
+};
+
 function textComponentValue(component: unknown): string | undefined {
     if (typeof component !== "object" || component === null) {
         return undefined;
@@ -300,6 +313,54 @@ function setTextComponentValue(component: unknown, text: string): void {
     if (typeof setText === "function") {
         Reflect.apply(setText, component, [text]);
     }
+}
+
+function fitProviderRow(layout: ProviderRowLayout, width: number): string {
+    const availableWidth = Math.max(0, Math.floor(width));
+    if (availableWidth === 0) return "";
+    if (visibleWidth(layout.fullText) <= availableWidth) return layout.fullText;
+
+    const gap = "  ";
+    const gapWidth = visibleWidth(gap);
+    const maximumProviderWidth = Math.max(1, Math.floor(availableWidth * 0.45));
+    const provider = truncateToWidth(layout.providerText, maximumProviderWidth, "…");
+    const modelWidth = Math.max(0, availableWidth - visibleWidth(provider) - gapWidth);
+    const checkmarkWidth = visibleWidth(layout.checkmark);
+
+    let model = truncateToWidth(layout.modelPrefix, modelWidth, "…");
+    if (checkmarkWidth > 0 && checkmarkWidth < modelWidth) {
+        model = `${truncateToWidth(layout.modelPrefix, modelWidth - checkmarkWidth, "…")}${layout.checkmark}`;
+    }
+
+    return truncateToWidth(`${model}${gap}${provider}`, availableWidth, "");
+}
+
+function isRenderableTextComponent(value: unknown): value is RenderableTextComponent {
+    if (typeof value !== "object" || value === null) return false;
+    return typeof Reflect.get(value, "render") === "function";
+}
+
+function setResponsiveProviderRow(component: unknown, layout: ProviderRowLayout): void {
+    if (typeof component !== "object" || component === null) return;
+    providerRowLayoutByComponent.set(component, layout);
+    setTextComponentValue(component, layout.fullText);
+
+    if (!isRenderableTextComponent(component) || responsiveProviderRowComponents.has(component)) {
+        return;
+    }
+
+    const originalRender = component.render.bind(component);
+    component.render = function responsiveProviderRowRender(
+        this: RenderableTextComponent,
+        width: number,
+    ): string[] {
+        const currentLayout = providerRowLayoutByComponent.get(this);
+        if (currentLayout !== undefined) {
+            setTextComponentValue(this, fitProviderRow(currentLayout, width));
+        }
+        return originalRender(width);
+    };
+    responsiveProviderRowComponents.add(component);
 }
 
 function stripAnsi(text: string): string {
@@ -328,6 +389,16 @@ function removeModelNameDetail(container: ListContainer): void {
     if (spacerIndex >= 0 && textComponentValue(container.children[spacerIndex]) === undefined) {
         container.children.splice(spacerIndex, 1);
     }
+}
+
+function removeModelCatalogStatusSpacer(container: ListContainer): void {
+    const statusIndex = container.children.findIndex((child) => {
+        const text = textComponentValue(child);
+        return text?.toLowerCase().includes("model catalog") === true;
+    });
+    if (statusIndex <= 0) return;
+    if (textComponentValue(container.children[statusIndex - 1]) !== undefined) return;
+    container.children.splice(statusIndex - 1, 1);
 }
 
 function takeScrollCounter(container: ListContainer): string | undefined {
@@ -390,6 +461,7 @@ function formatProviderRows(
     if (rows.length === 0) {
         const counter = takeScrollCounter(container);
         removeModelNameDetail(container);
+        removeModelCatalogStatusSpacer(container);
         return counter;
     }
 
@@ -421,11 +493,17 @@ function formatProviderRows(
         );
         const modelPrefix = text.slice(0, badgeIndex).trimEnd();
         const formatted = `${modelPrefix}${checkmark}${padding}${row.providerText}`;
-        setTextComponentValue(component, formatted);
+        setResponsiveProviderRow(component, {
+            fullText: formatted,
+            modelPrefix,
+            checkmark,
+            providerText: row.providerText,
+        });
     });
 
     const counter = takeScrollCounter(container);
     removeModelNameDetail(container);
+    removeModelCatalogStatusSpacer(container);
     return counter;
 }
 
