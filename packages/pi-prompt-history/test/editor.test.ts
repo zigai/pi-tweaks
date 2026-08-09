@@ -1,96 +1,141 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import {
-    applyPromptHistoryEditor,
-    type PromptHistoryEditorContext,
-    type PromptHistoryLoader,
-} from "../src/editor.ts";
-import type { PromptEntry } from "../src/types.ts";
+import { applyPromptHistoryEditor, type PromptHistoryEditorContext } from "../src/editor.ts";
+import type { UserMessage } from "@earendil-works/pi-ai";
+import { CustomEditor, type SessionEntry } from "@earendil-works/pi-coding-agent";
+
+type EditorFactory = NonNullable<
+    Parameters<PromptHistoryEditorContext["ui"]["setEditorComponent"]>[0]
+>;
 
 type EditorTestContext = {
     readonly ctx: PromptHistoryEditorContext;
-    readonly installedFactories: unknown[];
-    setEditorText(text: string): void;
+    readonly addedPrompts: string[];
+    readonly installedFactories: EditorFactory[];
 };
 
-function createEditorTestContext(): EditorTestContext {
-    const installedFactories: unknown[] = [];
-    let editorText = "";
+function userEntry(content: UserMessage["content"], timestamp: number): SessionEntry {
+    return {
+        id: `entry-${timestamp}`,
+        parentId: null,
+        timestamp: new Date(timestamp).toISOString(),
+        type: "message",
+        message: {
+            role: "user",
+            content,
+            timestamp,
+        },
+    };
+}
+
+function createEditorTestContext(branch: SessionEntry[] = [], hasUI = true): EditorTestContext {
+    const addedPrompts: string[] = [];
+    const installedFactories: EditorFactory[] = [];
+    const recordingFactory: EditorFactory = (tui, theme, keybindings) => {
+        const editor = new CustomEditor(tui, theme, keybindings);
+        editor.addToHistory = (text): void => {
+            addedPrompts.push(text);
+        };
+        return editor;
+    };
     const ctx = {
-        cwd: "/tmp/project",
-        hasUI: true,
+        hasUI,
         sessionManager: {
             getBranch() {
-                return [];
-            },
-            getSessionFile() {
-                return "/tmp/project/current.jsonl";
+                return branch;
             },
         },
         ui: {
             getEditorComponent() {
-                return undefined;
+                return recordingFactory;
             },
-            getEditorText() {
-                return editorText;
-            },
-            setEditorComponent(factory: unknown) {
-                installedFactories.push(factory);
+            setEditorComponent(factory: EditorFactory | undefined) {
+                if (factory !== undefined) installedFactories.push(factory);
             },
         },
     };
 
     return {
         ctx,
+        addedPrompts,
         installedFactories,
-        setEditorText(text: string): void {
-            editorText = text;
-        },
     };
 }
 
-function deferredHistoryLoader(): {
-    readonly load: PromptHistoryLoader;
-    resolve(history: PromptEntry[]): void;
-} {
-    let resolvePromise: ((history: PromptEntry[]) => void) | undefined;
-    const load: PromptHistoryLoader = () => {
-        return new Promise((resolve) => {
-            resolvePromise = resolve;
-        });
-    };
-    return {
-        load,
-        resolve(history): void {
-            if (resolvePromise === undefined) assert.fail("history load has not started");
-            resolvePromise(history);
-        },
-    };
-}
+test("prompt history preloads prompts from the current branch in branch order", () => {
+    const context = createEditorTestContext([
+        userEntry("older current prompt", 1),
+        userEntry("newer current prompt", 2),
+    ]);
 
-test("prompt history installs the editor once after history loading completes", async () => {
-    const context = createEditorTestContext();
-    const history = deferredHistoryLoader();
-
-    const applying = applyPromptHistoryEditor(context.ctx, history.load);
-    await Promise.resolve();
-    assert.equal(context.installedFactories.length, 0);
-
-    history.resolve([{ text: "previous prompt", timestamp: 1 }]);
-    await applying;
-
+    applyPromptHistoryEditor(context.ctx);
     assert.equal(context.installedFactories.length, 1);
+    // SAFETY: Editor construction only reads borderColor from the theme before the recording
+    // addToHistory replacement runs; no TUI or keybinding operations are exercised.
+    context.installedFactories[0]?.(
+        undefined as never,
+        { borderColor: "" } as never,
+        undefined as never,
+    );
+    assert.deepEqual(context.addedPrompts, ["older current prompt", "newer current prompt"]);
 });
 
-test("prompt history does not replace an editor changed while history loads", async () => {
-    const context = createEditorTestContext();
-    const history = deferredHistoryLoader();
+test("prompt history preserves the host default editor and its rendering", () => {
+    const addedPrompts: string[] = [];
+    const hostEditor = {
+        render(width: number) {
+            if (width <= 0) return [];
+            return ["<magic>workflowz</magic>"];
+        },
+        invalidate() {},
+        getText() {
+            return "workflowz";
+        },
+        setText() {},
+        handleInput() {},
+        addToHistory(text: string) {
+            addedPrompts.push(text);
+        },
+    };
+    let installedFactory: EditorFactory | undefined;
+    const ctx: PromptHistoryEditorContext = {
+        hasUI: true,
+        sessionManager: {
+            getBranch() {
+                return [userEntry("current prompt", 1)];
+            },
+        },
+        ui: {
+            setEditorComponent(factory) {
+                installedFactory = factory;
+            },
+        },
+    };
 
-    const applying = applyPromptHistoryEditor(context.ctx, history.load);
-    context.setEditorText("user input");
-    history.resolve([]);
-    await applying;
+    applyPromptHistoryEditor(ctx);
+    assert.notEqual(installedFactory, undefined);
+    if (installedFactory === undefined) return;
+
+    const editor = installedFactory(
+        {
+            getFocusedComponent() {
+                return hostEditor;
+            },
+        } as never,
+        undefined as never,
+        undefined as never,
+    );
+
+    assert.equal(editor, hostEditor);
+    assert.deepEqual(editor.render(80), ["<magic>workflowz</magic>"]);
+    assert.deepEqual(addedPrompts, ["current prompt"]);
+});
+
+test("prompt history does not install an editor without a UI", () => {
+    const context = createEditorTestContext([], false);
+
+    applyPromptHistoryEditor(context.ctx);
 
     assert.equal(context.installedFactories.length, 0);
 });
