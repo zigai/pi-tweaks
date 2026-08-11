@@ -52,11 +52,25 @@ type BottomChromeSpacingResult = {
     removedRows: number;
 };
 
+function isComponentContainer(component: Component): component is ComponentContainer {
+    const children: unknown = Reflect.get(component, "children") as unknown;
+    return Array.isArray(children);
+}
+
+function containsFooterComponent(component: Component, visited = new Set<Component>()): boolean {
+    if (getFooterComponentKind(component) !== undefined) return true;
+    if (visited.has(component)) return false;
+    visited.add(component);
+    if (!isComponentContainer(component)) return false;
+
+    return component.children.some((child) => containsFooterComponent(child, visited));
+}
+
 function getFooterChildIndex(tui: PatchableTuiInstance): number | undefined {
     const index = tui.children.length - 1;
     const lastChild = tui.children[index];
     if (lastChild === undefined) return undefined;
-    if (getFooterComponentKind(lastChild) === undefined) return undefined;
+    if (!containsFooterComponent(lastChild)) return undefined;
     return index;
 }
 
@@ -109,11 +123,6 @@ function shouldPadShrink(tui: PatchableTuiInstance, lines: readonly string[]): b
 function getPaddingInsertIndex(tui: PatchableTuiInstance, targetLength: number): number {
     if (tui.previousViewportTop <= 0) return 0;
     return Math.min(tui.previousViewportTop, targetLength - 1);
-}
-
-function isComponentContainer(component: Component): component is ComponentContainer {
-    const children: unknown = Reflect.get(component, "children") as unknown;
-    return Array.isArray(children);
 }
 
 function containsComponent(root: Component, target: Component): boolean {

@@ -313,6 +313,31 @@ test("footer shrink padding preserves visible tail without native clear", () => 
     assert.doesNotMatch(output, new RegExp(`${ANSI_ESCAPE_PATTERN}\\[2J`));
 });
 
+test("footer shrink padding recognizes Pi's top-level footer container", () => {
+    installFooterShrinkPaddingPatch();
+
+    const terminal = new FakeTerminal();
+    const lines = new VariableLines(60);
+    const footerContainer = new Container();
+    const tui = new TUI(terminal);
+    const tuiInternals = getTuiInternals(tui);
+
+    footerContainer.addChild(markFooterComponent(new TestFooter(), "live"));
+    tui.addChild(lines);
+    tui.addChild(footerContainer);
+
+    tuiInternals.doRender();
+    lines.lineCount = 55;
+    tuiInternals.doRender();
+
+    const visibleLines = tuiInternals.previousLines
+        .slice(tuiInternals.previousViewportTop)
+        .map(stripTestAnsi);
+
+    assert.equal(tuiInternals.previousLines.length, 61);
+    assert.equal(visibleLines.at(-1)?.includes("FOOTER"), true);
+});
+
 test("footer shrink padding yields to full redraw for distant content rebuilds", () => {
     installFooterShrinkPaddingPatch();
 
