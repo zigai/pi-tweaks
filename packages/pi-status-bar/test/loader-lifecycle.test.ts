@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeAll, beforeEach, describe, test, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Loader, visibleWidth, type TUI } from "@earendil-works/pi-tui";
+import {
+    Loader,
+    TuiMainScreen,
+    visibleWidth,
+    type TUI,
+    type Terminal,
+} from "@earendil-works/pi-tui";
 
 import statusBarExtension from "../src/index.ts";
 import {
@@ -11,6 +17,50 @@ import {
 } from "../src/status-bar-api.ts";
 
 type LoaderUpdateDisplay = (this: Loader) => void;
+
+type TuiInternals = {
+    doRender(): void;
+    previousLines: string[];
+};
+
+class FakeTerminal implements Terminal {
+    columns = 48;
+    rows = 10;
+    writes: string[] = [];
+
+    get kittyProtocolActive(): boolean {
+        return false;
+    }
+
+    start(): void {}
+    stop(): void {}
+    async drainInput(): Promise<void> {}
+    write(data: string): void {
+        this.writes.push(data);
+    }
+    moveBy(): void {}
+    hideCursor(): void {}
+    showCursor(): void {}
+    clearLine(): void {}
+    clearFromCursor(): void {}
+    clearScreen(): void {}
+    setTitle(): void {}
+    setProgress(): void {}
+}
+
+function getTuiInternals(tui: TuiMainScreen): TuiInternals {
+    const value: unknown = tui;
+    const doRender: unknown = Reflect.get(tui, "doRender") as unknown;
+    const previousLines: unknown = Reflect.get(tui, "previousLines") as unknown;
+    if (
+        typeof doRender !== "function" ||
+        !Array.isArray(previousLines) ||
+        !previousLines.every((line) => typeof line === "string")
+    ) {
+        throw new Error("Expected TUI render internals");
+    }
+    return value as TuiInternals;
+}
 
 let predecessorUpdateCount = 0;
 
@@ -153,5 +203,45 @@ describe("status loader lifecycle", () => {
 
         segment.dispose();
         loader.stop();
+    });
+
+    test("renders active composition and resize truncation onto a real terminal screen", () => {
+        configureStatusBar({ active: { text: "Coordinating" } });
+        const segment = registerStatusBarSegment({
+            id: "other-extension.screen-progress",
+            states: ["active"],
+            text: "reviewing",
+        });
+        const terminal = new FakeTerminal();
+        const tui = new TuiMainScreen(terminal);
+        const loader = new Loader(
+            tui,
+            (text) => text,
+            (text) => text,
+            "Working...",
+            { frames: ["●"] },
+        );
+        const internals = getTuiInternals(tui);
+        tui.addChild(loader);
+
+        try {
+            terminal.writes = [];
+            internals.doRender();
+            const wideTerminalWrites = terminal.writes.join("");
+            assert.match(wideTerminalWrites, /● Coordinating \(0s\).*reviewing/);
+            assert.ok(internals.previousLines.every((line) => visibleWidth(line) <= 48));
+
+            terminal.columns = 18;
+            terminal.writes = [];
+            internals.doRender();
+            const narrowTerminalWrites = terminal.writes.join("");
+            assert.match(narrowTerminalWrites, /● Coordinat/);
+            assert.doesNotMatch(narrowTerminalWrites, /reviewing/);
+            assert.ok(internals.previousLines.every((line) => visibleWidth(line) <= 18));
+        } finally {
+            segment.dispose();
+            loader.stop();
+            tui.stop();
+        }
     });
 });
