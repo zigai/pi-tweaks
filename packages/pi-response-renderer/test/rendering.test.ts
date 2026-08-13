@@ -1,8 +1,44 @@
 import assert from "node:assert/strict";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "vitest";
 
-import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import assistantRenderingExtension from "../src/index.ts";
+
+type AssistantMessageComponent = {
+    render(width: number): string[];
+    updateContent(message: AssistantMessage): void;
+};
+
+type AssistantMessageComponentPrototype = {
+    render(width: number): string[];
+    updateContent(message: AssistantMessage): void;
+};
+
+type AssistantMessageComponentConstructor = {
+    new (
+        message?: AssistantMessage,
+        hideThinkingBlock?: boolean,
+        theme?: MarkdownTheme,
+        hiddenThinkingLabel?: string,
+        outputPad?: number,
+    ): AssistantMessageComponent;
+    readonly prototype: AssistantMessageComponentPrototype;
+};
+
+function isAssistantMessageComponentConstructor(
+    value: unknown,
+): value is AssistantMessageComponentConstructor {
+    if (typeof value !== "function") return false;
+    const prototype: unknown = Reflect.get(value, "prototype");
+    if (typeof prototype !== "object" || prototype === null) return false;
+    const render: unknown = Reflect.get(prototype, "render");
+    const updateContent: unknown = Reflect.get(prototype, "updateContent");
+    return typeof render === "function" && typeof updateContent === "function";
+}
 
 const identity = (text: string): string => text;
 const markdownTheme = {
@@ -21,6 +57,33 @@ const markdownTheme = {
     strikethrough: identity,
     underline: identity,
 } satisfies MarkdownTheme;
+
+const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
+const componentUrl = pathToFileURL(
+    join(dirname(codingAgentEntry), "modes/interactive/components/assistant-message.js"),
+).href;
+// This test intentionally resolves Pi's private runtime module, which has no public export.
+const componentModule: unknown = (await import(componentUrl)) as unknown;
+if (typeof componentModule !== "object" || componentModule === null) {
+    assert.fail("missing assistant message module");
+}
+const componentValue: unknown = Reflect.get(componentModule, "AssistantMessageComponent");
+if (!isAssistantMessageComponentConstructor(componentValue)) {
+    assert.fail("missing AssistantMessageComponent");
+}
+const AssistantMessageComponent = componentValue;
+const assistantMessagePrototype = componentValue.prototype;
+const originalAssistantRender: unknown = Reflect.get(assistantMessagePrototype, "render");
+const originalAssistantUpdateContent: unknown = Reflect.get(
+    assistantMessagePrototype,
+    "updateContent",
+);
+if (
+    typeof originalAssistantRender !== "function" ||
+    typeof originalAssistantUpdateContent !== "function"
+) {
+    assert.fail("missing original AssistantMessageComponent lifecycle methods");
+}
 
 await assistantRenderingExtension();
 
@@ -226,4 +289,100 @@ test("does not treat a fully-italic line as a heading (thinking trace)", () => {
         "Italic standalone line.",
         "Second plain paragraph.",
     ]);
+});
+
+test("assistant message updates render through the patch and shutdown restores its lifecycle", async ({
+    onTestFinished,
+}) => {
+    const shutdownHandlers: Array<() => void> = [];
+    const api = {
+        on(event: string, handler: () => void): void {
+            if (event === "session_shutdown") shutdownHandlers.push(handler);
+        },
+    };
+    onTestFinished(() => {
+        shutdownHandlers[0]?.();
+    });
+
+    await assistantRenderingExtension(api as unknown as ExtensionAPI);
+    const prototype = assistantMessagePrototype;
+    const patchedRender: unknown = Reflect.get(prototype, "render");
+    const patchedUpdateContent: unknown = Reflect.get(prototype, "updateContent");
+    assert.notEqual(patchedRender, originalAssistantRender);
+    assert.notEqual(patchedUpdateContent, originalAssistantUpdateContent);
+    const message = {
+        role: "assistant",
+        content: [{ type: "text", text: "*Intro:*\n\n```ts\nconst value = 1;\n```" }],
+        api: "openai-responses",
+        provider: "openai",
+        model: "gpt-5",
+        usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 0,
+    } satisfies AssistantMessage;
+    const component = new AssistantMessageComponent(message, false, italicTheme, "Thinking", 0);
+
+    const firstRender = component.render(80);
+    assert.deepEqual(
+        firstRender.map((line) => stripAnsi(line).trim()),
+        ["", "Intro:", "const value = 1;"],
+    );
+    assert.equal(
+        firstRender.some((line) => line.includes("```")),
+        false,
+    );
+    assert.equal(
+        firstRender.some((line) => line.includes(`${ESC}[3m`)),
+        false,
+    );
+    assert.equal(
+        firstRender.some((line) => line.includes(`${ESC}[23m`)),
+        false,
+    );
+
+    component.updateContent({
+        ...message,
+        content: [{ type: "text", text: "Updated paragraph.\n\n## Updated heading" }],
+    });
+    assert.deepEqual(
+        component.render(80).map((line) => stripAnsi(line).trim()),
+        ["", "Updated paragraph.", "", "Updated heading"],
+    );
+
+    assert.equal(shutdownHandlers.length, 1);
+    shutdownHandlers[0]?.();
+    assert.equal(Reflect.get(prototype, "render"), originalAssistantRender);
+    assert.equal(Reflect.get(prototype, "updateContent"), originalAssistantUpdateContent);
+
+    const restoredComponent = new AssistantMessageComponent(
+        {
+            ...message,
+            content: [
+                {
+                    type: "text",
+                    text: "*Restored italic.*\n\n```ts\nconst restored = true;\n```",
+                },
+            ],
+        },
+        false,
+        italicTheme,
+        "Thinking",
+        0,
+    );
+    const restoredRender = restoredComponent.render(80);
+    assert.equal(
+        restoredRender.some((line) => line.includes("```")),
+        true,
+    );
+    assert.equal(
+        restoredRender.some((line) => line.includes(`${ESC}[3m`)),
+        true,
+    );
 });
