@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { Input, SelectList } from "@earendil-works/pi-tui";
+import {
+    Editor,
+    Input,
+    SelectList,
+    TuiMainScreen,
+    type EditorTheme,
+    type Terminal,
+} from "@earendil-works/pi-tui";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
     installAutocompletePositionPatch,
@@ -16,6 +25,8 @@ import {
     setBashExecPromptSpacing,
     type BashExecSpacingEditor,
 } from "../src/bash-exec-spacing.ts";
+import { installNeutralBorderColorPatch, setNeutralBorderColor } from "../src/border-color.ts";
+import { getUiTweaksPatchState } from "../src/patch-state.ts";
 import {
     getInputPromptPrefix,
     installInputPromptPrefixPatch,
@@ -184,6 +195,28 @@ class TestEditor implements BashExecSpacingEditor {
     setText(text: string): void {
         this.text = text;
     }
+}
+
+class FakeTerminal implements Terminal {
+    columns = 80;
+    rows = 24;
+
+    get kittyProtocolActive(): boolean {
+        return false;
+    }
+
+    start(): void {}
+    stop(): void {}
+    async drainInput(): Promise<void> {}
+    write(_data: string): void {}
+    moveBy(): void {}
+    hideCursor(): void {}
+    showCursor(): void {}
+    clearLine(): void {}
+    clearFromCursor(): void {}
+    clearScreen(): void {}
+    setTitle(): void {}
+    setProgress(): void {}
 }
 
 function createTestModelSelector(): TestModelSelector {
@@ -626,4 +659,114 @@ test("slash command source patch is idempotent", () => {
     installSlashCommandSourcePatch(interactiveMode);
 
     assert.equal(Reflect.get(interactiveMode, "prefixAutocompleteDescription"), patchedPrefix);
+});
+
+test("neutral border patch renders real editor borders with the text color", async () => {
+    const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
+    const themeUrl = pathToFileURL(
+        join(dirname(codingAgentEntry), "modes/interactive/theme/theme.js"),
+    ).href;
+    // Pi's internal theme module is intentionally resolved from the installed runtime package.
+    const themeModule: unknown = (await import(themeUrl)) as unknown;
+    if (typeof themeModule !== "object" || themeModule === null) {
+        assert.fail("missing Pi theme module");
+    }
+    const initTheme: unknown = Reflect.get(themeModule, "initTheme");
+    if (typeof initTheme !== "function") {
+        assert.fail("invalid Pi theme module");
+    }
+
+    const Theme: unknown = Reflect.get(themeModule, "Theme");
+    if ((typeof Theme !== "object" && typeof Theme !== "function") || Theme === null) {
+        assert.fail("invalid Pi Theme constructor");
+    }
+    const themePrototype: unknown = Reflect.get(Theme, "prototype");
+    if (
+        (typeof themePrototype !== "object" && typeof themePrototype !== "function") ||
+        themePrototype === null
+    ) {
+        assert.fail("invalid Pi Theme prototype");
+    }
+    const originalFgDescriptor = Reflect.getOwnPropertyDescriptor(themePrototype, "fg");
+    if (
+        originalFgDescriptor === undefined ||
+        typeof Reflect.get(themePrototype, "fg") !== "function"
+    ) {
+        assert.fail("invalid Pi Theme.fg descriptor");
+    }
+    const neutralBorderPatchKey = Symbol.for("zigai.pi-ui-tweaks.neutral-border-color-patched");
+    const originalPatchMarkerDescriptor = Reflect.getOwnPropertyDescriptor(
+        themePrototype,
+        neutralBorderPatchKey,
+    );
+
+    const themeKey = Symbol.for("@earendil-works/pi-coding-agent:theme");
+    const oldThemeKey = Symbol.for("@mariozechner/pi-coding-agent:theme");
+    const hadTheme = Reflect.has(globalThis, themeKey);
+    const hadOldTheme = Reflect.has(globalThis, oldThemeKey);
+    const originalTheme: unknown = Reflect.get(globalThis, themeKey);
+    const originalOldTheme: unknown = Reflect.get(globalThis, oldThemeKey);
+    const originalNeutralBorderColor = getUiTweaksPatchState().neutralBorderColor;
+
+    try {
+        Reflect.apply(initTheme, themeModule, [undefined, false]);
+
+        const getEditorTheme: unknown = Reflect.get(themeModule, "getEditorTheme");
+        const theme: unknown = Reflect.get(themeModule, "theme");
+        const themeFg: unknown = Reflect.get(theme ?? {}, "fg");
+        if (typeof getEditorTheme !== "function" || typeof themeFg !== "function") {
+            assert.fail("invalid Pi theme module");
+        }
+
+        const editorThemeValue: unknown = Reflect.apply(getEditorTheme, themeModule, []);
+        const textBorder: unknown = Reflect.apply(themeFg, theme, ["text", "─"]);
+        const mutedBorder: unknown = Reflect.apply(themeFg, theme, ["borderMuted", "─"]);
+        if (
+            typeof editorThemeValue !== "object" ||
+            editorThemeValue === null ||
+            typeof textBorder !== "string" ||
+            typeof mutedBorder !== "string"
+        ) {
+            assert.fail("invalid Pi editor theme");
+        }
+
+        await installNeutralBorderColorPatch();
+        setNeutralBorderColor(true);
+        // SAFETY: The runtime adapter above verifies Pi returned the editor-theme object;
+        // the real Editor constructor exercises its complete contract below.
+        const editor = new Editor(
+            new TuiMainScreen(new FakeTerminal()),
+            editorThemeValue as EditorTheme,
+        );
+        const neutralTopBorder = editor.render(12)[0] ?? "";
+
+        setNeutralBorderColor(false);
+        const originalTopBorder = editor.render(12)[0] ?? "";
+
+        assert.equal(neutralTopBorder, textBorder.repeat(12));
+        assert.equal(originalTopBorder, mutedBorder.repeat(12));
+        assert.notEqual(neutralTopBorder, originalTopBorder);
+    } finally {
+        setNeutralBorderColor(originalNeutralBorderColor);
+        Reflect.defineProperty(themePrototype, "fg", originalFgDescriptor);
+        if (originalPatchMarkerDescriptor === undefined) {
+            Reflect.deleteProperty(themePrototype, neutralBorderPatchKey);
+        } else {
+            Reflect.defineProperty(
+                themePrototype,
+                neutralBorderPatchKey,
+                originalPatchMarkerDescriptor,
+            );
+        }
+        if (hadTheme) {
+            Reflect.set(globalThis, themeKey, originalTheme);
+        } else {
+            Reflect.deleteProperty(globalThis, themeKey);
+        }
+        if (hadOldTheme) {
+            Reflect.set(globalThis, oldThemeKey, originalOldTheme);
+        } else {
+            Reflect.deleteProperty(globalThis, oldThemeKey);
+        }
+    }
 });
