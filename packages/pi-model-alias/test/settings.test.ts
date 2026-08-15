@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
 
-import type { RuntimeState } from "../src/types.ts";
+import type { ModelAliasSettingsLoadState } from "../src/settings.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(join(tmpdir(), "pi-model-alias-"));
@@ -24,13 +24,8 @@ afterAll(async () => {
     }
 });
 
-function runtimeState(): RuntimeState {
-    const state: RuntimeState = {
-        loadSettings() {
-            return settings.loadModelAliasSettings(state);
-        },
-    };
-    return state;
+function runtimeState(): ModelAliasSettingsLoadState {
+    return {};
 }
 
 test("loadModelAliasSettings scaffolds defaults for a missing aliases file", async () => {
@@ -38,10 +33,10 @@ test("loadModelAliasSettings scaffolds defaults for a missing aliases file", asy
     const loaded = settings.loadModelAliasSettings(runtimeState());
 
     assert.equal(loaded.path, configPath);
-    assert.equal(loaded.error, undefined);
-    assert.deepEqual(loaded.aliases, []);
-    assert.deepEqual(loaded.providerAliases, []);
-    assert.equal(loaded.stableProviderColumn, true);
+    assert.equal(loaded.diagnostic, undefined);
+    assert.deepEqual(loaded.settings.aliases, []);
+    assert.deepEqual(loaded.settings.providerAliases, []);
+    assert.equal(loaded.settings.stableProviderColumn, true);
     assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
         $schema: "./schemas/pi-model-alias.schema.json",
         aliases: [],
@@ -54,7 +49,7 @@ test("loadModelAliasSettings scaffolds defaults for a missing aliases file", asy
     await writeFile(configPath, "{ not json", "utf8");
     const loadedAgain = settings.loadModelAliasSettings(runtimeState());
 
-    assert.match(loadedAgain.error ?? "", /Failed to load/);
+    assert.match(loadedAgain.diagnostic ?? "", /Failed to load/);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
     assert.match(await readFile(schemaPath, "utf8"), /Pi Model Alias settings/);
 });
@@ -99,12 +94,14 @@ test("loadModelAliasSettings parses and trims valid aliases", async () => {
 
     const loaded = settings.loadModelAliasSettings(runtimeState());
 
-    assert.equal(loaded.error, undefined);
-    assert.deepEqual(loaded.aliases, [
+    assert.equal(loaded.diagnostic, undefined);
+    assert.deepEqual(loaded.settings.aliases, [
         { provider: "openai", model: "gpt-5", alias: "fast", name: "Fast Model" },
     ]);
-    assert.deepEqual(loaded.providerAliases, [{ provider: "anthropic", name: "Claude Work" }]);
-    assert.equal(loaded.stableProviderColumn, false);
+    assert.deepEqual(loaded.settings.providerAliases, [
+        { provider: "anthropic", name: "Claude Work" },
+    ]);
+    assert.equal(loaded.settings.stableProviderColumn, false);
 });
 
 test("loadModelAliasSettings rejects duplicate aliases without throwing", async () => {
@@ -121,9 +118,9 @@ test("loadModelAliasSettings rejects duplicate aliases without throwing", async 
 
     const loaded = settings.loadModelAliasSettings(runtimeState());
 
-    assert.deepEqual(loaded.aliases, []);
-    assert.deepEqual(loaded.providerAliases, []);
-    assert.match(loaded.error ?? "", /duplicates aliases\[0\]/);
+    assert.deepEqual(loaded.settings.aliases, []);
+    assert.deepEqual(loaded.settings.providerAliases, []);
+    assert.match(loaded.diagnostic ?? "", /duplicates aliases\[0\]/);
 });
 
 test("loadModelAliasSettings rejects unknown config keys", async () => {
@@ -137,9 +134,9 @@ test("loadModelAliasSettings rejects unknown config keys", async () => {
 
     const loaded = settings.loadModelAliasSettings(runtimeState());
 
-    assert.deepEqual(loaded.aliases, []);
-    assert.deepEqual(loaded.providerAliases, []);
-    assert.match(loaded.error ?? "", /schema|property|ignored/);
+    assert.deepEqual(loaded.settings.aliases, []);
+    assert.deepEqual(loaded.settings.providerAliases, []);
+    assert.match(loaded.diagnostic ?? "", /schema|property|ignored/);
 });
 
 test("loadModelAliasSettings rejects duplicate provider aliases without throwing", async () => {
@@ -156,9 +153,9 @@ test("loadModelAliasSettings rejects duplicate provider aliases without throwing
 
     const loaded = settings.loadModelAliasSettings(runtimeState());
 
-    assert.deepEqual(loaded.aliases, []);
-    assert.deepEqual(loaded.providerAliases, []);
-    assert.match(loaded.error ?? "", /duplicates providerAliases\[0\]/);
+    assert.deepEqual(loaded.settings.aliases, []);
+    assert.deepEqual(loaded.settings.providerAliases, []);
+    assert.match(loaded.diagnostic ?? "", /duplicates providerAliases\[0\]/);
 });
 
 test("loadModelAliasSettings returns a readable error for malformed JSON", async () => {
@@ -166,8 +163,8 @@ test("loadModelAliasSettings returns a readable error for malformed JSON", async
 
     const loaded = settings.loadModelAliasSettings(runtimeState());
 
-    assert.deepEqual(loaded.aliases, []);
-    assert.deepEqual(loaded.providerAliases, []);
-    assert.match(loaded.error ?? "", /Failed to load/);
+    assert.deepEqual(loaded.settings.aliases, []);
+    assert.deepEqual(loaded.settings.providerAliases, []);
+    assert.match(loaded.diagnostic ?? "", /Failed to load/);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
 });

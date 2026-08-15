@@ -5,9 +5,9 @@ import {
     fuzzyFilter,
 } from "@earendil-works/pi-tui";
 
-import { DEFAULT_MENTION_TRIGGER } from "./settings.ts";
 import { extractProjectMentionPrefix, formatProjectMention } from "./mention-syntax.ts";
-import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
+import type { ProjectDirectory } from "./projects.ts";
+import { DEFAULT_MENTION_TRIGGER, type MentionProjectSettings } from "./settings.ts";
 
 const MAX_SUGGESTIONS = 20;
 

@@ -1,5 +1,7 @@
-import { DEFAULT_MODE, MODE_SEQUENCE } from "./constants.ts";
-import type { TreeTimestampMode } from "./types.ts";
+export type TreeTimestampMode = "off" | "relative" | "absolute";
+
+export const DEFAULT_MODE: TreeTimestampMode = "relative";
+const MODE_SEQUENCE: readonly TreeTimestampMode[] = ["off", "relative", "absolute"];
 
 export function cycleMode(mode: TreeTimestampMode): TreeTimestampMode {
     const index = MODE_SEQUENCE.indexOf(mode);

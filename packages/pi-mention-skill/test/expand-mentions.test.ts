@@ -12,8 +12,7 @@ import {
     expandSkillMentions,
     expandSkillMentionsInMessages,
 } from "../src/expand-mentions.ts";
-import { stripFrontmatter } from "../src/skill-commands.ts";
-import type { SkillCommand } from "../src/types.ts";
+import { stripFrontmatter, type SkillCommand } from "../src/skill-commands.ts";
 
 type AssistantContextMessage = Extract<ContextEvent["messages"][number], { role: "assistant" }>;
 

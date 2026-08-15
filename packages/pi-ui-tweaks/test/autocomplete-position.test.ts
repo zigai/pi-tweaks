@@ -14,8 +14,8 @@ type AutocompletePositionPatchTarget = {
 
 type AutocompletePositionModule = {
     installAutocompletePositionPatch(prototype?: AutocompletePositionPatchTarget): void;
-    setAutocompleteAboveInput(enabled: boolean): void;
-    setRestoreContentAfterAutocompleteClose(enabled: boolean): void;
+    updateAutocompleteAboveInput(enabled: boolean): void;
+    updateRestoreContentAfterAutocompleteClose(enabled: boolean): void;
 };
 
 function getExportedFunction(value: unknown, name: string): (...args: unknown[]) => unknown {
@@ -33,17 +33,24 @@ async function importAutocompletePositionModule(
     const moduleUrl = new URL(`../src/autocomplete-position.ts?${instance}`, import.meta.url);
     const module: unknown = await import(/* @vite-ignore */ moduleUrl.href);
     const install = getExportedFunction(module, "installAutocompletePositionPatch");
-    const setAbove = getExportedFunction(module, "setAutocompleteAboveInput");
-    const setRestore = getExportedFunction(module, "setRestoreContentAfterAutocompleteClose");
+    let autocompleteAboveInput = true;
+    let restoreContentAfterAutocompleteClose = true;
+    let prototype: AutocompletePositionPatchTarget | undefined;
+    const apply = (): void => {
+        install({ autocompleteAboveInput, restoreContentAfterAutocompleteClose }, prototype);
+    };
     return {
-        installAutocompletePositionPatch(prototype): void {
-            install(prototype);
+        installAutocompletePositionPatch(nextPrototype): void {
+            prototype = nextPrototype;
+            apply();
         },
-        setAutocompleteAboveInput(enabled): void {
-            setAbove(enabled);
+        updateAutocompleteAboveInput(enabled): void {
+            autocompleteAboveInput = enabled;
+            if (prototype !== undefined) apply();
         },
-        setRestoreContentAfterAutocompleteClose(enabled): void {
-            setRestore(enabled);
+        updateRestoreContentAfterAutocompleteClose(enabled): void {
+            restoreContentAfterAutocompleteClose = enabled;
+            if (prototype !== undefined) apply();
         },
     };
 }
@@ -79,7 +86,7 @@ test("autocomplete position patch reads config state updated by a reloaded modul
     };
 
     try {
-        firstModule.setAutocompleteAboveInput(true);
+        firstModule.updateAutocompleteAboveInput(true);
         firstModule.installAutocompletePositionPatch(prototype);
         assert.deepEqual(prototype.render.call(autocompleteTarget(prototype), 20), [
             "\u001b[0m \u001b[0m                   ",
@@ -87,7 +94,7 @@ test("autocomplete position patch reads config state updated by a reloaded modul
             "input",
         ]);
 
-        secondModule.setAutocompleteAboveInput(false);
+        secondModule.updateAutocompleteAboveInput(false);
         secondModule.installAutocompletePositionPatch(prototype);
 
         assert.deepEqual(prototype.render.call(autocompleteTarget(prototype), 20), [
@@ -95,8 +102,8 @@ test("autocomplete position patch reads config state updated by a reloaded modul
             "suggestion",
         ]);
     } finally {
-        secondModule.setAutocompleteAboveInput(true);
-        secondModule.setRestoreContentAfterAutocompleteClose(true);
+        secondModule.updateAutocompleteAboveInput(true);
+        secondModule.updateRestoreContentAfterAutocompleteClose(true);
     }
 });
 
@@ -128,8 +135,8 @@ test("autocomplete position patch defers forced redraw after above-input autocom
     };
 
     try {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
         autocompletePosition.installAutocompletePositionPatch(prototype);
 
         prototype.render.call(target, 20);
@@ -142,8 +149,8 @@ test("autocomplete position patch defers forced redraw after above-input autocom
 
         assert.deepEqual(requestedForces, [true]);
     } finally {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
     }
 });
 
@@ -182,8 +189,8 @@ test("autocomplete position patch does not force redraw after Tab completion", a
     };
 
     try {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
         autocompletePosition.installAutocompletePositionPatch(prototype);
 
         prototype.render.call(target, 20);
@@ -193,8 +200,8 @@ test("autocomplete position patch does not force redraw after Tab completion", a
 
         assert.deepEqual(requestedForces, []);
     } finally {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
     }
 });
 
@@ -214,19 +221,19 @@ test("autocomplete position patch redraws when above-input rendering is disabled
     };
 
     try {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
         autocompletePosition.installAutocompletePositionPatch(prototype);
 
         prototype.render.call(target, 20);
-        autocompletePosition.setAutocompleteAboveInput(false);
+        autocompletePosition.updateAutocompleteAboveInput(false);
         prototype.render.call(target, 20);
         await waitForImmediate();
 
         assert.deepEqual(requestedForces, [true]);
     } finally {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
     }
 });
 
@@ -266,8 +273,8 @@ test("autocomplete position patch redraws after a failed slash confirmation", as
     };
 
     try {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
         autocompletePosition.installAutocompletePositionPatch(prototype);
 
         prototype.render.call(target, 20);
@@ -277,7 +284,7 @@ test("autocomplete position patch redraws after a failed slash confirmation", as
 
         assert.deepEqual(requestedForces, [true]);
     } finally {
-        autocompletePosition.setAutocompleteAboveInput(true);
-        autocompletePosition.setRestoreContentAfterAutocompleteClose(true);
+        autocompletePosition.updateAutocompleteAboveInput(true);
+        autocompletePosition.updateRestoreContentAfterAutocompleteClose(true);
     }
 });

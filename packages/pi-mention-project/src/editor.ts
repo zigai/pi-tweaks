@@ -1,10 +1,20 @@
+import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { registerEditorEnhancer, type EditorEnhancerHandle } from "@zigai/pi-extension-internals";
+
 import {
     autocompleteStartIndex,
     colorProjectMentions,
     isProjectMentionContext,
 } from "./rendering.ts";
-import { applyEditorEnhancer } from "./editor-enhancer.ts";
-import type { EditorEnhancerContext, EditorLike } from "./types.ts";
+
+type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
+type EditorLike = ReturnType<EditorFactory>;
+
+export type MentionProjectEditorContext = Pick<ExtensionContext, "hasUI"> & {
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent"> & {
+        theme: Pick<ExtensionContext["ui"]["theme"], "fg">;
+    };
+};
 
 const MENTION_EDITOR_ENHANCER = Symbol.for("zigai.pi-mention-project.editor-enhancer");
 
@@ -32,7 +42,7 @@ function shouldReactToInput(data: string, trigger: string): boolean {
 
 function enhanceEditor(
     editor: EditorLike,
-    ctx: EditorEnhancerContext,
+    ctx: MentionProjectEditorContext,
     trigger: string,
     getProjectNames: ProjectNameSnapshot,
 ): EditorLike {
@@ -73,13 +83,14 @@ function enhanceEditor(
 }
 
 export function applyMentionProjectEditor(
-    ctx: EditorEnhancerContext,
+    ctx: MentionProjectEditorContext,
     trigger: string,
     getProjectNames: ProjectNameSnapshot,
-): void {
-    if (!ctx.hasUI) return;
-
-    applyEditorEnhancer(ctx, MENTION_EDITOR_ENHANCER, (editor) =>
-        enhanceEditor(editor, ctx, trigger, getProjectNames),
+): EditorEnhancerHandle<Parameters<EditorFactory>, EditorLike> {
+    return registerEditorEnhancer(
+        ctx,
+        MENTION_EDITOR_ENHANCER,
+        (tui, theme, keybindings) => new CustomEditor(tui, theme, keybindings),
+        (editor) => enhanceEditor(editor, ctx, trigger, getProjectNames),
     );
 }

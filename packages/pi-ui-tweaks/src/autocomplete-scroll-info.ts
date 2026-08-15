@@ -1,24 +1,39 @@
+import {
+    installLinkedRenderPatch,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 import { SelectList } from "@earendil-works/pi-tui";
 
-import { getUiTweaksPatchState } from "./patch-state.ts";
-
-const AUTOCOMPLETE_SCROLL_INFO_PATCHED = Symbol.for(
-    "zigai.pi-ui-tweaks.autocomplete-scroll-info-patched",
+const AUTOCOMPLETE_SCROLL_INFO_PATCH = Symbol.for(
+    "zigai.pi-ui-tweaks.autocomplete-scroll-info-patch",
 );
 
+export type AutocompleteScrollInfoConfig = {
+    readonly hideAutocompleteScrollInfo: boolean;
+};
+
+export type AutocompleteScrollInfoHandle = {
+    update(config: AutocompleteScrollInfoConfig): void;
+    dispose(): void;
+};
+
 type SelectListScrollInfoTarget = {
-    [AUTOCOMPLETE_SCROLL_INFO_PATCHED]?: true;
     filteredItems: readonly unknown[];
     maxVisible: number;
-    render: (this: SelectListScrollInfoTarget, width: number) => string[];
+    render(this: SelectListScrollInfoTarget, width: number): string[];
     selectedIndex: number;
+    [AUTOCOMPLETE_SCROLL_INFO_PATCH]?: AutocompleteScrollInfoPatchRecord;
+};
+
+type AutocompleteScrollInfoPatchRecord = {
+    readonly original: SelectListScrollInfoTarget["render"];
+    readonly patch: LinkedMethodPatchHandle<SelectListScrollInfoTarget, [number], string[]>;
+    readonly handle: AutocompleteScrollInfoHandle;
 };
 
 function warnAutocompleteScrollInfoPatchUnavailable(reason?: string): void {
     let suffix = "";
-    if (reason !== undefined) {
-        suffix = `: ${reason}`;
-    }
+    if (reason !== undefined) suffix = `: ${reason}`;
     console.warn(
         `[pi-ui-tweaks] autocomplete scroll info patch unavailable; Pi internals may have changed${suffix}`,
     );
@@ -26,7 +41,6 @@ function warnAutocompleteScrollInfoPatchUnavailable(reason?: string): void {
 
 function shouldRenderScrollInfo(target: SelectListScrollInfoTarget): boolean {
     if (target.filteredItems.length === 0) return false;
-
     const startIndex = Math.max(
         0,
         Math.min(
@@ -35,48 +49,63 @@ function shouldRenderScrollInfo(target: SelectListScrollInfoTarget): boolean {
         ),
     );
     const endIndex = Math.min(startIndex + target.maxVisible, target.filteredItems.length);
-    if (startIndex > 0) return true;
-    return endIndex < target.filteredItems.length;
+    return startIndex > 0 || endIndex < target.filteredItems.length;
 }
 
-/**
- * Sets whether autocomplete menus should hide their scroll/count footer.
- */
-export function setHideAutocompleteScrollInfo(enabled: boolean): void {
-    getUiTweaksPatchState().hideAutocompleteScrollInfo = enabled;
+function inactiveAutocompleteScrollInfoHandle(): AutocompleteScrollInfoHandle {
+    return { update(): void {}, dispose(): void {} };
 }
 
-/**
- * Installs an idempotent patch that removes autocomplete scroll/count footer rows.
- */
-export function installAutocompleteScrollInfoPatch(prototype?: SelectListScrollInfoTarget): void {
-    const prototypeValue: unknown = prototype ?? SelectList.prototype;
-    if (
-        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
-        prototypeValue === null
-    ) {
+/** Installs or updates the autocomplete scroll/count-footer patch. */
+export function installAutocompleteScrollInfoPatch(
+    config: AutocompleteScrollInfoConfig,
+    target: unknown = SelectList.prototype,
+): AutocompleteScrollInfoHandle {
+    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
         warnAutocompleteScrollInfoPatchUnavailable();
-        return;
+        return inactiveAutocompleteScrollInfoHandle();
     }
-    const originalRenderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
-    if (typeof originalRenderValue !== "function") {
+    const render: unknown = Reflect.get(target, "render");
+    if (typeof render !== "function") {
         warnAutocompleteScrollInfoPatchUnavailable("missing render");
-        return;
+        return inactiveAutocompleteScrollInfoHandle();
     }
-    // SAFETY: The guarded pi-tui SelectList adapter verifies the private render
-    // seam before exposing its smallest autocomplete scroll-info patch target.
-    prototype = prototypeValue as SelectListScrollInfoTarget;
-    if (prototype[AUTOCOMPLETE_SCROLL_INFO_PATCHED] === true) return;
-    // SAFETY: The immediately preceding runtime guard proves the private SelectList render seam is callable.
-    const originalRender = originalRenderValue as SelectListScrollInfoTarget["render"];
-    prototype.render = function autocompleteScrollInfoRender(
-        this: SelectListScrollInfoTarget,
-        width: number,
-    ): string[] {
-        const lines = originalRender.call(this, width);
-        if (!getUiTweaksPatchState().hideAutocompleteScrollInfo) return lines;
-        if (!shouldRenderScrollInfo(this)) return lines;
-        return lines.slice(0, -1);
+    // SAFETY: The runtime guard proves the private SelectList render seam is callable.
+    const prototype = target as SelectListScrollInfoTarget;
+    const installed = prototype[AUTOCOMPLETE_SCROLL_INFO_PATCH];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
+    }
+
+    let current = config;
+    const patch = installLinkedRenderPatch(
+        prototype,
+        (predecessor) =>
+            function autocompleteScrollInfoRender(
+                this: SelectListScrollInfoTarget,
+                width: number,
+            ): string[] {
+                const lines = predecessor.call(this, width);
+                if (!current.hideAutocompleteScrollInfo || !shouldRenderScrollInfo(this))
+                    return lines;
+                return lines.slice(0, -1);
+            },
+    );
+    let disposed = false;
+    const handle: AutocompleteScrollInfoHandle = {
+        update(next): void {
+            if (!disposed) current = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[AUTOCOMPLETE_SCROLL_INFO_PATCH]?.handle === handle) {
+                delete prototype[AUTOCOMPLETE_SCROLL_INFO_PATCH];
+            }
+        },
     };
-    prototype[AUTOCOMPLETE_SCROLL_INFO_PATCHED] = true;
+    prototype[AUTOCOMPLETE_SCROLL_INFO_PATCH] = { original: patch.predecessor, patch, handle };
+    return handle;
 }

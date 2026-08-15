@@ -28,7 +28,7 @@ function loadAndReportFooterSettings(ctx: ExtensionContext): LoadedFooterConfig 
 
 export default function uiEnhancements(pi: ExtensionAPI) {
     patchFooterReset();
-    installFooterShrinkPaddingPatch();
+    const shrinkPaddingHandle = installFooterShrinkPaddingPatch();
 
     const getThinkingLevel = () => pi.getThinkingLevel();
     let activeFooterConfig = DEFAULT_FOOTER_CONFIG;
@@ -45,5 +45,6 @@ export default function uiEnhancements(pi: ExtensionAPI) {
 
     pi.on("session_shutdown", async (event, ctx) => {
         rememberFooterForTransition(ctx, event.reason, getThinkingLevel(), activeFooterConfig);
+        shrinkPaddingHandle?.dispose();
     });
 }

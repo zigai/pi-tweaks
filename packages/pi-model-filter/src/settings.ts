@@ -1,4 +1,3 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import {
     getPiGlobalSettingsPath,
@@ -9,45 +8,22 @@ import { existsSync, statSync } from "node:fs";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
+import { normalizeRules, type FilterRuleConfig, type ModelFilterSettings } from "./model-filter.ts";
+
 export const EXTENSION_ID = "pi-model-filter";
 export const CONFIG_FILE = `${EXTENSION_ID}.json`;
 
-export type ModelLike = {
-    provider: string;
-    id: string;
-};
-
-export type FilterRuleConfig = {
-    provider: string;
-    models: string[];
-};
-
-export type FilterConfig = {
-    include?: FilterRuleConfig[];
-    exclude?: FilterRuleConfig[];
-};
-
-export type NormalizedRule = {
-    providerPattern: string;
-    providerRegex: RegExp;
-    modelPatterns: string[];
-    modelRegexes: RegExp[];
-};
-
-export type LoadedConfig = {
+export type LoadedModelFilterSettings = {
     path: string;
     mtimeMs: number;
-    includeRules: NormalizedRule[];
-    excludeRules: NormalizedRule[];
-    error?: string;
+    settings: ModelFilterSettings;
+    diagnostic?: string;
 };
 
-export type RuntimeState = {
-    configCache?: LoadedConfig;
+export type ModelFilterSettingsLoadState = {
+    configCache?: LoadedModelFilterSettings;
     configCwd?: string;
     projectTrusted?: boolean;
-    reportedErrorKey?: string;
-    loadSettings: () => LoadedConfig;
 };
 
 const nonBlankStringSchema = Type.String({ pattern: "\\S" });
@@ -137,67 +113,12 @@ function normalizeRule(rule: ParsedFilterRuleConfig): FilterRuleConfig {
     };
 }
 
-function parseFilterConfig(config: unknown): FilterConfig {
+export function decodeModelFilterSettings(config: unknown): ModelFilterSettings {
     const parsed = parseSchema(FilterConfigSchema, config, "pi-model-filter config.json");
     return {
-        include: (parsed.include ?? []).map(normalizeRule),
-        exclude: (parsed.exclude ?? []).map(normalizeRule),
+        includeRules: normalizeRules((parsed.include ?? []).map(normalizeRule)),
+        excludeRules: normalizeRules((parsed.exclude ?? []).map(normalizeRule)),
     };
-}
-
-function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return ctx.isProjectTrusted();
-}
-
-function findMatchingRule(
-    model: ModelLike,
-    rules: NormalizedRule[] | undefined,
-): NormalizedRule | undefined {
-    for (const rule of rules ?? []) {
-        if (!rule.providerRegex.test(model.provider)) continue;
-        if (rule.modelRegexes.some((regex) => regex.test(model.id))) return rule;
-    }
-    return undefined;
-}
-
-function hasIncludePolicy(model: ModelLike, rules: NormalizedRule[] | undefined): boolean {
-    return (rules ?? []).some((rule) => rule.providerRegex.test(model.provider));
-}
-
-export function globToRegex(pattern: string): RegExp {
-    let regex = "";
-    for (const character of pattern) {
-        if (character === "*") {
-            regex += ".*";
-        } else if (character === "?") {
-            regex += ".";
-        } else {
-            regex += character.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
-        }
-    }
-    return new RegExp(`^${regex}$`);
-}
-
-export function normalizeRules(rules: FilterRuleConfig[]): NormalizedRule[] {
-    return rules.map((rule) => ({
-        providerPattern: rule.provider,
-        providerRegex: globToRegex(rule.provider),
-        modelPatterns: rule.models,
-        modelRegexes: rule.models.map((model) => globToRegex(model)),
-    }));
-}
-
-export function isVisibleModel(model: ModelLike, loaded: LoadedConfig): boolean {
-    if (hasIncludePolicy(model, loaded.includeRules)) {
-        const includeRule = findMatchingRule(model, loaded.includeRules);
-        if (includeRule === undefined) return false;
-    }
-
-    return findMatchingRule(model, loaded.excludeRules) === undefined;
-}
-
-export function filterModels(models: readonly ModelLike[], loaded: LoadedConfig): ModelLike[] {
-    return models.filter((model) => isVisibleModel(model, loaded));
 }
 
 export function getGlobalConfigPath(): string {
@@ -208,19 +129,12 @@ export function getProjectConfigPath(cwd: string): string {
     return getPiProjectSettingsPath(EXTENSION_ID, cwd);
 }
 
-export function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
-    const projectTrusted = isProjectTrusted(ctx);
-    if (state.configCwd !== ctx.cwd || state.projectTrusted !== projectTrusted) {
-        state.configCache = undefined;
-    }
-    state.configCwd = ctx.cwd;
-    state.projectTrusted = projectTrusted;
-}
-
-export function loadModelFilterSettings(state: RuntimeState): LoadedConfig {
+export function loadModelFilterSettings(
+    state: ModelFilterSettingsLoadState,
+): LoadedModelFilterSettings {
     const cwd = state.configCwd ?? process.cwd();
     const projectConfigPath = getProjectConfigPath(cwd);
-    const settings = loadPiExtensionSettings(
+    const loadedLayers = loadPiExtensionSettings(
         modelFilterSettingsDefinition,
         { cwd, isProjectTrusted: () => state.projectTrusted === true },
         {
@@ -231,7 +145,7 @@ export function loadModelFilterSettings(state: RuntimeState): LoadedConfig {
         },
     );
     const useProjectConfig = state.projectTrusted === true && existsSync(projectConfigPath);
-    let configPath = settings.globalConfigPath;
+    let configPath = loadedLayers.globalConfigPath;
     if (useProjectConfig) configPath = projectConfigPath;
     let mtimeMs = -1;
     try {
@@ -245,32 +159,29 @@ export function loadModelFilterSettings(state: RuntimeState): LoadedConfig {
     }
 
     try {
-        const configDiagnostics = settings.diagnostics.filter(
+        const configDiagnostics = loadedLayers.diagnostics.filter(
             (diagnostic) => diagnostic.path === configPath && diagnostic.severity === "error",
         );
         if (configDiagnostics.length > 0) {
             throw new Error(configDiagnostics.map((diagnostic) => diagnostic.message).join("; "));
         }
-        let layer = settings.globalSettingsLayer;
-        if (useProjectConfig) layer = settings.projectSettingsLayer;
-        const parsed = parseFilterConfig(layer ?? {});
-        const loaded: LoadedConfig = {
+        let layer = loadedLayers.globalSettingsLayer;
+        if (useProjectConfig) layer = loadedLayers.projectSettingsLayer;
+        const loaded: LoadedModelFilterSettings = {
             path: configPath,
             mtimeMs,
-            includeRules: normalizeRules(parsed.include ?? []),
-            excludeRules: normalizeRules(parsed.exclude ?? []),
+            settings: decodeModelFilterSettings(layer ?? {}),
         };
         state.configCache = loaded;
         return loaded;
     } catch (cause: unknown) {
         let message = String(cause);
         if (cause instanceof Error) message = cause.message;
-        const loaded: LoadedConfig = {
+        const loaded: LoadedModelFilterSettings = {
             path: configPath,
             mtimeMs,
-            includeRules: [],
-            excludeRules: [],
-            error: `Failed to load ${configPath}: ${message}`,
+            settings: { includeRules: [], excludeRules: [] },
+            diagnostic: `Failed to load ${configPath}: ${message}`,
         };
         state.configCache = loaded;
         return loaded;

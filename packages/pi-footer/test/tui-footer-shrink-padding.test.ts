@@ -7,10 +7,7 @@ import {
     type Component,
     type Terminal,
 } from "@earendil-works/pi-tui";
-import {
-    installAnchorInputToBottomPatch,
-    setAnchorInputToBottom,
-} from "../../pi-ui-tweaks/src/anchor-input-to-bottom.ts";
+import { installAnchorInputToBottomPatch } from "../../pi-ui-tweaks/src/anchor-input-to-bottom.ts";
 import { markFooterComponent } from "../src/footer-component.ts";
 import { installFooterShrinkPaddingPatch } from "../src/tui-footer-shrink-padding.ts";
 
@@ -203,9 +200,8 @@ class TestFooter implements Component {
 }
 
 test("footer and anchor patches record child line ranges during one render frame", () => {
-    installAnchorInputToBottomPatch();
+    const anchorHandle = installAnchorInputToBottomPatch({ anchorInputToBottom: true });
     installFooterShrinkPaddingPatch();
-    setAnchorInputToBottom(true);
 
     const terminal = new FakeTerminal();
     const tui = new TUI(terminal);
@@ -235,14 +231,13 @@ test("footer and anchor patches record child line ranges during one render frame
         assert.equal(footer.renderCount, 1);
         assert.equal(Object.hasOwn(message, "render"), false);
     } finally {
-        setAnchorInputToBottom(false);
+        anchorHandle.dispose();
     }
 });
 
 test("footer shrink padding keeps the final chat row attached when anchor compacts chrome", () => {
-    installAnchorInputToBottomPatch();
+    const anchorHandle = installAnchorInputToBottomPatch({ anchorInputToBottom: true });
     installFooterShrinkPaddingPatch();
-    setAnchorInputToBottom(true);
 
     const terminal = new FakeTerminal();
     const chatLines = [
@@ -278,7 +273,7 @@ test("footer shrink padding keeps the final chat row attached when anchor compac
         assert.notEqual(finalChatRowIndex, -1);
         assert.equal(visibleLines[finalChatRowIndex - 1], "chat 15");
     } finally {
-        setAnchorInputToBottom(false);
+        anchorHandle.dispose();
     }
 });
 

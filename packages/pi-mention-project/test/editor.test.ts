@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+
 import { applyMentionSkillEditor } from "../../pi-mention-skill/src/editor.ts";
-import { applyMentionProjectEditor } from "../src/editor.ts";
-import type { EditorEnhancerContext, EditorFactory, EditorLike } from "../src/types.ts";
+import { applyMentionProjectEditor, type MentionProjectEditorContext } from "../src/editor.ts";
+
+type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
+type EditorLike = ReturnType<EditorFactory>;
 
 class FakeEditor implements EditorLike {
     text = "";
@@ -37,7 +41,7 @@ class FakeEditor implements EditorLike {
 }
 
 type EditorContext = {
-    ctx: EditorEnhancerContext;
+    ctx: MentionProjectEditorContext;
     getFactory: () => EditorFactory | undefined;
 };
 
@@ -93,6 +97,21 @@ test("applyMentionProjectEditor replaces its enhancer instead of stacking hooks"
 
     assert.equal(editor.autocompleteTriggers, 1);
     assert.equal(projectNameSnapshotCalls, 1);
+});
+
+test("mention editor handles only dispose the current keyed enhancer", () => {
+    const baseFactory: EditorFactory = () => new FakeEditor();
+    const { ctx, getFactory } = contextWithFactory(baseFactory);
+
+    const replacedHandle = applyMentionProjectEditor(ctx, "#", () => new Set(["old"]));
+    const currentHandle = applyMentionProjectEditor(ctx, "#", () => new Set(["current"]));
+    const enhancedFactory = getFactory();
+
+    replacedHandle.dispose();
+    assert.equal(getFactory(), enhancedFactory);
+
+    currentHandle.dispose();
+    assert.equal(getFactory(), baseFactory);
 });
 
 test("mention project and skill editors share one enhancer registry", () => {

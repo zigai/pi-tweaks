@@ -10,13 +10,12 @@ import {
 } from "@earendil-works/pi-tui";
 import { KeybindingsManager } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import {
-    applyBashExecSpacingEditor,
+    installBashExecSpacingEditor,
     type BashExecSpacingEditorContext,
 } from "../src/bash-exec-spacing.ts";
 import {
-    applyPasteCollapseEditor,
+    installPasteCollapseEditor,
     installPasteCollapsePatch,
-    setPasteCollapseSettings,
     type PasteCollapseEditorContext,
     type PasteCollapseSettings,
 } from "../src/paste-collapse.ts";
@@ -94,8 +93,11 @@ function getTestEditor(value: EditorComponent): TestEditor {
     return value;
 }
 
+let currentTestSettings = defaultSettings;
+const pasteHandles = new Set<{ update(settings: PasteCollapseSettings): void }>();
 function setTestSettings(settings: Partial<PasteCollapseSettings>): void {
-    setPasteCollapseSettings({ ...defaultSettings, ...settings });
+    currentTestSettings = { ...defaultSettings, ...settings };
+    for (const handle of pasteHandles) handle.update(currentTestSettings);
 }
 
 function withSettings(settings: Partial<PasteCollapseSettings>, run: () => void): void {
@@ -103,12 +105,12 @@ function withSettings(settings: Partial<PasteCollapseSettings>, run: () => void)
     try {
         run();
     } finally {
-        setPasteCollapseSettings(defaultSettings);
+        setTestSettings(defaultSettings);
     }
 }
 
 function createPasteCollapseEditor(): TestEditor {
-    installPasteCollapsePatch();
+    pasteHandles.add(installPasteCollapsePatch(currentTestSettings));
     let editorFactory: EditorFactory | undefined;
     const context = {
         hasUI: true,
@@ -122,7 +124,7 @@ function createPasteCollapseEditor(): TestEditor {
         },
     } satisfies PasteCollapseEditorContext;
 
-    applyPasteCollapseEditor(context);
+    pasteHandles.add(installPasteCollapseEditor(context, currentTestSettings));
 
     if (editorFactory === undefined) {
         assert.fail("expected editor factory");
@@ -234,7 +236,7 @@ test("tool expand key falls through when no paste marker is under the cursor", (
                 },
             },
         } satisfies PasteCollapseEditorContext;
-        applyPasteCollapseEditor(context);
+        pasteHandles.add(installPasteCollapseEditor(context, currentTestSettings));
         if (editorFactory === undefined) assert.fail("expected editor factory");
 
         const editor = editorFactory(
@@ -293,10 +295,10 @@ test("editor wrappers remain idempotent across repeated session starts", () => {
             },
         } satisfies PasteCollapseEditorContext & BashExecSpacingEditorContext;
 
-        applyBashExecSpacingEditor(context);
-        applyPasteCollapseEditor(context);
-        applyBashExecSpacingEditor(context);
-        applyPasteCollapseEditor(context);
+        installBashExecSpacingEditor(context, { bashExecPromptSpacing: true });
+        pasteHandles.add(installPasteCollapseEditor(context, currentTestSettings));
+        installBashExecSpacingEditor(context, { bashExecPromptSpacing: true });
+        pasteHandles.add(installPasteCollapseEditor(context, currentTestSettings));
 
         if (editorFactory === undefined) {
             assert.fail("expected editor factory");

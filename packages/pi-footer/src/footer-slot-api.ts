@@ -1,11 +1,14 @@
-import { CUSTOM_SLOT_COLORS } from "./constants.ts";
 import {
     FOOTER_CUSTOM_SLOT_ID_PATTERN,
     type FooterCustomSlotId,
     type FooterSide,
     type FooterSlotSnapshot,
     type SegmentColors,
-} from "./types.ts";
+} from "./footer-model.ts";
+const CUSTOM_SLOT_COLORS = {
+    bg: "",
+    fg: "",
+} as const;
 
 const FOOTER_SLOT_STATE = Symbol.for("zigai.pi-footer.slot-state.v1");
 const CUSTOM_SLOT_ID_REGEX = new RegExp(FOOTER_CUSTOM_SLOT_ID_PATTERN);

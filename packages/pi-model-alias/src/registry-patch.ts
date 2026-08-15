@@ -4,10 +4,11 @@ import {
     applyAlias,
     getAliasForLookup,
     getAliasForModel,
-    resolveAliasesAgainstModels,
+    getAliasModelIdCollision,
+    type ModelLike,
 } from "./model-aliasing.ts";
 import { getProviderDisplayName } from "./provider-aliasing.ts";
-import type { BasicModelRegistry, LoadedConfig, ModelLike, RuntimeState } from "./types.ts";
+import type { LoadedModelAliasSettings } from "./settings.ts";
 
 const PATCH_MARKER = "__piModelAliasPatched";
 const RUNTIME_KEY = "__piModelAliasRuntime";
@@ -16,9 +17,21 @@ const ORIGINAL_GET_AVAILABLE_KEY = "__piModelAliasOriginalGetAvailable";
 const ORIGINAL_FIND_KEY = "__piModelAliasOriginalFind";
 const ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY = "__piModelAliasOriginalGetProviderDisplayName";
 
+export type ModelAliasRuntimeState = {
+    loadSettings: () => LoadedModelAliasSettings;
+    reportedDiagnosticKey?: string;
+};
+
+export type BasicModelRegistry = {
+    getAll(): ModelLike[];
+    getAvailable(): ModelLike[];
+    find(provider: string, modelId: string): ModelLike | undefined;
+    getProviderDisplayName(provider: string): string;
+};
+
 export type PatchedModelRegistry = BasicModelRegistry & {
     [PATCH_MARKER]?: boolean;
-    [RUNTIME_KEY]?: RuntimeState;
+    [RUNTIME_KEY]?: ModelAliasRuntimeState;
     [ORIGINAL_GET_ALL_KEY]?: () => ModelLike[];
     [ORIGINAL_GET_AVAILABLE_KEY]?: () => ModelLike[];
     [ORIGINAL_FIND_KEY]?: (provider: string, modelId: string) => ModelLike | undefined;
@@ -26,43 +39,55 @@ export type PatchedModelRegistry = BasicModelRegistry & {
 };
 
 export function loadConfigForRegistry(
-    state: RuntimeState,
+    state: ModelAliasRuntimeState,
     registry: PatchedModelRegistry,
-): LoadedConfig {
+): LoadedModelAliasSettings {
     const loaded = state.loadSettings();
-    if (loaded.error !== undefined || loaded.aliases.length === 0) {
-        return loaded;
-    }
+    if (loaded.diagnostic !== undefined || loaded.settings.aliases.length === 0) return loaded;
 
     const nativeModels = registry[ORIGINAL_GET_ALL_KEY]?.call(registry) ?? [];
-    return resolveAliasesAgainstModels(loaded, nativeModels);
+    const collision = getAliasModelIdCollision(loaded.settings, nativeModels);
+    if (collision === undefined) return loaded;
+
+    return {
+        ...loaded,
+        settings: {
+            ...loaded.settings,
+            aliases: [],
+            providerAliases: [],
+        },
+        diagnostic: `Failed to load ${loaded.path}: ${collision}`,
+    };
 }
 
-function requireRegistryRuntime(runtime: RuntimeState | undefined): RuntimeState {
+function requireRegistryRuntime(
+    runtime: ModelAliasRuntimeState | undefined,
+): ModelAliasRuntimeState {
     if (runtime !== undefined) return runtime;
     throw new Error("Pi model alias runtime is not initialized.");
 }
 
 export function reportConfigError(
-    state: RuntimeState,
+    state: ModelAliasRuntimeState,
     ctx: ExtensionContext,
-    loaded: LoadedConfig,
+    loaded: LoadedModelAliasSettings,
 ): void {
-    if (loaded.error === undefined) {
-        state.reportedErrorKey = undefined;
+    if (loaded.diagnostic === undefined) {
+        state.reportedDiagnosticKey = undefined;
         return;
     }
 
-    const errorKey = `${loaded.path}:${loaded.mtimeMs}:${loaded.error}`;
-    if (state.reportedErrorKey === errorKey) {
-        return;
-    }
+    const diagnosticKey = `${loaded.path}:${loaded.mtimeMs}:${loaded.diagnostic}`;
+    if (state.reportedDiagnosticKey === diagnosticKey) return;
 
-    state.reportedErrorKey = errorKey;
-    ctx.ui.notify(loaded.error, "error");
+    state.reportedDiagnosticKey = diagnosticKey;
+    ctx.ui.notify(loaded.diagnostic, "error");
 }
 
-export function installRegistryPatch(registry: PatchedModelRegistry, state: RuntimeState): void {
+export function installRegistryPatch(
+    registry: PatchedModelRegistry,
+    state: ModelAliasRuntimeState,
+): void {
     registry[RUNTIME_KEY] = state;
 
     if (
@@ -74,9 +99,7 @@ export function installRegistryPatch(registry: PatchedModelRegistry, state: Runt
         throw new Error("Pi model registry does not expose the expected methods.");
     }
 
-    if (registry[PATCH_MARKER] === true) {
-        return;
-    }
+    if (registry[PATCH_MARKER] === true) return;
 
     registry[PATCH_MARKER] = true;
     registry[ORIGINAL_GET_ALL_KEY] = Reflect.get(registry, "getAll");
@@ -90,36 +113,30 @@ export function installRegistryPatch(registry: PatchedModelRegistry, state: Runt
     registry.getAll = function getAll(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_ALL_KEY]?.call(this) ?? [];
         const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
-        return aliasModels(models, loadConfigForRegistry(runtime, this));
+        return aliasModels(models, loadConfigForRegistry(runtime, this).settings);
     };
 
     registry.getAvailable = function getAvailable(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_AVAILABLE_KEY]?.call(this) ?? [];
         const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
-        return aliasModels(models, loadConfigForRegistry(runtime, this));
+        return aliasModels(models, loadConfigForRegistry(runtime, this).settings);
     };
 
     registry.find = function find(this: PatchedModelRegistry, provider: string, modelId: string) {
         const finder = this[ORIGINAL_FIND_KEY] ?? registry[ORIGINAL_FIND_KEY];
         const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
-        const loaded = loadConfigForRegistry(runtime, this);
-        const alias = getAliasForLookup(provider, modelId, loaded);
+        const settings = loadConfigForRegistry(runtime, this).settings;
+        const alias = getAliasForLookup(provider, modelId, settings);
         if (alias !== undefined) {
             const target = finder?.call(this, provider, alias.model);
-            if (target === undefined) {
-                return undefined;
-            }
+            if (target === undefined) return undefined;
             return applyAlias(target, alias);
         }
 
         const model = finder?.call(this, provider, modelId);
-        if (model === undefined) {
-            return undefined;
-        }
-        const modelAlias = getAliasForModel(model, loaded);
-        if (modelAlias === undefined) {
-            return model;
-        }
+        if (model === undefined) return undefined;
+        const modelAlias = getAliasForModel(model, settings);
+        if (modelAlias === undefined) return model;
         return applyAlias(model, modelAlias);
     };
 
@@ -132,7 +149,7 @@ export function installRegistryPatch(registry: PatchedModelRegistry, state: Runt
             registry[ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY];
         const fallbackName = originalGetProviderDisplayName?.call(this, provider) ?? provider;
         const runtime = requireRegistryRuntime(this[RUNTIME_KEY] ?? registry[RUNTIME_KEY]);
-        const loaded = loadConfigForRegistry(runtime, this);
-        return getProviderDisplayName(provider, fallbackName, loaded);
+        const settings = loadConfigForRegistry(runtime, this).settings;
+        return getProviderDisplayName(provider, fallbackName, settings);
     };
 }

@@ -1,6 +1,9 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 
-import type { SkillCommand } from "./types.ts";
+export type SkillCommand = SlashCommandInfo & {
+    name: `skill:${string}`;
+    description: string;
+};
 
 const SKILL_COMMAND_PREFIX = "skill:";
 

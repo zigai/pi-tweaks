@@ -4,23 +4,21 @@ import {
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-import { loadModelAliasSettings } from "./settings.ts";
-import { installProviderAliasUiPatches } from "./model-selector-provider-patch.ts";
+import { installProviderAliasUiPatches } from "./model-selector-patch.ts";
 import { aliasForProviderRequest, rewritePayloadModel } from "./provider-payload.ts";
 import {
     installRegistryPatch,
     loadConfigForRegistry,
-    type PatchedModelRegistry,
     reportConfigError,
+    type ModelAliasRuntimeState,
+    type PatchedModelRegistry,
 } from "./registry-patch.ts";
-import type { RuntimeState } from "./types.ts";
+import { loadModelAliasSettings, type ModelAliasSettingsLoadState } from "./settings.ts";
 
-function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return ctx.isProjectTrusted();
-}
+type ModelAliasExtensionState = ModelAliasRuntimeState & ModelAliasSettingsLoadState;
 
-function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
-    const projectTrusted = isProjectTrusted(ctx);
+function setConfigContext(state: ModelAliasExtensionState, ctx: ExtensionContext): void {
+    const projectTrusted = ctx.isProjectTrusted();
     if (state.configCwd !== ctx.cwd || state.projectTrusted !== projectTrusted) {
         state.configCache = undefined;
     }
@@ -29,7 +27,7 @@ function setConfigContext(state: RuntimeState, ctx: ExtensionContext): void {
 }
 
 export default async function modelAliasExtension(pi: ExtensionAPI): Promise<void> {
-    const state: RuntimeState = {
+    const state: ModelAliasExtensionState = {
         loadSettings: () => loadModelAliasSettings(state),
     };
 
@@ -52,10 +50,8 @@ export default async function modelAliasExtension(pi: ExtensionAPI): Promise<voi
         setConfigContext(state, ctx);
         const loaded = loadConfigForRegistry(state, ctx.modelRegistry);
         reportConfigError(state, ctx, loaded);
-        const alias = aliasForProviderRequest(event.payload, ctx.model, loaded);
-        if (alias === undefined) {
-            return undefined;
-        }
+        const alias = aliasForProviderRequest(event.payload, ctx.model, loaded.settings);
+        if (alias === undefined) return undefined;
         return rewritePayloadModel(event.payload, alias.model);
     });
 }

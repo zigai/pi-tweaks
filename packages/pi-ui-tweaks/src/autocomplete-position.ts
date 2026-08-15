@@ -1,11 +1,12 @@
 import { Editor, getKeybindings } from "@earendil-works/pi-tui";
 
-import { getUiTweaksPatchState } from "./patch-state.ts";
-import { recordRenderTraceMarker } from "./render-trace.ts";
+import {
+    installLinkedMethodPatch,
+    installLinkedRenderPatch,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
-const AUTOCOMPLETE_POSITION_PATCHED = Symbol.for(
-    "zigai.pi-ui-tweaks.autocomplete-position-patched",
-);
+const AUTOCOMPLETE_POSITION_PATCHED = Symbol.for("zigai.pi-ui-tweaks.autocomplete-position-patch");
 const AUTOCOMPLETE_RENDERED_ABOVE = Symbol.for("zigai.pi-ui-tweaks.autocomplete-rendered-above");
 const AUTOCOMPLETE_RESTORE_RENDER_PENDING = Symbol.for(
     "zigai.pi-ui-tweaks.autocomplete-restore-render-pending",
@@ -36,12 +37,15 @@ type AutocompletePositionPatchTarget = {
     handleInput?(data: string): void;
     paddingX?: number;
     tui?: { requestRender(force?: boolean): void };
-    [AUTOCOMPLETE_POSITION_PATCHED]?: true;
+    [AUTOCOMPLETE_POSITION_PATCHED]?: AutocompletePositionPatchRecord;
     [AUTOCOMPLETE_RENDERED_ABOVE]?: true;
     [AUTOCOMPLETE_RESTORE_RENDER_PENDING]?: true;
     [AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE]?: true;
 };
 
+type AutocompleteHandleInputTarget = {
+    handleInput(this: AutocompletePositionPatchTarget, data: string): void;
+};
 function warnAutocompletePositionPatchUnavailable(reason?: string): void {
     let suffix = "";
     if (reason !== undefined) {
@@ -73,7 +77,6 @@ function requestDeferredForceRender(target: AutocompletePositionPatchTarget): vo
     target[AUTOCOMPLETE_RESTORE_RENDER_PENDING] = true;
     setImmediate(() => {
         target[AUTOCOMPLETE_RESTORE_RENDER_PENDING] = undefined;
-        recordRenderTraceMarker("autocomplete-force-render-requested", tui);
         tui.requestRender(true);
     });
 }
@@ -90,8 +93,12 @@ function getSelectedAutocompleteItem(target: AutocompletePositionPatchTarget): u
     return selectedItem;
 }
 
-function isAutocompleteCompletion(target: AutocompletePositionPatchTarget, data: string): boolean {
-    if (!getUiTweaksPatchState().autocompleteAboveInput) return false;
+function isAutocompleteCompletion(
+    target: AutocompletePositionPatchTarget,
+    data: string,
+    config: AutocompletePositionConfig,
+): boolean {
+    if (!config.autocompleteAboveInput) return false;
     if (target.autocompleteState === null || target.autocompleteState === undefined) return false;
     if (target.autocompleteProvider === undefined) return false;
     if (
@@ -103,107 +110,145 @@ function isAutocompleteCompletion(target: AutocompletePositionPatchTarget, data:
     return getSelectedAutocompleteItem(target) !== undefined;
 }
 
-/**
- * Sets whether editor autocomplete rows should render above the input box.
- */
-export function setAutocompleteAboveInput(enabled: boolean): void {
-    getUiTweaksPatchState().autocompleteAboveInput = enabled;
-}
-
-/**
- * Sets whether closing above-input autocomplete should force a clean redraw.
- */
-export function setRestoreContentAfterAutocompleteClose(enabled: boolean): void {
-    getUiTweaksPatchState().restoreContentAfterAutocompleteClose = enabled;
-}
+export type AutocompletePositionConfig = {
+    readonly autocompleteAboveInput: boolean;
+    readonly restoreContentAfterAutocompleteClose: boolean;
+};
+export type AutocompletePositionHandle = {
+    update(config: AutocompletePositionConfig): void;
+    dispose(): void;
+};
+type AutocompletePositionPatchRecord = {
+    readonly original: AutocompletePositionPatchTarget["render"];
+    readonly renderPatch: LinkedMethodPatchHandle<
+        AutocompletePositionPatchTarget,
+        [number],
+        string[]
+    >;
+    readonly inputPatch?: LinkedMethodPatchHandle<AutocompletePositionPatchTarget, [string], void>;
+    readonly handle: AutocompletePositionHandle;
+};
 
 /**
  * Installs an idempotent patch that moves editor autocomplete rows above the input box.
  */
 export function installAutocompletePositionPatch(
-    prototype?: AutocompletePositionPatchTarget,
-): void {
-    const prototypeValue: unknown = prototype ?? Editor.prototype;
+    config: AutocompletePositionConfig,
+    target: unknown = Editor.prototype,
+): AutocompletePositionHandle {
+    const prototypeValue: unknown = target;
     if (
         (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
         prototypeValue === null
     ) {
         warnAutocompletePositionPatchUnavailable();
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
     const originalRenderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
     if (typeof originalRenderValue !== "function") {
         warnAutocompletePositionPatchUnavailable("missing render");
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
     // SAFETY: The guarded pi-tui Editor adapter verifies the private render seam
     // before exposing the smallest autocomplete-position patch target.
-    prototype = prototypeValue as AutocompletePositionPatchTarget;
-    if (prototype[AUTOCOMPLETE_POSITION_PATCHED] === true) return;
-    // SAFETY: The immediately preceding runtime guard proves the private Editor render seam is callable.
-    const originalRender = originalRenderValue as AutocompletePositionPatchTarget["render"];
+    const prototype = prototypeValue as AutocompletePositionPatchTarget;
+    const installed = prototype[AUTOCOMPLETE_POSITION_PATCHED];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
+    }
+    let current = config;
+    let inputPatch:
+        | LinkedMethodPatchHandle<AutocompletePositionPatchTarget, [string], void>
+        | undefined;
     const originalHandleInputValue: unknown = Reflect.get(prototype, "handleInput");
     if (typeof originalHandleInputValue === "function") {
-        // SAFETY: The immediately preceding runtime guard proves the private Editor handleInput seam is callable.
-        const originalHandleInput = originalHandleInputValue as (
-            this: AutocompletePositionPatchTarget,
-            data: string,
-        ) => void;
-        prototype.handleInput = function autocompletePositionHandleInput(
-            this: AutocompletePositionPatchTarget,
-            data: string,
-        ): void {
-            if (isAutocompleteCompletion(this, data)) {
-                this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = true;
-            }
-            let completed = false;
-            try {
-                originalHandleInput.call(this, data);
-                completed = true;
-            } finally {
-                if (
-                    !completed ||
-                    (this.autocompleteState !== null && this.autocompleteState !== undefined)
-                ) {
-                    this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = undefined;
-                }
-            }
-        };
+        const inputTarget = prototype as AutocompleteHandleInputTarget;
+        inputPatch = installLinkedMethodPatch(
+            inputTarget,
+            "handleInput",
+            (predecessor) =>
+                function autocompletePositionHandleInput(
+                    this: AutocompletePositionPatchTarget,
+                    data: string,
+                ): void {
+                    if (isAutocompleteCompletion(this, data, current)) {
+                        this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = true;
+                    }
+                    let completed = false;
+                    try {
+                        predecessor.call(this, data);
+                        completed = true;
+                    } finally {
+                        if (
+                            !completed ||
+                            (this.autocompleteState !== null &&
+                                this.autocompleteState !== undefined)
+                        ) {
+                            this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = undefined;
+                        }
+                    }
+                },
+        );
     }
-    prototype.render = function autocompletePositionRender(
-        this: AutocompletePositionPatchTarget,
-        width: number,
-    ): string[] {
-        const result = originalRender.call(this, width);
-        const patchState = getUiTweaksPatchState();
-        if (!patchState.autocompleteAboveInput) {
-            if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
-                this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
-                if (patchState.restoreContentAfterAutocompleteClose) {
-                    requestDeferredForceRender(this);
+    const renderPatch = installLinkedRenderPatch(
+        prototype,
+        (predecessor) =>
+            function autocompletePositionRender(
+                this: AutocompletePositionPatchTarget,
+                width: number,
+            ): string[] {
+                const result = predecessor.call(this, width);
+                const patchState = current;
+                if (!patchState.autocompleteAboveInput) {
+                    if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
+                        this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
+                        if (patchState.restoreContentAfterAutocompleteClose) {
+                            requestDeferredForceRender(this);
+                        }
+                    }
+                    return result;
                 }
-            }
-            return result;
-        }
 
-        const autocompleteLineCount = getAutocompleteLineCount(this, width);
-        if (autocompleteLineCount === 0 || autocompleteLineCount >= result.length) {
-            if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
-                this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
-                recordRenderTraceMarker("autocomplete-close-detected", this.tui);
-                const skipRestore = this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] === true;
-                this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = undefined;
-                if (patchState.restoreContentAfterAutocompleteClose && !skipRestore) {
-                    requestDeferredForceRender(this);
+                const autocompleteLineCount = getAutocompleteLineCount(this, width);
+                if (autocompleteLineCount === 0 || autocompleteLineCount >= result.length) {
+                    if (this[AUTOCOMPLETE_RENDERED_ABOVE] === true) {
+                        this[AUTOCOMPLETE_RENDERED_ABOVE] = undefined;
+                        const skipRestore = this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] === true;
+                        this[AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE] = undefined;
+                        if (patchState.restoreContentAfterAutocompleteClose && !skipRestore) {
+                            requestDeferredForceRender(this);
+                        }
+                    }
+                    return result;
                 }
-            }
-            return result;
-        }
 
-        const editorLines = result.slice(0, result.length - autocompleteLineCount);
-        const autocompleteLines = result.slice(result.length - autocompleteLineCount);
-        this[AUTOCOMPLETE_RENDERED_ABOVE] = true;
-        return [blankSpacerLine(width), ...autocompleteLines, ...editorLines];
+                const editorLines = result.slice(0, result.length - autocompleteLineCount);
+                const autocompleteLines = result.slice(result.length - autocompleteLineCount);
+                this[AUTOCOMPLETE_RENDERED_ABOVE] = true;
+                return [blankSpacerLine(width), ...autocompleteLines, ...editorLines];
+            },
+    );
+    let disposed = false;
+    const handle: AutocompletePositionHandle = {
+        update(next): void {
+            if (!disposed) current = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            renderPatch.dispose();
+            inputPatch?.dispose();
+            if (prototype[AUTOCOMPLETE_POSITION_PATCHED]?.handle === handle) {
+                delete prototype[AUTOCOMPLETE_POSITION_PATCHED];
+            }
+        },
     };
-    prototype[AUTOCOMPLETE_POSITION_PATCHED] = true;
+    prototype[AUTOCOMPLETE_POSITION_PATCHED] = {
+        original: renderPatch.predecessor,
+        renderPatch,
+        inputPatch,
+        handle,
+    };
+    return handle;
 }

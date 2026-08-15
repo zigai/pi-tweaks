@@ -28,13 +28,25 @@
     "*.json"
   ],
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "publishConfig": {
     "access": "public"
+  },
+  "scripts": {
+    "prepack": "node ../../scripts/prepare-bundled-dependencies.ts"
+  },
+  "dependencies": {
+    "@zigai/pi-extension-internals": "0.1.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
   },
+  "bundleDependencies": [
+    "@zigai/pi-extension-internals"
+  ],
   "pi": {
     "extensions": [
       "./src/index.ts"

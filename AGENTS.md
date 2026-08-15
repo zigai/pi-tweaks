@@ -26,6 +26,21 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 - Avoid `any`, `@ts-ignore`, and unchecked prototype assumptions. Use narrow structural types for Pi internals.
 - Existing commits use Conventional Commit subjects such as `fix(pi-tree): ...` and `feat(pi-mention-skill): ...`.
 
+## Module organization
+
+- Keep `src/index.ts` as the cohesive Pi-facing extension entrypoint, not a ceremonially thin dispatcher. It owns lifecycle registration, settings application, controller construction, patch installation, and resource disposal; a single narrow Pi adapter may live there when extracting it would create a one-to-one pass-through module. Split out domain rules, persistence, reusable rendering, and independently substantial or multi-target adapters.
+- Keep package source roots flat while modules remain cohesive. Create a capability subdirectory only when that capability genuinely spans roughly three or more files; do not add one-file directories.
+- Name modules for the boundary or capability they own, such as `model-registry-patch.ts`, `modes-store.ts`, or `right-message.ts`. Do not create generic `utils.ts`, `helpers.ts`, `types.ts`, or `constants.ts` dumping grounds; colocate narrow helpers, types, and constants with their owner.
+- Use `@zigai/pi-extension-internals` only for cross-extension composition protocols and guarded Pi-internal loading. Keep its API narrow; it must not become a general utility package. Every consuming extension must declare and bundle it as a runtime dependency.
+- Removable patch installers must return idempotent handles with explicit update and disposal behavior. Store each handle with the patch marker, retain the current policy in that module, and restore the predecessor safely when disposed.
+- Split tests by feature ownership. Reserve `index.test.ts` for composition and lifecycle behavior rather than collecting unrelated feature tests.
+
+## Package boundaries
+
+- Every published package must define an explicit `exports` map. Export only `"."` by default and add named subpaths such as `"./api"` only for intentional consumer APIs.
+- Never use broad `export *` barrels at a package boundary. Tests should import internal modules directly instead of widening the public API for test access.
+- Cross-package runtime imports are allowed only through a published package export. Do not import another package's `src/` files in runtime code.
+
 ## Extension-specific guidance
 
 - Pi packages are independently installable. Avoid adding cross-package runtime dependencies unless the target dependency is published and declared in the consuming package.
@@ -62,5 +77,5 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 ## Packaging notes
 
 - Package manifests include `files` allowlists. If a README references an asset that must be present in the npm tarball, verify with `npm pack --dry-run -w <workspace>` before changing the manifest.
-- Configurable packages must keep the shared settings dependency in `bundleDependencies` and run `scripts/prepare-settings-bundle.ts` from `prepack`; verify the packed file list contains `@zigai/pi-extension-settings` and its runtime files.
+- Packages with bundled runtime dependencies must list them in both `dependencies` and `bundleDependencies` and run `scripts/prepare-bundled-dependencies.ts` from `prepack`; verify each bundled dependency and its runtime files appear in the packed tarball.
 - Keep README install snippets and the root package table in sync when adding/removing packages.

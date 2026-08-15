@@ -3,13 +3,11 @@ import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-import {
-    DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
-    DEFAULT_PASTE_COLLAPSE_ENABLED,
-    DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
-    DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
-    DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
-} from "./patch-state.ts";
+export const DEFAULT_PASTE_COLLAPSE_ENABLED = true;
+export const DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD = 10;
+export const DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD = 1000;
+export const DEFAULT_PASTE_COLLAPSE_EXPAND_KEY: string | null = null;
+export const DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY = true;
 
 export type UiTweaksConfig = {
     readonly autocompleteAboveInput: boolean;

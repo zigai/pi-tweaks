@@ -1,20 +1,26 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadPiInternalModule } from "@zigai/pi-extension-internals";
 
-import type { ThemeModule, TreeSelectorModule } from "./types.ts";
+export type TreeSelectorModule = {
+    TreeSelectorComponent: new (
+        entries: unknown[],
+        selectedId: string | null,
+        height: number,
+        onSelect: () => undefined,
+        onCancel: () => undefined,
+        onLabel: () => undefined,
+        onDelete: undefined,
+        onFork: undefined,
+    ) => { getTreeList?: () => unknown };
+};
 
-async function resolvePiDistDir(): Promise<string> {
-    const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    return dirname(codingAgentEntry);
-}
-
-export function warnInternalPatchUnavailable(feature: string, error?: unknown): void {
-    let suffix = "";
-    if (error instanceof Error && error.message.length > 0) {
-        suffix = `: ${error.message}`;
-    }
-    console.warn(`[pi-tree] ${feature} unavailable; Pi internals may have changed${suffix}`);
-}
+export type ThemeModule = {
+    initTheme: (name: string | undefined, force: boolean) => void;
+    theme: {
+        fg: (role: string, text: string) => string;
+        bg: (role: string, text: string) => string;
+        bold: (text: string) => string;
+    };
+};
 
 function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
     if ((typeof value !== "object" || value === null) && typeof value !== "function") {
@@ -37,32 +43,29 @@ function isThemeModule(value: unknown): value is ThemeModule {
     );
 }
 
-function isUnknownArray(value: unknown): value is unknown[] {
-    return Array.isArray(value);
-}
-
 export async function loadTreeInternals(): Promise<[TreeSelectorModule, ThemeModule] | undefined> {
-    try {
-        const distDir = await resolvePiDistDir();
-        const treeSelectorPath = pathToFileURL(
-            join(distDir, "modes/interactive/components/tree-selector.js"),
-        ).href;
-        const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
+    const treeSelectorModule = await loadPiInternalModule(
+        "modes/interactive/components/tree-selector.js",
+        {
+            scope: "pi-tree",
+            feature: "tree selector patch",
+            parse: (module) => {
+                if (isTreeSelectorModule(module)) return module;
+                return undefined;
+            },
+        },
+    );
+    if (treeSelectorModule === undefined) return undefined;
 
-        const imports: unknown = await Promise.all([import(treeSelectorPath), import(themePath)]);
-        if (!isUnknownArray(imports)) {
-            warnInternalPatchUnavailable("tree selector patch");
+    const themeModule = await loadPiInternalModule("modes/interactive/theme/theme.js", {
+        scope: "pi-tree",
+        feature: "tree selector patch",
+        parse: (module) => {
+            if (isThemeModule(module)) return module;
             return undefined;
-        }
-        const treeSelectorModule = imports[0];
-        const themeModule = imports[1];
-        if (!isTreeSelectorModule(treeSelectorModule) || !isThemeModule(themeModule)) {
-            warnInternalPatchUnavailable("tree selector patch");
-            return undefined;
-        }
-        return [treeSelectorModule, themeModule];
-    } catch (error: unknown) {
-        warnInternalPatchUnavailable("tree selector patch", error);
-        return undefined;
-    }
+        },
+    });
+    if (themeModule === undefined) return undefined;
+
+    return [treeSelectorModule, themeModule];
 }

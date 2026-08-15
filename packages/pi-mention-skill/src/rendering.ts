@@ -1,5 +1,12 @@
-import { escapeRegExp } from "./util.ts";
-import type { EditorEnhancerContext } from "./types.ts";
+import { escapeRegExp } from "./mention-syntax.ts";
+
+type SkillMentionColorContext = {
+    readonly ui: {
+        readonly theme: {
+            fg(role: string, text: string): string;
+        };
+    };
+};
 
 export function isSkillMentionContext(text: string, trigger: string): boolean {
     return new RegExp(`(?:^|\\s)${escapeRegExp(trigger)}[a-z0-9-]*$`).test(text);
@@ -7,7 +14,7 @@ export function isSkillMentionContext(text: string, trigger: string): boolean {
 
 export function colorSkillMentions(
     line: string,
-    ctx: EditorEnhancerContext,
+    ctx: SkillMentionColorContext,
     trigger: string,
     skillNames: ReadonlySet<string>,
 ): string {

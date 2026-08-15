@@ -19,17 +19,15 @@ import { dirname, join } from "node:path";
 import { Type, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-import {
-    DEFAULT_MODE,
-    MAX_VISIBLE_LINES_SETTINGS_KEY,
-    MIN_VISIBLE_LINES,
-    PREVIEW_FULL_HEIGHT_SETTINGS_KEY,
-    PREVIEW_SETTINGS_KEY,
-    SETTINGS_KEY,
-    SETTINGS_LOCK_TIMEOUT_MS,
-    STALE_SETTINGS_LOCK_MS,
-} from "./constants.ts";
-import type { TreeTimestampMode } from "./types.ts";
+import { DEFAULT_MODE, type TreeTimestampMode } from "./timestamps.ts";
+
+const SETTINGS_KEY = "treeTimestampMode";
+const PREVIEW_SETTINGS_KEY = "treeSelectedPreview";
+const MAX_VISIBLE_LINES_SETTINGS_KEY = "treeMaxVisibleLines";
+const PREVIEW_FULL_HEIGHT_SETTINGS_KEY = "treePreviewFullHeight";
+const MIN_VISIBLE_LINES = 5;
+const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
+const STALE_SETTINGS_LOCK_MS = 30_000;
 
 const TreeTimestampModeSchema = Type.Union([
     Type.Literal("off"),

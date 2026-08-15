@@ -1,12 +1,16 @@
 import { CURSOR_MARKER, Input, sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
 
-import { DEFAULT_INPUT_PROMPT_PREFIX, getUiTweaksPatchState } from "./patch-state.ts";
+import {
+    installLinkedRenderPatch,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
-const INPUT_PROMPT_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.input-prompt-prefix-patched");
+export const DEFAULT_INPUT_PROMPT_PREFIX = "> ";
+const INPUT_PROMPT_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.input-prompt-prefix-patch");
 const graphemeSegmenter = new Intl.Segmenter();
 
 type InputRenderTarget = {
-    [INPUT_PROMPT_PATCH_KEY]?: true;
+    [INPUT_PROMPT_PATCH_KEY]?: InputPromptPrefixPatchRecord;
     render(width: number): string[];
 };
 
@@ -61,106 +65,117 @@ function isInputRenderTarget(value: unknown): value is InputRenderTarget {
     return typeof Reflect.get(value, "render") === "function";
 }
 
-/**
- * Sets the prefix used by Pi single-line input boxes.
- */
-export function setInputPromptPrefix(prefix: string): void {
-    getUiTweaksPatchState().inputPromptPrefix = normalizeInputPromptPrefix(prefix);
-}
+export type InputPromptPrefixConfig = { readonly inputPromptPrefix: string };
+export type InputPromptPrefixHandle = {
+    update(config: InputPromptPrefixConfig): void;
+    dispose(): void;
+};
+type InputPromptPrefixPatchRecord = {
+    readonly original: InputRenderTarget["render"];
+    readonly patch: LinkedMethodPatchHandle<InputRenderTarget, [number], string[]>;
+    readonly handle: InputPromptPrefixHandle;
+};
 
-export function getInputPromptPrefix(): string {
-    return getUiTweaksPatchState().inputPromptPrefix;
-}
-
-/**
- * Installs an idempotent patch for Pi TUI's single-line input prompt marker.
- */
-export function installInputPromptPrefixPatch(prototype: unknown = Input.prototype): void {
-    if (!isInputRenderTarget(prototype)) {
+/** Installs or updates the single-line input prompt patch. */
+export function installInputPromptPrefixPatch(
+    config: InputPromptPrefixConfig,
+    target: unknown = Input.prototype,
+): InputPromptPrefixHandle {
+    if (!isInputRenderTarget(target)) {
         warnInputPromptPrefixPatchUnavailable();
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
-    if (prototype[INPUT_PROMPT_PATCH_KEY] === true) {
-        return;
+    const installed = target[INPUT_PROMPT_PATCH_KEY];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
     }
-
-    const originalRenderValue: unknown = Reflect.get(prototype, "render");
-    if (typeof originalRenderValue !== "function") {
-        warnInputPromptPrefixPatchUnavailable("missing render");
-        return;
-    }
-    // SAFETY: The immediately preceding guard proves the private Input.render seam is callable.
-    const originalRender = originalRenderValue as InputRenderTarget["render"];
-    prototype.render = function inputPromptPrefixRender(
-        this: InputRenderTarget,
-        width: number,
-    ): string[] {
-        const value = readInputString(this, "value");
-        const cursor = readInputNumber(this, "cursor");
-        const focused = readInputBoolean(this, "focused");
-        if (value === undefined || cursor === undefined || focused === undefined) {
-            return originalRender.call(this, width);
-        }
-
-        const prompt = getUiTweaksPatchState().inputPromptPrefix;
-        const promptWidth = visibleWidth(prompt);
-        const availableWidth = width - promptWidth;
-        if (availableWidth <= 0) {
-            return [prompt];
-        }
-
-        let visibleText = "";
-        let cursorDisplay = cursor;
-        const totalWidth = visibleWidth(value);
-        if (totalWidth < availableWidth) {
-            visibleText = value;
-        } else {
-            let scrollWidth: number;
-            if (cursor === value.length) {
-                scrollWidth = availableWidth - 1;
-            } else {
-                scrollWidth = availableWidth;
-            }
-            const cursorCol = visibleWidth(value.slice(0, cursor));
-            if (scrollWidth > 0) {
-                const halfWidth = Math.floor(scrollWidth / 2);
-                let startCol = 0;
-                if (cursorCol < halfWidth) {
-                    startCol = 0;
-                } else if (cursorCol > totalWidth - halfWidth) {
-                    startCol = Math.max(0, totalWidth - scrollWidth);
-                } else {
-                    startCol = Math.max(0, cursorCol - halfWidth);
+    let current = { inputPromptPrefix: normalizeInputPromptPrefix(config.inputPromptPrefix) };
+    const patch = installLinkedRenderPatch(
+        target,
+        (predecessor) =>
+            function inputPromptPrefixRender(this: InputRenderTarget, width: number): string[] {
+                const value = readInputString(this, "value");
+                const cursor = readInputNumber(this, "cursor");
+                const focused = readInputBoolean(this, "focused");
+                if (value === undefined || cursor === undefined || focused === undefined) {
+                    return predecessor.call(this, width);
                 }
-                visibleText = sliceByColumn(value, startCol, scrollWidth, true);
-                const beforeCursor = sliceByColumn(
-                    value,
-                    startCol,
-                    Math.max(0, cursorCol - startCol),
-                    true,
-                );
-                cursorDisplay = beforeCursor.length;
-            } else {
-                visibleText = "";
-                cursorDisplay = 0;
-            }
-        }
 
-        const graphemes = [...graphemeSegmenter.segment(visibleText.slice(cursorDisplay))];
-        const cursorGrapheme = graphemes[0];
-        const beforeCursor = visibleText.slice(0, cursorDisplay);
-        const atCursor = cursorGrapheme?.segment ?? " ";
-        const afterCursor = visibleText.slice(cursorDisplay + atCursor.length);
-        let marker = "";
-        if (focused) {
-            marker = CURSOR_MARKER;
-        }
-        const cursorChar = `\x1b[7m${atCursor}\x1b[27m`;
-        const textWithCursor = beforeCursor + marker + cursorChar + afterCursor;
-        const visualLength = visibleWidth(textWithCursor);
-        const padding = " ".repeat(Math.max(0, availableWidth - visualLength));
-        return [prompt + textWithCursor + padding];
+                const prompt = current.inputPromptPrefix;
+                const promptWidth = visibleWidth(prompt);
+                const availableWidth = width - promptWidth;
+                if (availableWidth <= 0) {
+                    return [prompt];
+                }
+
+                let visibleText = "";
+                let cursorDisplay = cursor;
+                const totalWidth = visibleWidth(value);
+                if (totalWidth < availableWidth) {
+                    visibleText = value;
+                } else {
+                    let scrollWidth: number;
+                    if (cursor === value.length) {
+                        scrollWidth = availableWidth - 1;
+                    } else {
+                        scrollWidth = availableWidth;
+                    }
+                    const cursorCol = visibleWidth(value.slice(0, cursor));
+                    if (scrollWidth > 0) {
+                        const halfWidth = Math.floor(scrollWidth / 2);
+                        let startCol = 0;
+                        if (cursorCol < halfWidth) {
+                            startCol = 0;
+                        } else if (cursorCol > totalWidth - halfWidth) {
+                            startCol = Math.max(0, totalWidth - scrollWidth);
+                        } else {
+                            startCol = Math.max(0, cursorCol - halfWidth);
+                        }
+                        visibleText = sliceByColumn(value, startCol, scrollWidth, true);
+                        const beforeCursor = sliceByColumn(
+                            value,
+                            startCol,
+                            Math.max(0, cursorCol - startCol),
+                            true,
+                        );
+                        cursorDisplay = beforeCursor.length;
+                    } else {
+                        visibleText = "";
+                        cursorDisplay = 0;
+                    }
+                }
+
+                const graphemes = [...graphemeSegmenter.segment(visibleText.slice(cursorDisplay))];
+                const cursorGrapheme = graphemes[0];
+                const beforeCursor = visibleText.slice(0, cursorDisplay);
+                const atCursor = cursorGrapheme?.segment ?? " ";
+                const afterCursor = visibleText.slice(cursorDisplay + atCursor.length);
+                let marker = "";
+                if (focused) {
+                    marker = CURSOR_MARKER;
+                }
+                const cursorChar = `\x1b[7m${atCursor}\x1b[27m`;
+                const textWithCursor = beforeCursor + marker + cursorChar + afterCursor;
+                const visualLength = visibleWidth(textWithCursor);
+                const padding = " ".repeat(Math.max(0, availableWidth - visualLength));
+                return [prompt + textWithCursor + padding];
+            },
+    );
+    let disposed = false;
+    const handle: InputPromptPrefixHandle = {
+        update(next): void {
+            if (!disposed)
+                current = { inputPromptPrefix: normalizeInputPromptPrefix(next.inputPromptPrefix) };
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (target[INPUT_PROMPT_PATCH_KEY]?.handle === handle)
+                delete target[INPUT_PROMPT_PATCH_KEY];
+        },
     };
-
-    prototype[INPUT_PROMPT_PATCH_KEY] = true;
+    target[INPUT_PROMPT_PATCH_KEY] = { original: patch.predecessor, patch, handle };
+    return handle;
 }

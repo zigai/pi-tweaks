@@ -4,7 +4,7 @@ import { test } from "vitest";
 import { installLiveFooter } from "../src/footer-transition.ts";
 import type { PlainFooterTheme } from "../src/footer-rendering.ts";
 import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
-import type { FooterData } from "../src/types.ts";
+import type { FooterData } from "../src/footer-model.ts";
 
 type TestTui = {
     requestRender(): void;

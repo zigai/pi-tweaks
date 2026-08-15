@@ -1,6 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-import { ACTIVE_FOOTER_VARIANT, BRANCH_ICON } from "./constants.ts";
 import { getFooterSlotSnapshots, subscribeFooterSlotUpdates } from "./footer-slot-api.ts";
 import {
     createGitAheadBehindTracker,
@@ -18,7 +17,9 @@ import type {
     FooterSlotSnapshot,
     FooterSide,
     FooterVariant,
-} from "./types.ts";
+} from "./footer-model.ts";
+const ACTIVE_FOOTER_VARIANT = "plain" as const;
+const BRANCH_ICON = "";
 
 export type PlainFooterTheme = {
     fg(role: "muted" | "dim", text: string): string;

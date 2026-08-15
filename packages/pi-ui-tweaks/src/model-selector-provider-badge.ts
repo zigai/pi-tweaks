@@ -1,11 +1,12 @@
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-import { getUiTweaksPatchState } from "./patch-state.ts";
+import {
+    installLinkedMethodPatch,
+    loadPiInternalModule,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
 const MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY = Symbol.for(
-    "zigai.pi-ui-tweaks.model-selector-provider-badge-patched",
+    "zigai.pi-ui-tweaks.model-selector-provider-badge-patch",
 );
 
 type ModelItemLike = {
@@ -23,7 +24,7 @@ type ContainerLike = {
 };
 
 type ModelSelectorProviderBadgeTarget = {
-    [MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY]?: true;
+    [MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY]?: ModelSelectorProviderBadgeRecord;
     filteredModels?: unknown;
     listContainer?: ContainerLike;
     selectedIndex?: unknown;
@@ -32,10 +33,6 @@ type ModelSelectorProviderBadgeTarget = {
 
 type ThemeInstance = {
     fg(color: string, text: string): string;
-};
-
-type ThemeModule = {
-    theme?: ThemeInstance;
 };
 
 function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
@@ -93,11 +90,27 @@ function getListChildren(target: ModelSelectorProviderBadgeTarget): readonly unk
     return children;
 }
 
+export type ModelSelectorProviderBadgeConfig = {
+    readonly highlightSelectedModelProvider: boolean;
+};
+export type ModelSelectorProviderBadgeHandle = {
+    update(config: ModelSelectorProviderBadgeConfig): void;
+    dispose(): void;
+};
+type UpdateList = (this: ModelSelectorProviderBadgeTarget) => void;
+type ModelSelectorProviderBadgeRecord = {
+    readonly original: UpdateList;
+    readonly patch: LinkedMethodPatchHandle<ModelSelectorProviderBadgeTarget, [], void>;
+    readonly handle: ModelSelectorProviderBadgeHandle;
+};
+let currentProviderBadgeConfig: ModelSelectorProviderBadgeConfig = {
+    highlightSelectedModelProvider: true,
+};
 function highlightSelectedProviderBadge(
     target: ModelSelectorProviderBadgeTarget,
     theme: ThemeInstance,
 ): void {
-    if (!getUiTweaksPatchState().highlightSelectedModelProvider) return;
+    if (!currentProviderBadgeConfig.highlightSelectedModelProvider) return;
 
     const selectedModel = getSelectedModelItem(target);
     if (selectedModel === undefined) return;
@@ -116,78 +129,79 @@ function highlightSelectedProviderBadge(
     }
 }
 
-async function resolvePiDistDir(): Promise<string> {
-    const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    return dirname(codingAgentEntry);
+async function loadTheme(): Promise<ThemeInstance | undefined> {
+    return loadPiInternalModule("modes/interactive/theme/theme.js", {
+        scope: "pi-ui-tweaks",
+        feature: "selected model provider badge patch",
+        parse(module): ThemeInstance | undefined {
+            const theme = getUnknownProperty(module, "theme");
+            if ((typeof theme !== "object" && typeof theme !== "function") || theme === null)
+                return undefined;
+            return {
+                fg(color, text): string {
+                    const fg = getUnknownProperty(theme, "fg");
+                    if (typeof fg !== "function") return text;
+                    const styled: unknown = Reflect.apply(fg, theme, [color, text]);
+                    if (typeof styled === "string") return styled;
+                    return text;
+                },
+            };
+        },
+    });
 }
 
-async function loadThemeModule(): Promise<ThemeModule | undefined> {
-    const distDir = await resolvePiDistDir();
-    const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
-    const themeModule: unknown = (await import(themePath)) as unknown;
-    const theme = getUnknownProperty(themeModule, "theme");
-    if ((typeof theme !== "object" && typeof theme !== "function") || theme === null) {
-        return undefined;
+/** Installs or updates the selected-provider badge patch. */
+export async function installModelSelectorProviderBadgePatch(
+    config: ModelSelectorProviderBadgeConfig,
+    target: unknown = ModelSelectorComponent.prototype,
+    providedTheme?: ThemeInstance,
+): Promise<ModelSelectorProviderBadgeHandle> {
+    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
+        warnModelSelectorProviderBadgePatchUnavailable();
+        return { update(): void {}, dispose(): void {} };
     }
-    return {
-        theme: {
-            fg(color, text): string {
-                const fg = getUnknownProperty(theme, "fg");
-                if (typeof fg !== "function") return text;
-                const styled: unknown = Reflect.apply(fg, theme, [color, text]) as unknown;
-                if (typeof styled !== "string") return text;
-                return styled;
+    const updateList: unknown = Reflect.get(target, "updateList");
+    if (typeof updateList !== "function") {
+        warnModelSelectorProviderBadgePatchUnavailable(new Error("missing updateList"));
+        return { update(): void {}, dispose(): void {} };
+    }
+    // SAFETY: The runtime guard proves updateList is callable.
+    const prototype = target as ModelSelectorProviderBadgeTarget & { updateList: UpdateList };
+    const installed = prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
+    }
+    const theme = providedTheme ?? (await loadTheme());
+    if (theme === undefined) return { update(): void {}, dispose(): void {} };
+    currentProviderBadgeConfig = config;
+    const patch = installLinkedMethodPatch(
+        prototype,
+        "updateList",
+        (predecessor) =>
+            function selectedProviderBadgeUpdateList(this: ModelSelectorProviderBadgeTarget): void {
+                predecessor.call(this);
+                highlightSelectedProviderBadge(this, theme);
             },
+    );
+    let disposed = false;
+    const handle: ModelSelectorProviderBadgeHandle = {
+        update(next): void {
+            if (!disposed) currentProviderBadgeConfig = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY]?.handle === handle) {
+                delete prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY];
+            }
         },
     };
-}
-
-/**
- * Sets whether the selected model row should accent its provider badge.
- */
-export function setHighlightSelectedModelProvider(enabled: boolean): void {
-    getUiTweaksPatchState().highlightSelectedModelProvider = enabled;
-}
-
-/**
- * Installs an idempotent patch that highlights the selected model row's provider badge.
- */
-export async function installModelSelectorProviderBadgePatch(
-    prototype?: ModelSelectorProviderBadgeTarget,
-    providedTheme?: ThemeInstance,
-): Promise<void> {
-    try {
-        const target = prototype ?? ModelSelectorComponent.prototype;
-        if ((typeof target !== "object" && typeof target !== "function") || target === null) {
-            warnModelSelectorProviderBadgePatchUnavailable();
-            return;
-        }
-        let theme = providedTheme;
-        theme ??= (await loadThemeModule())?.theme;
-        if (theme === undefined) {
-            warnModelSelectorProviderBadgePatchUnavailable();
-            return;
-        }
-
-        const originalUpdateListValue: unknown = Reflect.get(target, "updateList") as unknown;
-        if (typeof originalUpdateListValue !== "function") {
-            warnModelSelectorProviderBadgePatchUnavailable(new Error("missing updateList"));
-            return;
-        }
-
-        // SAFETY: This adapter checked updateList before patching and consumes only the
-        // optional model-selector members represented by its minimal target type.
-        prototype = target as ModelSelectorProviderBadgeTarget;
-        if (prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY] === true) return;
-
-        prototype.updateList = function selectedProviderBadgeUpdateList(
-            this: ModelSelectorProviderBadgeTarget,
-        ): void {
-            Reflect.apply(originalUpdateListValue, this, []);
-            highlightSelectedProviderBadge(this, theme);
-        };
-        prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY] = true;
-    } catch (error: unknown) {
-        warnModelSelectorProviderBadgePatchUnavailable(error);
-    }
+    prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY] = {
+        original: patch.predecessor,
+        patch,
+        handle,
+    };
+    return handle;
 }

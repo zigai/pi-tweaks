@@ -27,13 +27,17 @@
     "*.json"
   ],
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "prepack": "node ../../scripts/prepare-settings-bundle.ts"
+    "prepack": "node ../../scripts/prepare-bundled-dependencies.ts"
   },
   "dependencies": {
+    "@zigai/pi-extension-internals": "0.1.0",
     "@zigai/pi-extension-settings": "0.4.2"
   },
   "peerDependencies": {
@@ -43,6 +47,7 @@
     "typebox": "*"
   },
   "bundleDependencies": [
+    "@zigai/pi-extension-internals",
     "@zigai/pi-extension-settings"
   ],
   "pi": {

@@ -1,6 +1,5 @@
 import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { getPiGlobalSettingsPath, loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
     closeSync,
     mkdirSync,
@@ -14,7 +13,7 @@ import {
 import { dirname, join } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { ALL_THINKING_LEVELS } from "./constants.ts";
+import { ALL_THINKING_LEVELS } from "./modes.ts";
 
 const MODE_COLOR_EXAMPLES = [
     "accent",
@@ -187,43 +186,16 @@ const SettingsObjectSchema = Type.Object(
     },
     { additionalProperties: false },
 );
-type SettingsReadContext = {
-    cwd: string;
-    projectTrusted: boolean;
+export type SettingsReadContext = {
+    readonly cwd: string;
+    readonly projectTrusted: boolean;
 };
-
-let settingsReadContext: SettingsReadContext | undefined;
-let cachedSettings:
-    | {
-          useThinkingBorderColors: boolean;
-          showThinkingLevelStatus: boolean;
-      }
-    | undefined;
-
-function isProjectTrusted(ctx: ExtensionContext): boolean {
-    return ctx.isProjectTrusted();
-}
-
-export function setSettingsContext(ctx: ExtensionContext): void {
-    const next: SettingsReadContext = {
-        cwd: ctx.cwd,
-        projectTrusted: isProjectTrusted(ctx),
-    };
-    if (
-        settingsReadContext?.cwd !== next.cwd ||
-        settingsReadContext.projectTrusted !== next.projectTrusted
-    ) {
-        settingsReadContext = next;
-        cachedSettings = undefined;
-    }
-}
 
 function getSettingsPath(): string {
     return getPiGlobalSettingsPath(EXTENSION_ID);
 }
 
-export function loadModelModesSettings() {
-    const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
+export function loadModelModesSettings(context: SettingsReadContext) {
     return loadPiExtensionSettings(
         modelModesSettingsDefinition,
         {
@@ -386,8 +358,11 @@ function readSettingsObject(
     return {};
 }
 
-function updateSettingsObject(update: (settings: Record<string, unknown>) => void): void {
-    loadModelModesSettings();
+function updateSettingsObject(
+    context: SettingsReadContext,
+    update: (settings: Record<string, unknown>) => void,
+): void {
+    loadModelModesSettings(context);
     const settingsPath = getSettingsPath();
     withSettingsLock(settingsPath, () => {
         const settings = readSettingsObject(settingsPath, { throwOnInvalid: true });
@@ -407,44 +382,43 @@ export function resolveModeShortcuts(value: unknown): ModeShortcuts {
     return parseModeShortcuts(value);
 }
 
-export function getConfiguredModeShortcuts(): ModeShortcuts {
-    return resolveModeShortcuts(loadModelModesSettings().globalSettingsLayer?.shortcuts);
+export function getConfiguredModeShortcuts(context: SettingsReadContext): ModeShortcuts {
+    return resolveModeShortcuts(loadModelModesSettings(context).globalSettingsLayer?.shortcuts);
 }
 
-function readModeSettings(): {
+function readModeSettings(context: SettingsReadContext): {
     useThinkingBorderColors: boolean;
     showThinkingLevelStatus: boolean;
 } {
-    if (cachedSettings !== undefined) return cachedSettings;
-
-    const settings = loadModelModesSettings().settings;
-    cachedSettings = {
+    const settings = loadModelModesSettings(context).settings;
+    return {
         useThinkingBorderColors: settings[USE_THINKING_BORDER_COLORS_SETTINGS_KEY],
         showThinkingLevelStatus: settings[SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY],
     };
-    return cachedSettings;
 }
 
-export function shouldUseThinkingBorderColors(): boolean {
-    return readModeSettings().useThinkingBorderColors;
+export function shouldUseThinkingBorderColors(context: SettingsReadContext): boolean {
+    return readModeSettings(context).useThinkingBorderColors;
 }
 
-export function shouldShowThinkingLevelStatus(): boolean {
-    return readModeSettings().showThinkingLevelStatus;
+export function shouldShowThinkingLevelStatus(context: SettingsReadContext): boolean {
+    return readModeSettings(context).showThinkingLevelStatus;
 }
 
-export function setUseThinkingBorderColors(useThinkingBorderColors: boolean): void {
-    updateSettingsObject((settings) => {
+export function setUseThinkingBorderColors(
+    context: SettingsReadContext,
+    useThinkingBorderColors: boolean,
+): void {
+    updateSettingsObject(context, (settings) => {
         settings[USE_THINKING_BORDER_COLORS_SETTINGS_KEY] = useThinkingBorderColors;
     });
-
-    cachedSettings = undefined;
 }
 
-export function setShowThinkingLevelStatus(showThinkingLevelStatus: boolean): void {
-    updateSettingsObject((settings) => {
+export function setShowThinkingLevelStatus(
+    context: SettingsReadContext,
+    showThinkingLevelStatus: boolean,
+): void {
+    updateSettingsObject(context, (settings) => {
         settings[SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY] = showThinkingLevelStatus;
     });
-
-    cachedSettings = undefined;
 }

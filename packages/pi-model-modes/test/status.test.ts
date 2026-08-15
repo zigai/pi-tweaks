@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { applyThinkingLevelStatusPatch, restoreThinkingLevelStatusPatch } from "../src/status.ts";
+import { applyThinkingLevelStatusPatch } from "../src/status.ts";
 
 type TestInteractiveModePrototype = {
     showStatus(message: string): void;
@@ -14,13 +14,9 @@ test("thinking level status patch uses latest settings reader after reinstall", 
             messages.push(message);
         },
     };
-    const module = {
-        InteractiveMode: {
-            prototype,
-        },
-    };
+    const module = { InteractiveMode: { prototype } };
 
-    await applyThinkingLevelStatusPatch({
+    const restore = await applyThinkingLevelStatusPatch({
         async loadInteractiveModeModule() {
             return module;
         },
@@ -28,7 +24,6 @@ test("thinking level status patch uses latest settings reader after reinstall", 
             return false;
         },
     });
-
     prototype.showStatus("Thinking level: high");
     assert.deepEqual(messages, []);
 
@@ -40,45 +35,31 @@ test("thinking level status patch uses latest settings reader after reinstall", 
             return true;
         },
     });
-
     prototype.showStatus("Thinking level: high");
     assert.deepEqual(messages, ["Thinking level: high"]);
-    restoreThinkingLevelStatusPatch();
+    restore();
 });
 
-test("thinking level status patch replaces malformed shared state", async () => {
-    const stateKey = Symbol.for("zigai.pi-model-modes.thinking-status-state");
-    Reflect.set(globalThis, stateKey, {
-        shouldShowThinkingLevelStatus() {
-            return true;
-        },
-        patch: {
-            prototype: null,
-            originalShowStatus: "not callable",
-            patchedShowStatus: undefined,
-        },
-    });
+test("thinking level status patch restores its linked predecessor", async () => {
     const messages: string[] = [];
     const prototype: TestInteractiveModePrototype = {
         showStatus(message: string) {
             messages.push(message);
         },
     };
+    const original = Reflect.get(prototype, "showStatus");
 
-    try {
-        await applyThinkingLevelStatusPatch({
-            async loadInteractiveModeModule() {
-                return { InteractiveMode: { prototype } };
-            },
-            shouldShowThinkingLevelStatus() {
-                return true;
-            },
-        });
+    const restore = await applyThinkingLevelStatusPatch({
+        async loadInteractiveModeModule() {
+            return { InteractiveMode: { prototype } };
+        },
+        shouldShowThinkingLevelStatus() {
+            return false;
+        },
+    });
+    restore();
 
-        prototype.showStatus("Thinking level: medium");
-        assert.deepEqual(messages, ["Thinking level: medium"]);
-    } finally {
-        restoreThinkingLevelStatusPatch();
-        Reflect.deleteProperty(globalThis, stateKey);
-    }
+    assert.equal(Reflect.get(prototype, "showStatus"), original);
+    prototype.showStatus("Thinking level: medium");
+    assert.deepEqual(messages, ["Thinking level: medium"]);
 });

@@ -9,7 +9,7 @@ import {
     listProjectDirectories,
     resolveProjectRoot,
 } from "../src/projects.ts";
-import type { MentionProjectSettings } from "../src/types.ts";
+import type { MentionProjectSettings } from "../src/settings.ts";
 
 function settings(
     roots: string[],

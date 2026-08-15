@@ -1,95 +1,82 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+    installLinkedMethodPatch,
+    loadPiInternalModule,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
-import { getUiTweaksPatchState } from "./patch-state.ts";
-
-const THEME_FG_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.neutral-border-color-patched");
-
+const THEME_FG_PATCH = Symbol.for("zigai.pi-ui-tweaks.neutral-border-color-patch");
+export type NeutralBorderColorConfig = { readonly neutralBorderColor: boolean };
+export type NeutralBorderColorHandle = {
+    update(config: NeutralBorderColorConfig): void;
+    dispose(): void;
+};
+type ThemeInstance = { fg(color: string, text: string): string };
 type ThemePrototype = {
-    [THEME_FG_PATCH_KEY]?: true;
     fg(this: ThemeInstance, color: string, text: string): string;
+    [THEME_FG_PATCH]?: NeutralBorderPatchRecord;
 };
-
-type ThemeInstance = {
-    fg(color: string, text: string): string;
+type NeutralBorderPatchRecord = {
+    readonly original: ThemePrototype["fg"];
+    readonly patch: LinkedMethodPatchHandle<ThemeInstance, [string, string], string>;
+    readonly handle: NeutralBorderColorHandle;
 };
-
 function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function")
         return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
+    return Reflect.get(value, key);
 }
-
-function warnNeutralBorderPatchUnavailable(error?: unknown): void {
-    let suffix = "";
-    if (error instanceof Error && error.message.length > 0) {
-        suffix = `: ${error.message}`;
-    }
-    console.warn(
-        `[pi-ui-tweaks] neutral border color patch unavailable; Pi internals may have changed${suffix}`,
+function isThemePrototype(value: unknown): value is ThemePrototype {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        typeof Reflect.get(value, "fg") === "function"
     );
 }
 
-function isThemePrototype(value: unknown): value is ThemePrototype {
-    if (typeof value !== "object" || value === null) {
-        return false;
+/** Installs or updates the neutral border-color patch. */
+export async function installNeutralBorderColorPatch(
+    config: NeutralBorderColorConfig,
+): Promise<NeutralBorderColorHandle> {
+    const prototype = await loadPiInternalModule("modes/interactive/theme/theme.js", {
+        scope: "pi-ui-tweaks",
+        feature: "neutral border color patch",
+        parse(module): ThemePrototype | undefined {
+            const theme = getUnknownProperty(module, "Theme");
+            const candidate = getUnknownProperty(theme, "prototype");
+            if (isThemePrototype(candidate)) return candidate;
+            return undefined;
+        },
+    });
+    if (prototype === undefined) return { update(): void {}, dispose(): void {} };
+    const installed = prototype[THEME_FG_PATCH];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
     }
-    return typeof Reflect.get(value, "fg") === "function";
-}
-
-async function resolvePiDistDir(): Promise<string> {
-    const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    return dirname(codingAgentEntry);
-}
-
-/**
- * Sets whether theme border colors should render as normal text color.
- */
-export function setNeutralBorderColor(enabled: boolean): void {
-    getUiTweaksPatchState().neutralBorderColor = enabled;
-}
-
-/**
- * Installs an idempotent patch that maps Pi border theme tokens away from blue.
- */
-export async function installNeutralBorderColorPatch(): Promise<void> {
-    try {
-        const distDir = await resolvePiDistDir();
-        const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
-        const themeModule: unknown = (await import(themePath)) as unknown;
-        const theme = getUnknownProperty(themeModule, "Theme");
-        const prototype = getUnknownProperty(theme, "prototype");
-        if (!isThemePrototype(prototype)) {
-            warnNeutralBorderPatchUnavailable();
-            return;
-        }
-        if (prototype[THEME_FG_PATCH_KEY] === true) {
-            return;
-        }
-
-        const originalFgValue: unknown = Reflect.get(prototype, "fg");
-        if (typeof originalFgValue !== "function") {
-            warnNeutralBorderPatchUnavailable();
-            return;
-        }
-        // SAFETY: The immediately preceding runtime guard proves the private Theme.fg seam is callable.
-        const originalFg = originalFgValue as ThemePrototype["fg"];
-        prototype.fg = function neutralBorderFg(
-            this: ThemeInstance,
-            color: string,
-            text: string,
-        ): string {
-            if (
-                getUiTweaksPatchState().neutralBorderColor &&
-                (color === "border" || color === "borderMuted")
-            ) {
-                return originalFg.call(this, "text", text);
-            }
-            return originalFg.call(this, color, text);
-        };
-        prototype[THEME_FG_PATCH_KEY] = true;
-    } catch (error: unknown) {
-        warnNeutralBorderPatchUnavailable(error);
-    }
+    let current = config;
+    const patch = installLinkedMethodPatch(
+        prototype,
+        "fg",
+        (predecessor) =>
+            function neutralBorderFg(this: ThemeInstance, color: string, text: string): string {
+                if (current.neutralBorderColor && (color === "border" || color === "borderMuted")) {
+                    return predecessor.call(this, "text", text);
+                }
+                return predecessor.call(this, color, text);
+            },
+    );
+    let disposed = false;
+    const handle: NeutralBorderColorHandle = {
+        update(next): void {
+            if (!disposed) current = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[THEME_FG_PATCH]?.handle === handle) delete prototype[THEME_FG_PATCH];
+        },
+    };
+    prototype[THEME_FG_PATCH] = { original: patch.predecessor, patch, handle };
+    return handle;
 }

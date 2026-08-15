@@ -1,28 +1,26 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { shouldShowThinkingLevelStatus } from "./settings.ts";
+import {
+    installLinkedMethodPatch,
+    loadPiInternalModule,
+    warnPiInternalPatchUnavailable,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
 const STATUS_PATCH_MARKER = Symbol.for("zigai.pi-model-modes.thinking-status-patch");
-const STATUS_PATCH_STATE = Symbol.for("zigai.pi-model-modes.thinking-status-state");
 const THINKING_LEVEL_STATUS_PREFIX = "Thinking level: ";
+const PATCH_SCOPE = "pi-model-modes";
+const PATCH_FEATURE = "thinking-level status patch";
 
 type InteractiveModePrototype = {
     showStatus(message: string): void;
-    [STATUS_PATCH_MARKER]?: true;
-};
-
-type StatusPatchRecord = {
-    prototype: InteractiveModePrototype;
-    originalShowStatus: ShowStatus;
-    patchedShowStatus: ShowStatus;
-};
-
-type StatusPatchState = {
-    shouldShowThinkingLevelStatus: () => boolean;
-    patch?: StatusPatchRecord;
+    [STATUS_PATCH_MARKER]?: StatusPatchState;
 };
 
 type ShowStatus = (this: InteractiveModePrototype, message: string) => void;
+
+type StatusPatchState = {
+    readonly predicate: { current: () => boolean };
+    readonly handle: LinkedMethodPatchHandle<InteractiveModePrototype, [message: string], void>;
+};
 
 type ThinkingLevelStatusPatchOptions = {
     readonly loadInteractiveModeModule?: () => Promise<unknown>;
@@ -36,133 +34,90 @@ function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
     return Reflect.get(value, key) as unknown;
 }
 
-function isInteractiveModePrototype(value: unknown): value is InteractiveModePrototype {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return false;
-    }
-    return typeof getUnknownProperty(value, "showStatus") === "function";
-}
-
-function isStatusPatchRecord(value: unknown): value is StatusPatchRecord {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return false;
-    }
-    return (
-        isInteractiveModePrototype(getUnknownProperty(value, "prototype")) &&
-        typeof getUnknownProperty(value, "originalShowStatus") === "function" &&
-        typeof getUnknownProperty(value, "patchedShowStatus") === "function"
-    );
-}
-
 function isStatusPatchState(value: unknown): value is StatusPatchState {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return false;
-    }
-    if (typeof getUnknownProperty(value, "shouldShowThinkingLevelStatus") !== "function") {
-        return false;
-    }
-    const patch = getUnknownProperty(value, "patch");
-    return patch === undefined || isStatusPatchRecord(patch);
-}
-
-function getStatusPatchState(): StatusPatchState {
-    const existing: unknown = Reflect.get(globalThis, STATUS_PATCH_STATE) as unknown;
-    if (isStatusPatchState(existing)) return existing;
-
-    const patchState: StatusPatchState = {
-        shouldShowThinkingLevelStatus: () => true,
-    };
-    Reflect.set(globalThis, STATUS_PATCH_STATE, patchState);
-    return patchState;
-}
-
-function warnStatusPatchUnavailable(error?: unknown): void {
-    let suffix = "";
-    if (error instanceof Error && error.message.length > 0) {
-        suffix = `: ${error.message}`;
-    }
-    console.warn(
-        `[pi-model-modes] thinking-level status patch unavailable; Pi internals may have changed${suffix}`,
+    const predicate = getUnknownProperty(value, "predicate");
+    const handle = getUnknownProperty(value, "handle");
+    return (
+        typeof getUnknownProperty(predicate, "current") === "function" &&
+        typeof getUnknownProperty(handle, "dispose") === "function"
     );
 }
 
-export function restoreThinkingLevelStatusPatch(): void {
-    const patchState = getStatusPatchState();
-    const patch = patchState.patch;
-    if (patch === undefined) {
+function parseInteractiveModePrototype(module: unknown): InteractiveModePrototype | undefined {
+    const interactiveMode = getUnknownProperty(module, "InteractiveMode");
+    const prototype = getUnknownProperty(interactiveMode, "prototype");
+    if (
+        ((typeof prototype === "object" && prototype !== null) ||
+            typeof prototype === "function") &&
+        typeof getUnknownProperty(prototype, "showStatus") === "function"
+    ) {
+        return prototype as InteractiveModePrototype;
+    }
+    return undefined;
+}
+
+async function loadInteractiveModePrototype(): Promise<InteractiveModePrototype | undefined> {
+    return loadPiInternalModule("modes/interactive/interactive-mode.js", {
+        scope: PATCH_SCOPE,
+        feature: PATCH_FEATURE,
+        parse: parseInteractiveModePrototype,
+    });
+}
+
+export function restoreThinkingLevelStatusPatch(prototype?: InteractiveModePrototype): void {
+    if (prototype === undefined) return;
+    const state: unknown = prototype[STATUS_PATCH_MARKER];
+    if (!isStatusPatchState(state)) {
+        delete prototype[STATUS_PATCH_MARKER];
         return;
     }
-
-    if (patch.prototype.showStatus === patch.patchedShowStatus) {
-        patch.prototype.showStatus = patch.originalShowStatus;
-    }
-    delete patch.prototype[STATUS_PATCH_MARKER];
-    patchState.patch = undefined;
-}
-
-async function loadInteractiveModeModule(): Promise<unknown> {
-    try {
-        const codingAgentEntry = fileURLToPath(
-            import.meta.resolve("@earendil-works/pi-coding-agent"),
-        );
-        const distDir = dirname(codingAgentEntry);
-        const interactiveModePath = pathToFileURL(
-            join(distDir, "modes/interactive/interactive-mode.js"),
-        ).href;
-        return (await import(interactiveModePath)) as unknown;
-    } catch (error: unknown) {
-        warnStatusPatchUnavailable(error);
-        return undefined;
-    }
+    state.handle.dispose();
+    delete prototype[STATUS_PATCH_MARKER];
 }
 
 export async function applyThinkingLevelStatusPatch(
     options: ThinkingLevelStatusPatchOptions = {},
-): Promise<void> {
-    const patchState = getStatusPatchState();
-    patchState.shouldShowThinkingLevelStatus =
-        options.shouldShowThinkingLevelStatus ?? shouldShowThinkingLevelStatus;
-
-    const loadModule = options.loadInteractiveModeModule ?? loadInteractiveModeModule;
-    const module = await loadModule();
-    const interactiveMode = getUnknownProperty(module, "InteractiveMode");
-    const prototypeValue = getUnknownProperty(interactiveMode, "prototype");
-    if (!isInteractiveModePrototype(prototypeValue)) {
-        warnStatusPatchUnavailable(new Error("InteractiveMode.showStatus is not a function"));
-        return;
+): Promise<() => void> {
+    let prototype: InteractiveModePrototype | undefined;
+    if (options.loadInteractiveModeModule === undefined) {
+        prototype = await loadInteractiveModePrototype();
+    } else {
+        prototype = parseInteractiveModePrototype(await options.loadInteractiveModeModule());
     }
-    const prototype = prototypeValue;
-    if (patchState.patch !== undefined && patchState.patch.prototype !== prototype) {
-        restoreThinkingLevelStatusPatch();
-    }
-    if (prototype[STATUS_PATCH_MARKER] === true) return;
-
-    const showStatusDescriptor = Object.getOwnPropertyDescriptor(prototype, "showStatus");
-    const showStatus: unknown = showStatusDescriptor?.value;
-    if (typeof showStatus !== "function") {
-        warnStatusPatchUnavailable(new Error("InteractiveMode.showStatus descriptor is invalid"));
-        return;
-    }
-
-    // SAFETY: The immediately preceding descriptor check proves the private showStatus seam is callable.
-    const typedShowStatus = showStatus as ShowStatus;
-    const patchedShowStatus = function patchedShowStatus(
-        this: InteractiveModePrototype,
-        message: string,
-    ): void {
-        if (
-            message.startsWith(THINKING_LEVEL_STATUS_PREFIX) &&
-            patchState.shouldShowThinkingLevelStatus() === false
-        ) {
-            return;
+    if (prototype === undefined) {
+        if (options.loadInteractiveModeModule !== undefined) {
+            warnPiInternalPatchUnavailable(PATCH_SCOPE, PATCH_FEATURE);
         }
-        typedShowStatus.call(this, message);
+        return () => {};
+    }
+
+    const existing: unknown = prototype[STATUS_PATCH_MARKER];
+    if (isStatusPatchState(existing)) {
+        existing.predicate.current =
+            options.shouldShowThinkingLevelStatus ?? existing.predicate.current;
+        return () => restoreThinkingLevelStatusPatch(prototype);
+    }
+    if (existing !== undefined) {
+        delete prototype[STATUS_PATCH_MARKER];
+    }
+
+    const predicate = {
+        current: options.shouldShowThinkingLevelStatus ?? (() => true),
     };
-    prototype.showStatus = patchedShowStatus;
-    prototype[STATUS_PATCH_MARKER] = true;
-    patchState.patch = {
+    const handle = installLinkedMethodPatch(
         prototype,
-        originalShowStatus: typedShowStatus,
-        patchedShowStatus,
-    };
+        "showStatus",
+        (predecessor): ShowStatus =>
+            function patchedShowStatus(message: string): void {
+                if (
+                    message.startsWith(THINKING_LEVEL_STATUS_PREFIX) &&
+                    predicate.current() === false
+                ) {
+                    return;
+                }
+                predecessor.call(this, message);
+            },
+    );
+    prototype[STATUS_PATCH_MARKER] = { predicate, handle };
+    return () => restoreThinkingLevelStatusPatch(prototype);
 }

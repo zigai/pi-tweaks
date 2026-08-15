@@ -3,7 +3,7 @@ import { test, vi } from "vitest";
 
 import { calculatePreviewLayout, getPreviewText, padToWidth } from "../src/preview.ts";
 import { cycleMode, formatEntryTimestamp } from "../src/timestamps.ts";
-import type { TreeNode } from "../src/types.ts";
+import type { TreeNode } from "../src/tree-node.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 

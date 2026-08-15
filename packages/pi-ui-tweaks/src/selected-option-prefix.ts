@@ -1,18 +1,21 @@
 import { SelectList, truncateToWidth, visibleWidth, type SelectItem } from "@earendil-works/pi-tui";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+    installLinkedMethodPatch,
+    loadPiInternalModule,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
-import { DEFAULT_SELECTED_OPTION_PREFIX, getUiTweaksPatchState } from "./patch-state.ts";
+export const DEFAULT_SELECTED_OPTION_PREFIX = "→ ";
 
 const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
 const SELECT_LIST_PATCH_KEY = Symbol.for(
-    "zigai.pi-ui-tweaks.selected-option-prefix-select-list-patched",
+    "zigai.pi-ui-tweaks.selected-option-prefix-select-list-patch",
 );
-const THEME_FG_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.selected-option-prefix-theme-fg-patched");
+const THEME_FG_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.selected-option-prefix-theme-fg-patch");
 
 type SelectListRenderTarget = {
-    [SELECT_LIST_PATCH_KEY]?: true;
+    [SELECT_LIST_PATCH_KEY]?: SelectedOptionSelectListRecord;
     theme: {
         selectedText(text: string): string;
         description(text: string): string;
@@ -33,7 +36,7 @@ type SelectListRenderTarget = {
 };
 
 type ThemePrototype = {
-    [THEME_FG_PATCH_KEY]?: true;
+    [THEME_FG_PATCH_KEY]?: SelectedOptionThemeRecord;
     fg(this: ThemeInstance, color: string, text: string): string;
 };
 
@@ -56,10 +59,6 @@ function normalizeSelectedOptionPrefix(prefix: string): string {
         return prefix;
     }
     return `${prefix} `;
-}
-
-function getUnselectedOptionPrefix(): string {
-    return " ".repeat(Math.max(1, visibleWidth(getUiTweaksPatchState().selectedOptionPrefix)));
 }
 
 function warnSelectedOptionPrefixPatchUnavailable(error?: unknown): void {
@@ -89,129 +88,190 @@ function isThemePrototype(value: unknown): value is ThemePrototype {
     return typeof Reflect.get(value, "fg") === "function";
 }
 
-async function resolvePiDistDir(): Promise<string> {
-    const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    return dirname(codingAgentEntry);
-}
-
-/**
- * Sets the prefix used for selected rows in Pi selector UIs.
- */
-export function setSelectedOptionPrefix(prefix: string): void {
-    getUiTweaksPatchState().selectedOptionPrefix = normalizeSelectedOptionPrefix(prefix);
-}
-
-export function getSelectedOptionPrefix(): string {
-    return getUiTweaksPatchState().selectedOptionPrefix;
+export type SelectedOptionPrefixConfig = { readonly selectedOptionPrefix: string };
+export type SelectedOptionPrefixHandle = {
+    update(config: SelectedOptionPrefixConfig): void;
+    dispose(): void;
+};
+type RenderItem = SelectListRenderTarget["renderItem"];
+type SelectedOptionSelectListRecord = {
+    readonly original: RenderItem;
+    readonly patch: LinkedMethodPatchHandle<SelectListRenderTarget, Parameters<RenderItem>, string>;
+    readonly handle: SelectedOptionPrefixHandle;
+};
+type SelectedOptionThemeRecord = {
+    readonly original: ThemePrototype["fg"];
+    readonly patch: LinkedMethodPatchHandle<ThemeInstance, [string, string], string>;
+    readonly handle: SelectedOptionPrefixHandle;
+};
+let currentSelectedOptionConfig: SelectedOptionPrefixConfig = {
+    selectedOptionPrefix: DEFAULT_SELECTED_OPTION_PREFIX,
+};
+function getUnselectedOptionPrefix(): string {
+    return " ".repeat(Math.max(1, visibleWidth(currentSelectedOptionConfig.selectedOptionPrefix)));
 }
 
 /**
  * Installs an idempotent patch for Pi TUI's generic select list marker.
  */
 export function installSelectedOptionPrefixSelectListPatch(
+    config: SelectedOptionPrefixConfig,
     prototype: unknown = SelectList.prototype,
-): void {
+): SelectedOptionPrefixHandle {
     if (!isSelectListRenderTarget(prototype)) {
         warnSelectedOptionPrefixPatchUnavailable();
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
-    if (prototype[SELECT_LIST_PATCH_KEY] === true) {
-        return;
+    const installed = prototype[SELECT_LIST_PATCH_KEY];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
     }
-
-    prototype.renderItem = function selectedOptionPrefixRenderItem(
-        this: SelectListRenderTarget,
-        item: SelectItem,
-        isSelected: boolean,
-        width: number,
-        descriptionSingleLine: string | undefined,
-        primaryColumnWidth: number,
-    ): string {
-        let prefix: string;
-        if (isSelected) {
-            prefix = getUiTweaksPatchState().selectedOptionPrefix;
-        } else {
-            prefix = getUnselectedOptionPrefix();
-        }
-        const prefixWidth = visibleWidth(prefix);
-        if (descriptionSingleLine !== undefined && width > 40) {
-            const effectivePrimaryColumnWidth = Math.max(
-                1,
-                Math.min(primaryColumnWidth, width - prefixWidth - 4),
-            );
-            const maxPrimaryWidth = Math.max(1, effectivePrimaryColumnWidth - PRIMARY_COLUMN_GAP);
-            const truncatedValue = this.truncatePrimary(
-                item,
-                isSelected,
-                maxPrimaryWidth,
-                effectivePrimaryColumnWidth,
-            );
-            const truncatedValueWidth = visibleWidth(truncatedValue);
-            const spacing = " ".repeat(
-                Math.max(1, effectivePrimaryColumnWidth - truncatedValueWidth),
-            );
-            const descriptionStart = prefixWidth + truncatedValueWidth + spacing.length;
-            const remainingWidth = width - descriptionStart - 2;
-            if (remainingWidth > MIN_DESCRIPTION_WIDTH) {
-                const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, "");
-                if (isSelected) {
-                    return this.theme.selectedText(
-                        `${prefix}${truncatedValue}${spacing}${truncatedDesc}`,
-                    );
-                }
-                const descText = this.theme.description(spacing + truncatedDesc);
-                return prefix + truncatedValue + descText;
-            }
-        }
-
-        const maxWidth = width - prefixWidth - 2;
-        const truncatedValue = this.truncatePrimary(item, isSelected, maxWidth, maxWidth);
-        if (isSelected) {
-            return this.theme.selectedText(`${prefix}${truncatedValue}`);
-        }
-        return prefix + truncatedValue;
+    currentSelectedOptionConfig = {
+        selectedOptionPrefix: normalizeSelectedOptionPrefix(config.selectedOptionPrefix),
     };
+    const patch = installLinkedMethodPatch(
+        prototype,
+        "renderItem",
+        (_predecessor) =>
+            function selectedOptionPrefixRenderItem(
+                this: SelectListRenderTarget,
+                item: SelectItem,
+                isSelected: boolean,
+                width: number,
+                descriptionSingleLine: string | undefined,
+                primaryColumnWidth: number,
+            ): string {
+                let prefix: string;
+                if (isSelected) {
+                    prefix = currentSelectedOptionConfig.selectedOptionPrefix;
+                } else {
+                    prefix = getUnselectedOptionPrefix();
+                }
+                const prefixWidth = visibleWidth(prefix);
+                if (descriptionSingleLine !== undefined && width > 40) {
+                    const effectivePrimaryColumnWidth = Math.max(
+                        1,
+                        Math.min(primaryColumnWidth, width - prefixWidth - 4),
+                    );
+                    const maxPrimaryWidth = Math.max(
+                        1,
+                        effectivePrimaryColumnWidth - PRIMARY_COLUMN_GAP,
+                    );
+                    const truncatedValue = this.truncatePrimary(
+                        item,
+                        isSelected,
+                        maxPrimaryWidth,
+                        effectivePrimaryColumnWidth,
+                    );
+                    const truncatedValueWidth = visibleWidth(truncatedValue);
+                    const spacing = " ".repeat(
+                        Math.max(1, effectivePrimaryColumnWidth - truncatedValueWidth),
+                    );
+                    const descriptionStart = prefixWidth + truncatedValueWidth + spacing.length;
+                    const remainingWidth = width - descriptionStart - 2;
+                    if (remainingWidth > MIN_DESCRIPTION_WIDTH) {
+                        const truncatedDesc = truncateToWidth(
+                            descriptionSingleLine,
+                            remainingWidth,
+                            "",
+                        );
+                        if (isSelected) {
+                            return this.theme.selectedText(
+                                `${prefix}${truncatedValue}${spacing}${truncatedDesc}`,
+                            );
+                        }
+                        const descText = this.theme.description(spacing + truncatedDesc);
+                        return prefix + truncatedValue + descText;
+                    }
+                }
 
-    prototype[SELECT_LIST_PATCH_KEY] = true;
+                const maxWidth = width - prefixWidth - 2;
+                const truncatedValue = this.truncatePrimary(item, isSelected, maxWidth, maxWidth);
+                if (isSelected) {
+                    return this.theme.selectedText(`${prefix}${truncatedValue}`);
+                }
+                return prefix + truncatedValue;
+            },
+    );
+    let disposed = false;
+    const handle: SelectedOptionPrefixHandle = {
+        update(next): void {
+            if (!disposed)
+                currentSelectedOptionConfig = {
+                    selectedOptionPrefix: normalizeSelectedOptionPrefix(next.selectedOptionPrefix),
+                };
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[SELECT_LIST_PATCH_KEY]?.handle === handle)
+                delete prototype[SELECT_LIST_PATCH_KEY];
+        },
+    };
+    prototype[SELECT_LIST_PATCH_KEY] = { original: patch.predecessor, patch, handle };
+    return handle;
 }
 
-/**
- * Installs an idempotent patch for Pi selectors that color the hard-coded arrow through Theme.fg.
- */
-export async function installSelectedOptionPrefixThemePatch(): Promise<void> {
-    try {
-        const distDir = await resolvePiDistDir();
-        const themePath = pathToFileURL(join(distDir, "modes/interactive/theme/theme.js")).href;
-        const themeModule: unknown = (await import(themePath)) as unknown;
-        const theme = getUnknownProperty(themeModule, "Theme");
-        const prototype = getUnknownProperty(theme, "prototype");
-        if (!isThemePrototype(prototype)) {
-            warnSelectedOptionPrefixPatchUnavailable();
-            return;
-        }
-        if (prototype[THEME_FG_PATCH_KEY] === true) {
-            return;
-        }
-
-        const originalFgValue: unknown = Reflect.get(prototype, "fg");
-        if (typeof originalFgValue !== "function") {
-            warnSelectedOptionPrefixPatchUnavailable();
-            return;
-        }
-        // SAFETY: The immediately preceding runtime guard proves the private Theme.fg seam is callable.
-        const originalFg = originalFgValue as ThemePrototype["fg"];
-        prototype.fg = function selectedOptionPrefixFg(
-            this: ThemeInstance,
-            color: string,
-            text: string,
-        ): string {
-            if (color === "accent" && text === DEFAULT_SELECTED_OPTION_PREFIX) {
-                return originalFg.call(this, color, getUiTweaksPatchState().selectedOptionPrefix);
-            }
-            return originalFg.call(this, color, text);
-        };
-        prototype[THEME_FG_PATCH_KEY] = true;
-    } catch (error: unknown) {
-        warnSelectedOptionPrefixPatchUnavailable(error);
+/** Installs or updates the Theme.fg selected-arrow patch. */
+export async function installSelectedOptionPrefixThemePatch(
+    config: SelectedOptionPrefixConfig,
+): Promise<SelectedOptionPrefixHandle> {
+    const prototype = await loadPiInternalModule("modes/interactive/theme/theme.js", {
+        scope: "pi-ui-tweaks",
+        feature: "selected option prefix patch",
+        parse(module): ThemePrototype | undefined {
+            const theme = getUnknownProperty(module, "Theme");
+            const candidate = getUnknownProperty(theme, "prototype");
+            if (isThemePrototype(candidate)) return candidate;
+            return undefined;
+        },
+    });
+    if (prototype === undefined) return { update(): void {}, dispose(): void {} };
+    const installed = prototype[THEME_FG_PATCH_KEY];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
     }
+    currentSelectedOptionConfig = {
+        selectedOptionPrefix: normalizeSelectedOptionPrefix(config.selectedOptionPrefix),
+    };
+    const patch = installLinkedMethodPatch(
+        prototype,
+        "fg",
+        (predecessor) =>
+            function selectedOptionPrefixFg(
+                this: ThemeInstance,
+                color: string,
+                text: string,
+            ): string {
+                if (color === "accent" && text === DEFAULT_SELECTED_OPTION_PREFIX) {
+                    return predecessor.call(
+                        this,
+                        color,
+                        currentSelectedOptionConfig.selectedOptionPrefix,
+                    );
+                }
+                return predecessor.call(this, color, text);
+            },
+    );
+    let disposed = false;
+    const handle: SelectedOptionPrefixHandle = {
+        update(next): void {
+            if (!disposed)
+                currentSelectedOptionConfig = {
+                    selectedOptionPrefix: normalizeSelectedOptionPrefix(next.selectedOptionPrefix),
+                };
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[THEME_FG_PATCH_KEY]?.handle === handle)
+                delete prototype[THEME_FG_PATCH_KEY];
+        },
+    };
+    prototype[THEME_FG_PATCH_KEY] = { original: patch.predecessor, patch, handle };
+    return handle;
 }

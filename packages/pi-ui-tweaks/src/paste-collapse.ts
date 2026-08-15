@@ -4,15 +4,23 @@ import {
     type KeybindingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Editor, matchesKey } from "@earendil-works/pi-tui";
-
 import {
-    hasEditorFactoryLayer,
-    markEditorFactoryLayer,
-    type EditorFactory,
-} from "./editor-factory-layers.ts";
-import { getUiTweaksPatchState, type UiTweaksPatchState } from "./patch-state.ts";
+    installLinkedMethodPatch,
+    registerEditorEnhancer,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
+import {
+    DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
+    DEFAULT_PASTE_COLLAPSE_ENABLED,
+    DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
+    DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
+    DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+} from "./settings.ts";
 
-const PASTE_COLLAPSE_PATCH_MARKER = Symbol.for("zigai.pi-ui-tweaks.paste-collapse-patched");
+const PASTE_COLLAPSE_PATCH_MARKER = Symbol.for("zigai.pi-ui-tweaks.paste-collapse-patch");
+const PASTE_COLLAPSE_ENHANCER_MARKER = Symbol.for("zigai.pi-ui-tweaks.paste-collapse-enhancer");
+const PASTE_COLLAPSE_ENHANCER_KEY = Symbol.for("zigai.pi-ui-tweaks.paste-collapse");
+
 const PASTE_MARKER_REGEX = /\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]/g;
 const PASTE_MARKER_FOR_ID = (pasteId: number): RegExp =>
     new RegExp(`\\[paste #${pasteId}( (\\+\\d+ lines|\\d+ chars))?\\]`);
@@ -35,15 +43,24 @@ export type PasteCollapseEditorContext = Pick<ExtensionContext, "hasUI"> & {
     ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
 };
 
-/** Configurable paste-collapse behavior copied into the global patch state. */
-export type PasteCollapseSettings = Pick<
-    UiTweaksPatchState,
-    | "pasteCollapseCharThreshold"
-    | "pasteCollapseEnabled"
-    | "pasteCollapseExpandKey"
-    | "pasteCollapseLineThreshold"
-    | "pasteCollapseUseToolExpandKey"
->;
+export type PasteCollapseSettings = {
+    readonly pasteCollapseCharThreshold: number;
+    readonly pasteCollapseEnabled: boolean;
+    readonly pasteCollapseExpandKey: string | null;
+    readonly pasteCollapseLineThreshold: number;
+    readonly pasteCollapseUseToolExpandKey: boolean;
+};
+export type PasteCollapseHandle = {
+    update(config: PasteCollapseSettings): void;
+    dispose(): void;
+};
+let currentPasteCollapseSettings: PasteCollapseSettings = {
+    pasteCollapseCharThreshold: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
+    pasteCollapseEnabled: DEFAULT_PASTE_COLLAPSE_ENABLED,
+    pasteCollapseExpandKey: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
+    pasteCollapseLineThreshold: DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
+    pasteCollapseUseToolExpandKey: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+};
 
 type EditorState = {
     lines: string[];
@@ -171,7 +188,7 @@ function normalizePastedText(editor: PasteEditorInternals, pastedText: string): 
 }
 
 function shouldCollapsePaste(filteredText: string): boolean {
-    const state = getUiTweaksPatchState();
+    const state = currentPasteCollapseSettings;
     if (!state.pasteCollapseEnabled) {
         return false;
     }
@@ -185,7 +202,7 @@ function shouldCollapsePaste(filteredText: string): boolean {
 
 function pasteMarkerForContent(pasteId: number, filteredText: string): string {
     const lineCount = filteredText.split("\n").length;
-    if (lineCount > getUiTweaksPatchState().pasteCollapseLineThreshold) {
+    if (lineCount > currentPasteCollapseSettings.pasteCollapseLineThreshold) {
         return `[paste #${pasteId} +${lineCount} lines]`;
     }
 
@@ -300,64 +317,101 @@ export function expandPasteMarkerAtCursor(editor: PasteCollapseEditor): boolean 
     return true;
 }
 
-/**
- * Copies parsed paste-collapse settings into the live editor patch state.
- */
-export function setPasteCollapseSettings(settings: PasteCollapseSettings): void {
-    const state = getUiTweaksPatchState();
-    state.pasteCollapseCharThreshold = settings.pasteCollapseCharThreshold;
-    state.pasteCollapseEnabled = settings.pasteCollapseEnabled;
-    state.pasteCollapseExpandKey = settings.pasteCollapseExpandKey;
-    state.pasteCollapseLineThreshold = settings.pasteCollapseLineThreshold;
-    state.pasteCollapseUseToolExpandKey = settings.pasteCollapseUseToolExpandKey;
-}
+type HandlePaste = (this: object, pastedText: string) => void;
+type PastePatchRecord = {
+    readonly original: HandlePaste;
+    readonly patch: LinkedMethodPatchHandle<object, [string], void>;
+    readonly handle: PasteCollapseHandle;
+};
 
-function installPasteCollapsePatchOnPrototype(prototype: object): void {
-    if (Reflect.get(prototype, PASTE_COLLAPSE_PATCH_MARKER) === true) {
-        return;
-    }
-
-    const originalHandlePaste: unknown = Reflect.get(prototype, "handlePaste") as unknown;
-    if (typeof originalHandlePaste !== "function") {
-        return;
-    }
-
-    Reflect.set(
-        prototype,
-        "handlePaste",
-        function handlePasteWithConfig(this: unknown, pastedText: string): void {
-            const internals = getPasteEditorInternals(this);
-            if (internals === undefined) {
-                Reflect.apply(originalHandlePaste, this, [pastedText]);
-                return;
+function installPasteCollapsePatchOnPrototype(
+    prototype: object,
+    settings: PasteCollapseSettings,
+): PasteCollapseHandle {
+    const installed: unknown = Reflect.get(prototype, PASTE_COLLAPSE_PATCH_MARKER);
+    if (typeof installed === "object" && installed !== null) {
+        const handle: unknown = Reflect.get(installed, "handle");
+        if (typeof handle === "object" && handle !== null) {
+            const update: unknown = Reflect.get(handle, "update");
+            if (typeof update === "function") {
+                Reflect.apply(update, handle, [settings]);
+                // SAFETY: This module is the sole writer of the marker and stores PasteCollapseHandle.
+                return handle as PasteCollapseHandle;
             }
-
-            handlePasteWithUiTweaks(internals, pastedText);
-        },
+        }
+    }
+    const original: unknown = Reflect.get(prototype, "handlePaste");
+    if (typeof original !== "function") return { update(): void {}, dispose(): void {} };
+    // SAFETY: The runtime guard proves handlePaste is callable with the editor's runtime signature.
+    const target = prototype as object & { handlePaste: HandlePaste };
+    currentPasteCollapseSettings = settings;
+    const patch = installLinkedMethodPatch(
+        target,
+        "handlePaste",
+        (predecessor) =>
+            function handlePasteWithConfig(this: object, pastedText: string): void {
+                const internals = getPasteEditorInternals(this);
+                if (internals === undefined) {
+                    predecessor.call(this, pastedText);
+                    return;
+                }
+                handlePasteWithUiTweaks(internals, pastedText);
+            },
     );
-
-    Reflect.set(prototype, PASTE_COLLAPSE_PATCH_MARKER, true);
+    let disposed = false;
+    const handle: PasteCollapseHandle = {
+        update(next): void {
+            if (!disposed) currentPasteCollapseSettings = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            const marker: unknown = Reflect.get(prototype, PASTE_COLLAPSE_PATCH_MARKER);
+            if (
+                typeof marker === "object" &&
+                marker !== null &&
+                Reflect.get(marker, "handle") === handle
+            ) {
+                Reflect.deleteProperty(prototype, PASTE_COLLAPSE_PATCH_MARKER);
+            }
+        },
+    };
+    const record: PastePatchRecord = { original: patch.predecessor, patch, handle };
+    Reflect.set(prototype, PASTE_COLLAPSE_PATCH_MARKER, record);
+    return handle;
 }
 
-/**
- * Installs the configurable paste collapse patch on Pi editor prototypes.
- */
-export function installPasteCollapsePatch(prototype?: object): void {
+/** Installs or updates paste collapsing on Pi editor prototypes. */
+export function installPasteCollapsePatch(
+    settings: PasteCollapseSettings,
+    prototype?: object,
+): PasteCollapseHandle {
     if (prototype !== undefined) {
-        installPasteCollapsePatchOnPrototype(prototype);
-        return;
+        return installPasteCollapsePatchOnPrototype(prototype, settings);
     }
-
-    installPasteCollapsePatchOnPrototype(Editor.prototype);
-
-    const customEditorBasePrototype: unknown = Object.getPrototypeOf(CustomEditor.prototype);
-    if (typeof customEditorBasePrototype === "object" && customEditorBasePrototype !== null) {
-        installPasteCollapsePatchOnPrototype(customEditorBasePrototype);
-    }
+    const editor = installPasteCollapsePatchOnPrototype(Editor.prototype, settings);
+    const base: unknown = Object.getPrototypeOf(CustomEditor.prototype);
+    if (typeof base !== "object" || base === null || base === Editor.prototype) return editor;
+    const custom = installPasteCollapsePatchOnPrototype(base, settings);
+    let disposed = false;
+    return {
+        update(next): void {
+            if (disposed) return;
+            editor.update(next);
+            custom.update(next);
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            custom.dispose();
+            editor.dispose();
+        },
+    };
 }
 
 function matchesConfiguredExpandKey(data: string): boolean {
-    const expandKey = getUiTweaksPatchState().pasteCollapseExpandKey;
+    const expandKey = currentPasteCollapseSettings.pasteCollapseExpandKey;
     if (expandKey === null) {
         return false;
     }
@@ -371,67 +425,72 @@ function shouldTryExpandPasteMarker(data: string, keybindings: KeybindingsManage
     }
 
     return (
-        getUiTweaksPatchState().pasteCollapseUseToolExpandKey &&
+        currentPasteCollapseSettings.pasteCollapseUseToolExpandKey &&
         keybindings.matches(data, "app.tools.expand")
     );
 }
 
-function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
-    const getCursor: unknown = Reflect.get(value, "getCursor") as unknown;
-    const getText: unknown = Reflect.get(value, "getText");
-    const handleInput: unknown = Reflect.get(value, "handleInput");
+function isEditorLike(value: unknown): value is EditorLike {
+    if (typeof value !== "object" || value === null) return false;
     return (
-        typeof getCursor === "function" &&
-        typeof getText === "function" &&
-        typeof handleInput === "function"
+        typeof Reflect.get(value, "getCursor") === "function" &&
+        typeof Reflect.get(value, "getText") === "function" &&
+        typeof Reflect.get(value, "handleInput") === "function"
     );
 }
 
-function enhanceEditor(
-    editor: EditorLike,
-    keybindings: KeybindingsManager,
-    requestRender: () => void,
-): EditorLike {
-    editor.requestRenderNow ??= requestRender;
+type PasteEnhancerRecord = {
+    readonly original: ReturnType<PasteCollapseEditorContext["ui"]["getEditorComponent"]>;
+    readonly handle: PasteCollapseHandle;
+};
+type MarkedPasteUi = PasteCollapseEditorContext["ui"] & {
+    [PASTE_COLLAPSE_ENHANCER_MARKER]?: PasteEnhancerRecord;
+};
 
-    const originalHandleInput = editor.handleInput.bind(editor);
-    editor.handleInput = (data: string) => {
-        if (shouldTryExpandPasteMarker(data, keybindings)) {
-            if (editor.onExtensionShortcut?.(data) === true) {
-                return;
-            }
-            if (expandPasteMarkerAtCursor(editor)) {
-                return;
-            }
-        }
-
-        originalHandleInput(data);
-    };
-
-    return editor;
-}
-
-/**
- * Wraps the active editor factory so configured keys can expand one paste marker.
- */
-export function applyPasteCollapseEditor(ctx: PasteCollapseEditorContext): void {
-    if (!ctx.hasUI) {
-        return;
+/** Installs or updates the paste-marker expansion editor enhancer. */
+export function installPasteCollapseEditor(
+    ctx: PasteCollapseEditorContext,
+    settings: PasteCollapseSettings,
+): PasteCollapseHandle {
+    const ui = ctx.ui as MarkedPasteUi;
+    const installed = ui[PASTE_COLLAPSE_ENHANCER_MARKER];
+    if (installed !== undefined) {
+        installed.handle.update(settings);
+        return installed.handle;
     }
-
-    const existing = ctx.ui.getEditorComponent();
-    if (hasEditorFactoryLayer(existing, "pasteCollapse")) {
-        return;
-    }
-
-    const baseFactory = existing;
-    const factory: EditorFactory = (tui, theme, keybindings) => {
-        const editor =
-            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
-        if (!isEditorLike(editor)) return editor;
-        return enhanceEditor(editor, keybindings, () => tui.requestRender());
+    currentPasteCollapseSettings = settings;
+    const original = ctx.ui.getEditorComponent();
+    const enhancer = registerEditorEnhancer(
+        ctx,
+        PASTE_COLLAPSE_ENHANCER_KEY,
+        (tui, theme, keybindings) => new CustomEditor(tui, theme, keybindings),
+        (editor, tui, _theme, keybindings) => {
+            if (!isEditorLike(editor)) return editor;
+            editor.requestRenderNow ??= () => tui.requestRender();
+            const predecessor = editor.handleInput.bind(editor);
+            editor.handleInput = (data: string): void => {
+                if (shouldTryExpandPasteMarker(data, keybindings)) {
+                    if (editor.onExtensionShortcut?.(data) === true) return;
+                    if (expandPasteMarkerAtCursor(editor)) return;
+                }
+                predecessor(data);
+            };
+            return editor;
+        },
+    );
+    let disposed = false;
+    const handle: PasteCollapseHandle = {
+        update(next): void {
+            if (!disposed) currentPasteCollapseSettings = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            enhancer.dispose();
+            if (ui[PASTE_COLLAPSE_ENHANCER_MARKER]?.handle === handle)
+                delete ui[PASTE_COLLAPSE_ENHANCER_MARKER];
+        },
     };
-    markEditorFactoryLayer(factory, existing, "pasteCollapse");
-
-    ctx.ui.setEditorComponent(factory);
+    ui[PASTE_COLLAPSE_ENHANCER_MARKER] = { original, handle };
+    return handle;
 }

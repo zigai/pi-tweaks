@@ -107,6 +107,9 @@ test("prompt history preserves the host default editor and its rendering", () =>
             },
         },
         ui: {
+            getEditorComponent() {
+                return undefined;
+            },
             setEditorComponent(factory) {
                 installedFactory = factory;
             },

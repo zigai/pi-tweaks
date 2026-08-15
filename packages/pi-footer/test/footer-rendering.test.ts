@@ -6,7 +6,7 @@ import { registerFooterSlot } from "@zigai/pi-footer/api";
 import { createFooterComponent } from "../src/footer-rendering.ts";
 import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
 import type { GitAheadBehindSource } from "../src/git-ahead-behind.ts";
-import type { FooterContext, FooterData } from "../src/types.ts";
+import type { FooterContext, FooterData } from "../src/footer-model.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const BACKGROUND_ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*48;2;`);

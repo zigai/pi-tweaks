@@ -5,10 +5,9 @@ import {
     fuzzyFilter,
 } from "@earendil-works/pi-tui";
 
-import { DEFAULT_MENTION_TRIGGER } from "./settings.ts";
-import { skillName } from "./skill-commands.ts";
-import type { MentionSkillSettings, SkillCommand } from "./types.ts";
-import { escapeRegExp } from "./util.ts";
+import { escapeRegExp } from "./mention-syntax.ts";
+import { DEFAULT_MENTION_TRIGGER, type MentionSkillSettings } from "./settings.ts";
+import { skillName, type SkillCommand } from "./skill-commands.ts";
 
 const MAX_SUGGESTIONS = 20;
 const SKILL_COMMAND_PREFIX = "skill:";

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "vitest";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
-import { WIDGET_KEY } from "../src/constants.ts";
 import { configureStatusBar, resetStatusBarStateForTests } from "../src/status-bar-api.ts";
 import {
     clearWorkedForWidget,
@@ -10,6 +9,7 @@ import {
     getWorkedForStateFromBranch,
     resetWorkedForWidgetCache,
     setWorkedForWidget,
+    WIDGET_KEY,
     WORKED_FOR_STATE_ENTRY,
     type WorkedForWidgetContext,
 } from "../src/worked-for-widget.ts";

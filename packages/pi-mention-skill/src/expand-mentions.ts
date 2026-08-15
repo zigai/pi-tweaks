@@ -3,9 +3,15 @@ import path from "node:path";
 
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
-import { skillName, stripFrontmatter } from "./skill-commands.ts";
-import type { SkillCommand, SkillExpansion } from "./types.ts";
-import { escapeRegExp } from "./util.ts";
+import { escapeRegExp } from "./mention-syntax.ts";
+import { skillName, stripFrontmatter, type SkillCommand } from "./skill-commands.ts";
+
+export type SkillExpansion = {
+    name: string;
+    location: string;
+    body: string;
+    baseDir: string;
+};
 
 export type SkillExpansionLoader = (command: SkillCommand) => Promise<SkillExpansion>;
 

@@ -8,10 +8,23 @@ import { existsSync, statSync } from "node:fs";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-import type { AliasConfig, LoadedConfig, ProviderAliasConfig, RuntimeState } from "./types.ts";
+import type { AliasConfig, ModelAliasSettings, ProviderAliasConfig } from "./model-aliasing.ts";
 
 export const EXTENSION_ID = "pi-model-alias";
 export const CONFIG_FILE = `${EXTENSION_ID}.json`;
+
+export type LoadedModelAliasSettings = {
+    path: string;
+    mtimeMs: number;
+    settings: ModelAliasSettings;
+    diagnostic?: string;
+};
+
+export type ModelAliasSettingsLoadState = {
+    configCache?: LoadedModelAliasSettings;
+    configCwd?: string;
+    projectTrusted?: boolean;
+};
 
 function nonBlankStringSchema(description: string) {
     return Type.String({ pattern: "\\S", description });
@@ -133,20 +146,15 @@ function normalizeAliasConfig(entry: ParsedAliasConfig): AliasConfig {
         model: entry.model.trim(),
         alias: entry.alias.trim(),
     };
-    if (entry.name !== undefined) {
-        normalized.name = entry.name.trim();
-    }
+    if (entry.name !== undefined) normalized.name = entry.name.trim();
     return normalized;
 }
 
 function normalizeProviderAliasConfig(entry: ParsedProviderAliasConfig): ProviderAliasConfig {
-    return {
-        provider: entry.provider.trim(),
-        name: entry.name.trim(),
-    };
+    return { provider: entry.provider.trim(), name: entry.name.trim() };
 }
 
-function validateUniqueAliases(aliases: AliasConfig[]): void {
+function validateUniqueAliases(aliases: readonly AliasConfig[]): void {
     const seenAliases = new Map<string, number>();
     aliases.forEach((entry, index) => {
         const aliasKey = `${entry.provider}\0${entry.alias}`;
@@ -160,7 +168,7 @@ function validateUniqueAliases(aliases: AliasConfig[]): void {
     });
 }
 
-function validateUniqueProviderAliases(providerAliases: ProviderAliasConfig[]): void {
+function validateUniqueProviderAliases(providerAliases: readonly ProviderAliasConfig[]): void {
     const seenProviders = new Map<string, number>();
     providerAliases.forEach((entry, index) => {
         const duplicateIndex = seenProviders.get(entry.provider);
@@ -173,11 +181,7 @@ function validateUniqueProviderAliases(providerAliases: ProviderAliasConfig[]): 
     });
 }
 
-function parseModelAliasesConfig(config: unknown): {
-    aliases: AliasConfig[];
-    providerAliases: ProviderAliasConfig[];
-    stableProviderColumn: boolean;
-} {
+export function decodeModelAliasSettings(config: unknown): ModelAliasSettings {
     const parsed = parseSchema(ModelAliasesConfigSchema, config, "pi-model-alias config.json");
     const aliases = (parsed.aliases ?? []).map(normalizeAliasConfig);
     const providerAliases = (parsed.providerAliases ?? []).map(normalizeProviderAliasConfig);
@@ -198,10 +202,12 @@ export function getProjectConfigPath(cwd: string): string {
     return getPiProjectSettingsPath(EXTENSION_ID, cwd);
 }
 
-export function loadModelAliasSettings(state: RuntimeState): LoadedConfig {
+export function loadModelAliasSettings(
+    state: ModelAliasSettingsLoadState,
+): LoadedModelAliasSettings {
     const cwd = state.configCwd ?? process.cwd();
     const projectConfigPath = getProjectConfigPath(cwd);
-    const settings = loadPiExtensionSettings(
+    const loadedLayers = loadPiExtensionSettings(
         modelAliasSettingsDefinition,
         { cwd, isProjectTrusted: () => state.projectTrusted === true },
         {
@@ -212,7 +218,7 @@ export function loadModelAliasSettings(state: RuntimeState): LoadedConfig {
         },
     );
     const useProjectConfig = state.projectTrusted === true && existsSync(projectConfigPath);
-    let configPath = settings.globalConfigPath;
+    let configPath = loadedLayers.globalConfigPath;
     if (useProjectConfig) configPath = projectConfigPath;
     let mtimeMs = -1;
     try {
@@ -226,34 +232,29 @@ export function loadModelAliasSettings(state: RuntimeState): LoadedConfig {
     }
 
     try {
-        const configDiagnostics = settings.diagnostics.filter(
+        const configDiagnostics = loadedLayers.diagnostics.filter(
             (diagnostic) => diagnostic.path === configPath && diagnostic.severity === "error",
         );
         if (configDiagnostics.length > 0) {
             throw new Error(configDiagnostics.map((diagnostic) => diagnostic.message).join("; "));
         }
-        let layer = settings.globalSettingsLayer;
-        if (useProjectConfig) layer = settings.projectSettingsLayer;
-        const parsed = parseModelAliasesConfig(layer ?? {});
-        const loaded: LoadedConfig = {
+        let layer = loadedLayers.globalSettingsLayer;
+        if (useProjectConfig) layer = loadedLayers.projectSettingsLayer;
+        const loaded: LoadedModelAliasSettings = {
             path: configPath,
             mtimeMs,
-            aliases: parsed.aliases,
-            providerAliases: parsed.providerAliases,
-            stableProviderColumn: parsed.stableProviderColumn,
+            settings: decodeModelAliasSettings(layer ?? {}),
         };
         state.configCache = loaded;
         return loaded;
-    } catch (error: unknown) {
-        let message = String(error);
-        if (error instanceof Error) message = error.message;
-        const loaded: LoadedConfig = {
+    } catch (cause: unknown) {
+        let message = String(cause);
+        if (cause instanceof Error) message = cause.message;
+        const loaded: LoadedModelAliasSettings = {
             path: configPath,
             mtimeMs,
-            aliases: [],
-            providerAliases: [],
-            stableProviderColumn: true,
-            error: `Failed to load ${configPath}: ${message}`,
+            settings: { aliases: [], providerAliases: [], stableProviderColumn: true },
+            diagnostic: `Failed to load ${configPath}: ${message}`,
         };
         state.configCache = loaded;
         return loaded;

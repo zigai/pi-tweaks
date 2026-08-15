@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { registerModeSelectorShortcuts } from "../src/index.ts";
+import { registerModeSelectorShortcuts } from "../src/mode-picker.ts";
 
 type ShortcutOptions = Parameters<ExtensionAPI["registerShortcut"]>[1];
 

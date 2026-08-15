@@ -1,120 +1,114 @@
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
-
-import { getUiTweaksPatchState } from "./patch-state.ts";
+import {
+    installLinkedMethodPatch,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
 const MODEL_PROVIDER_HINT_TEXT =
     "Only showing models from configured providers. Use /login to add providers.";
-const MODEL_SELECTOR_HINT_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.model-selector-hint-patched");
-
+const MODEL_SELECTOR_HINT_PATCH = Symbol.for("zigai.pi-ui-tweaks.model-selector-hint-patch");
 const selectorInstancesSkippingNextSpacer = new WeakSet<object>();
 
-type ComponentLike = {
-    render(width: number): string[];
-    invalidate(): void;
+export type ModelSelectorHintConfig = {
+    readonly compactModelSelector: boolean;
+    readonly hideModelProviderHint: boolean;
+};
+export type ModelSelectorHintHandle = {
+    update(config: ModelSelectorHintConfig): void;
+    dispose(): void;
 };
 
+type ComponentLike = { render(width: number): string[]; invalidate(): void };
 type AddChild = (this: ModelSelectorAddChildTarget, component: ComponentLike) => void;
-
 type ModelSelectorAddChildTarget = {
-    [MODEL_SELECTOR_HINT_PATCH_KEY]?: true;
     addChild: AddChild;
+    [MODEL_SELECTOR_HINT_PATCH]?: ModelSelectorHintPatchRecord;
+};
+type ModelSelectorHintPatchRecord = {
+    readonly original: AddChild;
+    readonly patch: LinkedMethodPatchHandle<ModelSelectorAddChildTarget, [ComponentLike], void>;
+    readonly handle: ModelSelectorHintHandle;
 };
 
 function warnModelSelectorHintPatchUnavailable(reason?: string): void {
     let suffix = "";
-    if (reason !== undefined && reason.length > 0) {
-        suffix = `: ${reason}`;
-    }
-
+    if (reason !== undefined) suffix = `: ${reason}`;
     console.warn(
         `[pi-ui-tweaks] model picker hint patch unavailable; Pi internals may have changed${suffix}`,
     );
 }
-
 function isObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
 }
-
 function getUnknownProperty(value: object, key: PropertyKey): unknown {
-    return Reflect.get(value, key) as unknown;
+    return Reflect.get(value, key);
 }
-
 function isSingleLineSpacer(component: ComponentLike): boolean {
-    const lines = getUnknownProperty(component, "lines");
-    if (lines !== 1) {
-        return false;
-    }
-
+    if (getUnknownProperty(component, "lines") !== 1) return false;
     const constructorValue = getUnknownProperty(component, "constructor");
-    if (!isObject(constructorValue)) {
-        return false;
-    }
-
-    return getUnknownProperty(constructorValue, "name") === "Spacer";
+    return isObject(constructorValue) && getUnknownProperty(constructorValue, "name") === "Spacer";
 }
-
 function isModelProviderHintText(component: ComponentLike): boolean {
     const text = getUnknownProperty(component, "text");
     return typeof text === "string" && text.includes(MODEL_PROVIDER_HINT_TEXT);
 }
 
-/**
- * Sets whether extra model picker blank spacer rows should be hidden.
- */
-export function setCompactModelSelector(enabled: boolean): void {
-    getUiTweaksPatchState().compactModelSelector = enabled;
-}
-
-/**
- * Sets whether the configured-provider model picker hint should be hidden.
- */
-export function setHideModelProviderHint(enabled: boolean): void {
-    getUiTweaksPatchState().hideModelProviderHint = enabled;
-}
-
-/**
- * Installs an idempotent patch that removes Pi's configured-provider hint from the model picker.
- */
+/** Installs or updates the model-selector hint patch. */
 export function installModelSelectorHintPatch(
-    prototype: ModelSelectorAddChildTarget = ModelSelectorComponent.prototype,
-): void {
-    if (prototype[MODEL_SELECTOR_HINT_PATCH_KEY] === true) {
-        return;
+    config: ModelSelectorHintConfig,
+    target: unknown = ModelSelectorComponent.prototype,
+): ModelSelectorHintHandle {
+    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
+        warnModelSelectorHintPatchUnavailable();
+        return { update(): void {}, dispose(): void {} };
     }
-
-    const originalAddChildValue: unknown = Reflect.get(prototype, "addChild");
-    if (typeof originalAddChildValue !== "function") {
+    const addChild: unknown = Reflect.get(target, "addChild");
+    if (typeof addChild !== "function") {
         warnModelSelectorHintPatchUnavailable("missing addChild");
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
-
-    // SAFETY: ModelSelectorComponent inherits Container.addChild with this signature; the
-    // runtime guard above confirms the method exists before this patch wraps it.
-    const originalAddChild = originalAddChildValue as AddChild;
-
-    prototype.addChild = function patchedModelSelectorAddChild(
-        this: ModelSelectorAddChildTarget,
-        component: ComponentLike,
-    ): void {
-        if (selectorInstancesSkippingNextSpacer.has(this)) {
-            selectorInstancesSkippingNextSpacer.delete(this);
-            if (isSingleLineSpacer(component)) {
-                return;
+    // SAFETY: The runtime guard proves the inherited Container.addChild seam is callable.
+    const prototype = target as ModelSelectorAddChildTarget;
+    const installed = prototype[MODEL_SELECTOR_HINT_PATCH];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
+    }
+    let current = config;
+    const patch = installLinkedMethodPatch(
+        prototype,
+        "addChild",
+        (predecessor) =>
+            function patchedModelSelectorAddChild(
+                this: ModelSelectorAddChildTarget,
+                component: ComponentLike,
+            ): void {
+                if (selectorInstancesSkippingNextSpacer.has(this)) {
+                    selectorInstancesSkippingNextSpacer.delete(this);
+                    if (isSingleLineSpacer(component)) return;
+                }
+                if (current.compactModelSelector && isSingleLineSpacer(component)) return;
+                if (current.hideModelProviderHint && isModelProviderHintText(component)) {
+                    selectorInstancesSkippingNextSpacer.add(this);
+                    return;
+                }
+                predecessor.call(this, component);
+            },
+    );
+    let disposed = false;
+    const handle: ModelSelectorHintHandle = {
+        update(next): void {
+            if (!disposed) current = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[MODEL_SELECTOR_HINT_PATCH]?.handle === handle) {
+                delete prototype[MODEL_SELECTOR_HINT_PATCH];
             }
-        }
-
-        const patchState = getUiTweaksPatchState();
-        if (patchState.compactModelSelector && isSingleLineSpacer(component)) {
-            return;
-        }
-
-        if (patchState.hideModelProviderHint && isModelProviderHintText(component)) {
-            selectorInstancesSkippingNextSpacer.add(this);
-            return;
-        }
-
-        originalAddChild.call(this, component);
+        },
     };
-
-    prototype[MODEL_SELECTOR_HINT_PATCH_KEY] = true;
+    prototype[MODEL_SELECTOR_HINT_PATCH] = { original: patch.predecessor, patch, handle };
+    return handle;
 }

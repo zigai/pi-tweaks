@@ -4,7 +4,8 @@ import { test } from "vitest";
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 
 import { createProjectMentionProvider } from "../src/autocomplete.ts";
-import type { MentionProjectSettings, ProjectDirectory } from "../src/types.ts";
+import type { ProjectDirectory } from "../src/projects.ts";
+import type { MentionProjectSettings } from "../src/settings.ts";
 
 function project(name: string, root = "/tmp/projects"): ProjectDirectory {
     return {

@@ -1,31 +1,18 @@
 import type { ExtensionContext, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import type { EditorComponent, EditorTheme, TUI } from "@earendil-works/pi-tui";
+import { registerEditorEnhancer, type EditorEnhancerHandle } from "@zigai/pi-extension-internals";
+
 import { collectUserPromptsFromEntries } from "./prompt-history.ts";
 
-const HISTORY_FACTORY_BASE = Symbol.for("zigai.pi-prompt-history.editor-factory-base");
+const PROMPT_HISTORY_EDITOR_ENHANCER = Symbol.for("zigai.pi-prompt-history.editor-enhancer");
 
-type EditorFactory = (
-    tui: TUI,
-    theme: EditorTheme,
-    keybindings: KeybindingsManager,
-) => EditorComponent;
-
+type EditorArgs = [tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager];
 type EditorLike = EditorComponent;
-
-type WrappedEditorFactory = EditorFactory & {
-    [HISTORY_FACTORY_BASE]?: EditorFactory | undefined;
-};
 
 export type PromptHistoryEditorContext = Pick<ExtensionContext, "hasUI"> & {
     sessionManager: Pick<ExtensionContext["sessionManager"], "getBranch">;
-    ui: Pick<ExtensionContext["ui"], "setEditorComponent"> & {
-        getEditorComponent?: ExtensionContext["ui"]["getEditorComponent"];
-    };
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
 };
-
-function isWrappedEditorFactory(value: EditorFactory | undefined): value is WrappedEditorFactory {
-    return value !== undefined && Reflect.has(value, HISTORY_FACTORY_BASE);
-}
 
 function isEditorComponent(value: unknown): value is EditorComponent {
     if (typeof value !== "object" || value === null) return false;
@@ -55,30 +42,32 @@ function enhanceEditor(editor: EditorLike, history: string[]): EditorLike {
     return editor;
 }
 
-function setEditor(ctx: PromptHistoryEditorContext, history: string[]): void {
-    const configuredFactory = ctx.ui.getEditorComponent?.();
-    let existing: WrappedEditorFactory | undefined;
-    if (isWrappedEditorFactory(configuredFactory)) {
-        existing = configuredFactory;
+function createFocusedEditor(tui: TUI): EditorLike {
+    const editor = getFocusedEditor(tui);
+    if (editor === undefined) {
+        throw new Error("Cannot preserve the active editor while loading prompt history");
     }
-    const baseFactory = existing?.[HISTORY_FACTORY_BASE] ?? configuredFactory;
-    const factory: WrappedEditorFactory = (tui, theme, keybindings) => {
-        const editor = baseFactory?.(tui, theme, keybindings) ?? getFocusedEditor(tui);
-        if (editor === undefined) {
-            throw new Error("Cannot preserve the active editor while loading prompt history");
-        }
-        return enhanceEditor(editor, history);
-    };
-    factory[HISTORY_FACTORY_BASE] = baseFactory;
-
-    ctx.ui.setEditorComponent(factory);
+    return editor;
 }
 
 /** Installs an editor preloaded with prompts from the current session branch. */
-export function applyPromptHistoryEditor(ctx: PromptHistoryEditorContext): void {
-    if (!ctx.hasUI) return;
-
+export function applyPromptHistoryEditor(
+    ctx: PromptHistoryEditorContext,
+): EditorEnhancerHandle<EditorArgs, EditorLike> {
+    if (!ctx.hasUI) {
+        return registerEditorEnhancer(
+            ctx,
+            PROMPT_HISTORY_EDITOR_ENHANCER,
+            (tui) => createFocusedEditor(tui),
+            (editor) => editor,
+        );
+    }
     const currentEntries = ctx.sessionManager.getBranch();
     const currentPrompts = collectUserPromptsFromEntries(currentEntries);
-    setEditor(ctx, currentPrompts);
+    return registerEditorEnhancer(
+        ctx,
+        PROMPT_HISTORY_EDITOR_ENHANCER,
+        (tui) => createFocusedEditor(tui),
+        (editor) => enhanceEditor(editor, currentPrompts),
+    );
 }

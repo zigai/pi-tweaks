@@ -4,19 +4,26 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, test } from "vitest";
 
-import type {
-    LoadedConfig,
-    ModelLike,
-    PatchedModelRegistry,
-    PatchedModelRuntime,
-    RuntimeState,
-} from "../src/index.ts";
+import type { ModelLike } from "../src/model-filter.ts";
+import type { ModelFilterRuntimeState, PatchedModelRegistry } from "../src/model-registry-patch.ts";
+import type { PatchedModelRuntime } from "../src/model-runtime-patch.ts";
+import type { LoadedModelFilterSettings, ModelFilterSettingsLoadState } from "../src/settings.ts";
+
+type RuntimeState = ModelFilterRuntimeState & ModelFilterSettingsLoadState;
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(join(tmpdir(), "pi-model-filter-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-const modelFilter = await import("../src/index.ts");
+// Settings paths are resolved at module initialization, so the test must set
+// PI_CODING_AGENT_DIR before loading the assigned modules.
+
+const modelFilter = {
+    ...(await import("../src/model-filter.ts")),
+    ...(await import("../src/model-registry-patch.ts")),
+    ...(await import("../src/model-runtime-patch.ts")),
+    ...(await import("../src/settings.ts")),
+};
 const configPath = join(agentDir, "extension-settings", "pi-model-filter.json");
 const schemaPath = join(agentDir, "extension-settings", "schemas", "pi-model-filter.schema.json");
 
@@ -39,14 +46,16 @@ const models: ModelLike[] = [
 ];
 
 function loadedConfig(
-    include: LoadedConfig["includeRules"],
-    exclude: LoadedConfig["excludeRules"],
-): LoadedConfig {
+    include: LoadedModelFilterSettings["settings"]["includeRules"],
+    exclude: LoadedModelFilterSettings["settings"]["excludeRules"],
+): LoadedModelFilterSettings {
     return {
         path: configPath,
         mtimeMs: 1,
-        includeRules: include,
-        excludeRules: exclude,
+        settings: {
+            includeRules: include,
+            excludeRules: exclude,
+        },
     };
 }
 
@@ -60,7 +69,10 @@ test("glob patterns match complete provider and model ids", () => {
 test("include rules constrain matching providers while excludes always hide models", () => {
     const includeRules = modelFilter.normalizeRules([{ provider: "openai", models: ["gpt-*"] }]);
     const excludeRules = modelFilter.normalizeRules([{ provider: "*", models: ["*-mini"] }]);
-    const visible = modelFilter.filterModels(models, loadedConfig(includeRules, excludeRules));
+    const visible = modelFilter.filterModels(
+        models,
+        loadedConfig(includeRules, excludeRules).settings,
+    );
 
     assert.deepEqual(
         visible.map((model) => `${model.provider}/${model.id}`),
@@ -77,9 +89,9 @@ test("loadModelFilterSettings falls back for missing and malformed config files"
     };
 
     const missing = modelFilter.loadModelFilterSettings(state);
-    assert.deepEqual(missing.includeRules, []);
-    assert.deepEqual(missing.excludeRules, []);
-    assert.equal(missing.error, undefined);
+    assert.deepEqual(missing.settings.includeRules, []);
+    assert.deepEqual(missing.settings.excludeRules, []);
+    assert.equal(missing.diagnostic, undefined);
     assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
         $schema: "./schemas/pi-model-filter.schema.json",
         include: [],
@@ -95,9 +107,9 @@ test("loadModelFilterSettings falls back for missing and malformed config files"
     await writeFile(configPath, "{ not json", "utf8");
     state.configCache = undefined;
     const malformed = modelFilter.loadModelFilterSettings(state);
-    assert.match(malformed.error ?? "", /Failed to load/);
-    assert.deepEqual(malformed.includeRules, []);
-    assert.deepEqual(malformed.excludeRules, []);
+    assert.match(malformed.diagnostic ?? "", /Failed to load/);
+    assert.deepEqual(malformed.settings.includeRules, []);
+    assert.deepEqual(malformed.settings.excludeRules, []);
     assert.equal(await readFile(configPath, "utf8"), "{ not json");
     await writeFile(schemaPath, "stale schema", "utf8");
     state.configCache = undefined;
@@ -145,11 +157,11 @@ test("loadModelFilterSettings parses and trims valid config rules", async () => 
     };
 
     const loaded = modelFilter.loadModelFilterSettings(state);
-    assert.equal(loaded.error, undefined);
-    assert.deepEqual(loaded.includeRules[0]?.providerPattern, "openai");
-    assert.deepEqual(loaded.includeRules[0]?.modelPatterns, ["gpt-*"]);
-    assert.deepEqual(loaded.excludeRules[0]?.providerPattern, "*");
-    assert.deepEqual(loaded.excludeRules[0]?.modelPatterns, ["*-mini"]);
+    assert.equal(loaded.diagnostic, undefined);
+    assert.deepEqual(loaded.settings.includeRules[0]?.providerPattern, "openai");
+    assert.deepEqual(loaded.settings.includeRules[0]?.modelPatterns, ["gpt-*"]);
+    assert.deepEqual(loaded.settings.excludeRules[0]?.providerPattern, "*");
+    assert.deepEqual(loaded.settings.excludeRules[0]?.modelPatterns, ["*-mini"]);
 });
 
 test("loadModelFilterSettings rejects unknown config keys", async () => {
@@ -167,9 +179,9 @@ test("loadModelFilterSettings rejects unknown config keys", async () => {
     };
 
     const loaded = modelFilter.loadModelFilterSettings(state);
-    assert.deepEqual(loaded.includeRules, []);
-    assert.deepEqual(loaded.excludeRules, []);
-    assert.match(loaded.error ?? "", /schema|property|ignored/);
+    assert.deepEqual(loaded.settings.includeRules, []);
+    assert.deepEqual(loaded.settings.excludeRules, []);
+    assert.match(loaded.diagnostic ?? "", /schema|property|ignored/);
 });
 
 test("registry patch filters list and lookup results and remains idempotent", () => {

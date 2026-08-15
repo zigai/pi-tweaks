@@ -10,10 +10,7 @@ import {
     type Component,
     type Terminal,
 } from "@earendil-works/pi-tui";
-import {
-    installAnchorInputToBottomPatch,
-    setAnchorInputToBottom,
-} from "../src/anchor-input-to-bottom.ts";
+import { installAnchorInputToBottomPatch } from "../src/anchor-input-to-bottom.ts";
 
 class FakeTerminal implements Terminal {
     columns = 30;
@@ -136,8 +133,7 @@ function createFullscreenLayout(editor: Component): VStack {
 }
 
 test("anchor input to bottom pads short screens above focused bottom chrome", () => {
-    installAnchorInputToBottomPatch();
-    setAnchorInputToBottom(true);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: true });
 
     const terminal = new FakeTerminal();
     const tui = new TUI(terminal);
@@ -163,12 +159,11 @@ test("anchor input to bottom pads short screens above focused bottom chrome", ()
         "FOOTER",
     ]);
 
-    setAnchorInputToBottom(false);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: false });
 });
 
 test("anchor input to bottom leaves short screens unchanged when disabled", () => {
-    installAnchorInputToBottomPatch();
-    setAnchorInputToBottom(false);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: false });
 
     const terminal = new FakeTerminal();
     const tui = new TUI(terminal);
@@ -182,8 +177,7 @@ test("anchor input to bottom leaves short screens unchanged when disabled", () =
 });
 
 test("anchor input range recording preserves inherited child render methods", () => {
-    installAnchorInputToBottomPatch();
-    setAnchorInputToBottom(false);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: false });
 
     const terminal = new FakeTerminal();
     const tui = new TUI(terminal);
@@ -196,8 +190,7 @@ test("anchor input range recording preserves inherited child render methods", ()
 });
 
 test("anchor input to bottom leaves full-height screens unchanged", () => {
-    installAnchorInputToBottomPatch();
-    setAnchorInputToBottom(true);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: true });
 
     const terminal = new FakeTerminal();
     const tui = new TUI(terminal);
@@ -221,12 +214,11 @@ test("anchor input to bottom leaves full-height screens unchanged", () => {
         "EDITOR BOTTOM",
     ]);
 
-    setAnchorInputToBottom(false);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: false });
 });
 
 test("anchor input to bottom compacts full-height working loader spacing", () => {
-    installAnchorInputToBottomPatch();
-    setAnchorInputToBottom(true);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: true });
 
     const terminal = new FakeTerminal();
     const tui = new TUI(terminal);
@@ -254,12 +246,11 @@ test("anchor input to bottom compacts full-height working loader spacing", () =>
         "FOOTER",
     ]);
 
-    setAnchorInputToBottom(false);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: false });
 });
 
 test("anchor input to bottom compacts the fullscreen spacer below the working loader", () => {
-    installAnchorInputToBottomPatch();
-    setAnchorInputToBottom(true);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: true });
 
     const terminal = new FakeTerminal();
     terminal.rows = 8;
@@ -281,13 +272,12 @@ test("anchor input to bottom compacts the fullscreen spacer below the working lo
         assert.equal(editorIndex - workingIndex, 1);
     } finally {
         tui.stop();
-        setAnchorInputToBottom(false);
+        installAnchorInputToBottomPatch({ anchorInputToBottom: false });
     }
 });
 
 test("fullscreen anchoring leaves the spacer below the working loader disabled", () => {
-    installAnchorInputToBottomPatch();
-    setAnchorInputToBottom(false);
+    installAnchorInputToBottomPatch({ anchorInputToBottom: false });
 
     const terminal = new FakeTerminal();
     terminal.rows = 8;

@@ -5,9 +5,10 @@ import { test } from "vitest";
 import {
     installModelSelectorProviderPatch,
     installProviderAliasUiPatches,
-    installScopedModelsProviderPatch,
-} from "../src/model-selector-provider-patch.ts";
-import type { LoadedConfig, RuntimeState } from "../src/types.ts";
+} from "../src/model-selector-patch.ts";
+import { installScopedModelsProviderPatch } from "../src/scoped-model-selector-patch.ts";
+import type { ModelAliasRuntimeState } from "../src/registry-patch.ts";
+import type { LoadedModelAliasSettings } from "../src/settings.ts";
 
 type ModelSelectorPrototype = NonNullable<Parameters<typeof installModelSelectorProviderPatch>[1]>;
 type ScopedModelsPrototype = Parameters<typeof installScopedModelsProviderPatch>[1];
@@ -15,17 +16,19 @@ type ScopedModelsPrototype = Parameters<typeof installScopedModelsProviderPatch>
 type ModelSelectorItem = ModelSelectorPrototype["allModels"][number];
 type ScopedModelsItem = ScopedModelsPrototype["filteredItems"][number];
 
-function loadedConfig(providerName: string): LoadedConfig {
+function loadedConfig(providerName: string): LoadedModelAliasSettings {
     return {
         path: "/tmp/pi-model-alias/config.json",
         mtimeMs: 1,
-        aliases: [],
-        providerAliases: [{ provider: "openai", name: providerName }],
-        stableProviderColumn: true,
+        settings: {
+            aliases: [],
+            providerAliases: [{ provider: "openai", name: providerName }],
+            stableProviderColumn: true,
+        },
     };
 }
 
-function runtimeState(providerName: string): RuntimeState {
+function runtimeState(providerName: string): ModelAliasRuntimeState {
     return {
         loadSettings() {
             return loadedConfig(providerName);

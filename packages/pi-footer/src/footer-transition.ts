@@ -1,3 +1,4 @@
+import { installKeyedLinkedMethodPatch } from "@zigai/pi-extension-internals";
 import {
     InteractiveMode,
     type ExtensionContext,
@@ -7,10 +8,9 @@ import {
 import { markFooterComponent, getFooterComponentKind } from "./footer-component.ts";
 import { createFooterComponent, type PlainFooterTheme } from "./footer-rendering.ts";
 import type { FooterConfig } from "./settings.ts";
-import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./types.ts";
+import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./footer-model.ts";
 
 const RESET_PATCH_MARKER = Symbol.for("zigai.pi-footer.reset-extension-ui-patch");
-const RESET_PATCH_STATE = Symbol.for("zigai.pi-footer.reset-extension-ui-patch-state");
 const TRANSITION_STATE_KEY = "__zigaiPiFooterTransitionState__";
 const BRIDGE_FOOTER_TTL_MS = 15_000;
 
@@ -48,22 +48,8 @@ type FooterTransitionState = {
     liveInstallGeneration: number;
 };
 
-type FooterResetPatchState = {
-    originalReset: (this: FooterResetHost) => void;
-    afterReset: (
-        host: FooterResetHost,
-        footerKind: string | undefined,
-        snapshot: FooterSnapshot | undefined,
-        transitionState: FooterTransitionState,
-    ) => void;
-};
-
 type PatchableInteractiveModePrototype = {
-    customFooter?: unknown;
-    resetExtensionUI?: (this: FooterResetHost) => void;
-    setExtensionFooter?: (this: FooterResetHost, factory: FooterFactory | undefined) => void;
-    [RESET_PATCH_MARKER]?: true;
-    [RESET_PATCH_STATE]?: FooterResetPatchState;
+    resetExtensionUI(this: FooterResetHost): void;
 };
 
 type FooterTransitionGlobal = typeof globalThis & {
@@ -204,43 +190,30 @@ export function patchFooterReset(): void {
     ) {
         return;
     }
-    const originalResetValue: unknown = Reflect.get(prototypeValue, "resetExtensionUI") as unknown;
-    const setExtensionFooterValue: unknown = Reflect.get(
-        prototypeValue,
-        "setExtensionFooter",
-    ) as unknown;
+    const originalResetValue: unknown = Reflect.get(prototypeValue, "resetExtensionUI");
+    const setExtensionFooterValue: unknown = Reflect.get(prototypeValue, "setExtensionFooter");
     if (typeof originalResetValue !== "function") return;
     if (typeof setExtensionFooterValue !== "function") return;
     // SAFETY: The guarded Pi InteractiveMode boundary verifies both private methods
     // required by this reset patch before exposing its minimal prototype seam.
     const prototype = prototypeValue as PatchableInteractiveModePrototype;
 
-    const existingPatchState = prototype[RESET_PATCH_STATE];
-    if (existingPatchState !== undefined) {
-        existingPatchState.afterReset = bridgeAfterFooterReset;
-        prototype[RESET_PATCH_MARKER] = true;
-        return;
-    }
+    installKeyedLinkedMethodPatch(
+        prototype,
+        "resetExtensionUI",
+        RESET_PATCH_MARKER,
+        bridgeAfterFooterReset,
+        (predecessor, getAfterReset) =>
+            function (this: FooterResetHost): void {
+                const footerKind = getFooterComponentKind(this.customFooter);
+                const state = getTransitionState();
+                const snapshot = state.latestSnapshot;
 
-    const originalReset = originalResetValue as FooterResetPatchState["originalReset"];
-
-    const patchState: FooterResetPatchState = {
-        originalReset,
-        afterReset: bridgeAfterFooterReset,
-    };
-
-    prototype.resetExtensionUI = function patchedFooterReset(this: FooterResetHost): void {
-        const footerKind = getFooterComponentKind(this.customFooter);
-        const state = getTransitionState();
-        const snapshot = state.latestSnapshot;
-
-        patchState.originalReset.call(this);
-        state.pendingShutdownReason = undefined;
-        patchState.afterReset(this, footerKind, snapshot, state);
-    };
-
-    prototype[RESET_PATCH_STATE] = patchState;
-    prototype[RESET_PATCH_MARKER] = true;
+                predecessor.call(this);
+                state.pendingShutdownReason = undefined;
+                getAfterReset()(this, footerKind, snapshot, state);
+            },
+    );
 }
 
 export function installLiveFooter(

@@ -1,5 +1,8 @@
-import type { ProjectDirectory } from "./types.ts";
-import { escapeRegExp } from "./util.ts";
+import type { ProjectDirectory } from "./projects.ts";
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 const TRAILING_PUNCTUATION = new Set([".", ",", ";", ":", "!", "?", ")", "}", "]"]);
 

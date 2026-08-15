@@ -1,7 +1,8 @@
 import { keyText } from "@earendil-works/pi-coding-agent";
+import { warnPiInternalPatchUnavailable } from "@zigai/pi-extension-internals";
 
-import { PREVIEW_TOGGLE_HINT, TREE_TITLE_PATCH_KEY } from "./constants.ts";
-import { warnInternalPatchUnavailable } from "./internal-imports.ts";
+const TREE_TITLE_PATCH_KEY = Symbol.for("zigai.pi.tree-timestamps.title-patched");
+const PREVIEW_TOGGLE_HINT = "shift+p";
 
 const TREE_TITLE_TEXT = "  Session Tree";
 const LEGACY_TREE_HELP_TEXT = "↑/↓: move.";
@@ -76,7 +77,7 @@ export function patchTreeHeaderText(prototype: TreeHeaderPatchTarget): void {
 
     const originalAddChildValue: unknown = Reflect.get(prototype, "addChild");
     if (typeof originalAddChildValue !== "function") {
-        warnInternalPatchUnavailable("tree header patch");
+        warnPiInternalPatchUnavailable("pi-tree", "tree header patch");
         return;
     }
     // SAFETY: The runtime guard verifies TreeSelectorComponent's inherited addChild method.

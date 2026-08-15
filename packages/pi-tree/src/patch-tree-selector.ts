@@ -1,12 +1,10 @@
 import { getKeybindings, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 import {
-    PATCH_KEY,
-    PREVIEW_TOGGLE_KEY,
-    TREE_PREVIEW_ENABLED_KEY,
-    TREE_TIMESTAMP_MODE_KEY,
-} from "./constants.ts";
-import { loadTreeInternals } from "./internal-imports.ts";
+    loadTreeInternals,
+    type ThemeModule,
+    type TreeSelectorModule,
+} from "./internal-imports.ts";
 import { patchTreeHeaderText, type TreeHeaderPatchTarget } from "./patch-tree-header.ts";
 import { calculatePreviewLayout, getPreviewText, padToWidth } from "./preview.ts";
 import {
@@ -19,15 +17,18 @@ import {
     persistMode,
     persistPreviewEnabled,
 } from "./settings.ts";
-import { formatEntryTimestamp, cycleMode } from "./timestamps.ts";
-import { setTreePreviewEnabled, setTreeTimestampMode } from "./tree-state.ts";
-import type {
-    ThemeModule,
-    TreeListInstance,
-    TreeNode,
-    TreeSelectorModule,
-    TreeTimestampMode,
-} from "./types.ts";
+import { formatEntryTimestamp, cycleMode, type TreeTimestampMode } from "./timestamps.ts";
+import {
+    setTreePreviewEnabled,
+    setTreeTimestampMode,
+    TREE_PREVIEW_ENABLED_KEY,
+    TREE_TIMESTAMP_MODE_KEY,
+    type TreeListInstance,
+} from "./tree-state.ts";
+import type { TreeNode } from "./tree-node.ts";
+
+export const PATCH_KEY = Symbol.for("zigai.pi.tree-timestamps.patched");
+const PREVIEW_TOGGLE_KEY = "P";
 
 const TREE_PATCH_STATE = Symbol.for("zigai.pi-tree.patch-state");
 

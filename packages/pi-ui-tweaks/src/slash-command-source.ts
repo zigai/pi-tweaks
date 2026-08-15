@@ -1,81 +1,93 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import {
+    installLinkedMethodPatch,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
-import { getUiTweaksPatchState } from "./patch-state.ts";
+const SLASH_COMMAND_SOURCE_PATCH = Symbol.for("zigai.pi-ui-tweaks.slash-command-source-patch");
 
-const SLASH_COMMAND_SOURCE_PATCH_KEY = Symbol.for(
-    "zigai.pi-ui-tweaks.slash-command-source-patched",
-);
+export type SlashCommandSourceConfig = { readonly hideSlashCommandSourceTags: boolean };
+export type SlashCommandSourceHandle = {
+    update(config: SlashCommandSourceConfig): void;
+    dispose(): void;
+};
 
 type PrefixAutocompleteDescription = (
+    this: SlashCommandSourcePatchTarget,
     description: string | undefined,
     sourceInfo: unknown,
 ) => string | undefined;
-
 type SlashCommandSourcePatchTarget = {
-    [SLASH_COMMAND_SOURCE_PATCH_KEY]?: true;
     prefixAutocompleteDescription: PrefixAutocompleteDescription;
+    [SLASH_COMMAND_SOURCE_PATCH]?: SlashCommandSourcePatchRecord;
+};
+type SlashCommandSourcePatchRecord = {
+    readonly original: PrefixAutocompleteDescription;
+    readonly patch: LinkedMethodPatchHandle<
+        SlashCommandSourcePatchTarget,
+        [string | undefined, unknown],
+        string | undefined
+    >;
+    readonly handle: SlashCommandSourceHandle;
 };
 
 function warnSlashCommandSourcePatchUnavailable(reason?: string): void {
     let suffix = "";
-    if (reason !== undefined && reason.length > 0) {
-        suffix = `: ${reason}`;
-    }
-
+    if (reason !== undefined) suffix = `: ${reason}`;
     console.warn(
         `[pi-ui-tweaks] slash command source patch unavailable; Pi internals may have changed${suffix}`,
     );
 }
 
-/**
- * Sets whether slash command autocomplete descriptions should hide source tags.
- */
-export function setHideSlashCommandSourceTags(enabled: boolean): void {
-    getUiTweaksPatchState().hideSlashCommandSourceTags = enabled;
-}
-
-/**
- * Installs an idempotent patch that removes source tags from slash command autocomplete rows.
- */
-export function installSlashCommandSourcePatch(prototype?: SlashCommandSourcePatchTarget): void {
-    const prototypeValue: unknown = prototype ?? InteractiveMode.prototype;
-    if (
-        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
-        prototypeValue === null
-    ) {
+/** Installs or updates the slash-command source-tag patch. */
+export function installSlashCommandSourcePatch(
+    config: SlashCommandSourceConfig,
+    target: unknown = InteractiveMode.prototype,
+): SlashCommandSourceHandle {
+    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
         warnSlashCommandSourcePatchUnavailable();
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
-    const originalPrefixValue: unknown = Reflect.get(
-        prototypeValue,
-        "prefixAutocompleteDescription",
-    ) as unknown;
-    if (typeof originalPrefixValue !== "function") {
+    const prefix: unknown = Reflect.get(target, "prefixAutocompleteDescription");
+    if (typeof prefix !== "function") {
         warnSlashCommandSourcePatchUnavailable("missing prefixAutocompleteDescription");
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The guarded Pi InteractiveMode adapter verifies the private method
-    // before exposing the smallest slash-command description patch target.
-    prototype = prototypeValue as SlashCommandSourcePatchTarget;
-    if (prototype[SLASH_COMMAND_SOURCE_PATCH_KEY] === true) {
-        return;
+    // SAFETY: The runtime guard proves the private InteractiveMode method is callable.
+    const prototype = target as SlashCommandSourcePatchTarget;
+    const installed = prototype[SLASH_COMMAND_SOURCE_PATCH];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
     }
-
-    // SAFETY: Pi's InteractiveMode currently exposes this private TypeScript method at runtime.
-    // The guard above verifies the method before this internal UI patch wraps it.
-    const originalPrefix = originalPrefixValue as PrefixAutocompleteDescription;
-
-    prototype.prefixAutocompleteDescription = function patchedPrefixAutocompleteDescription(
-        this: SlashCommandSourcePatchTarget,
-        description: string | undefined,
-        sourceInfo: unknown,
-    ): string | undefined {
-        if (getUiTweaksPatchState().hideSlashCommandSourceTags) {
-            return description;
-        }
-
-        return originalPrefix.call(this, description, sourceInfo);
+    let current = config;
+    const patch = installLinkedMethodPatch(
+        prototype,
+        "prefixAutocompleteDescription",
+        (predecessor) =>
+            function patchedPrefixAutocompleteDescription(
+                this: SlashCommandSourcePatchTarget,
+                description: string | undefined,
+                sourceInfo: unknown,
+            ): string | undefined {
+                if (current.hideSlashCommandSourceTags) return description;
+                return predecessor.call(this, description, sourceInfo);
+            },
+    );
+    let disposed = false;
+    const handle: SlashCommandSourceHandle = {
+        update(next): void {
+            if (!disposed) current = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[SLASH_COMMAND_SOURCE_PATCH]?.handle === handle) {
+                delete prototype[SLASH_COMMAND_SOURCE_PATCH];
+            }
+        },
     };
-
-    prototype[SLASH_COMMAND_SOURCE_PATCH_KEY] = true;
+    prototype[SLASH_COMMAND_SOURCE_PATCH] = { original: patch.predecessor, patch, handle };
+    return handle;
 }

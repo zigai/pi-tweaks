@@ -10,7 +10,13 @@ import { join } from "node:path";
 import { Type, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-import type { MentionProjectSettings } from "./types.ts";
+export type MentionProjectSettings = {
+    trigger: string;
+    roots: string[];
+    gitReposOnly: boolean;
+    includeDotFolders: boolean;
+    completionSuffix: string;
+};
 
 export const DEFAULT_MENTION_TRIGGER = "#";
 export const DEFAULT_COMPLETION_SUFFIX = " ";

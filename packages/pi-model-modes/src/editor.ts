@@ -1,21 +1,14 @@
-import {
-    CustomEditor,
-    type ExtensionAPI,
-    type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import { getCurrentMode, getModeBorderColor, setRequestEditorRender } from "./mode-state.ts";
+import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { registerEditorEnhancer } from "@zigai/pi-extension-internals";
 
-const MODE_FACTORY_BASE = Symbol.for("zigai.pi-model-modes.editor-factory-base");
+import type { ModeController } from "./mode-controller.ts";
+
+const MODE_EDITOR_ENHANCER = Symbol.for("zigai.pi-model-modes.editor-enhancer");
 
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
-
 type EditorLike = ReturnType<EditorFactory> & {
     borderColor: (text: string) => string;
     getText(): string;
-};
-
-type WrappedEditorFactory = EditorFactory & {
-    [MODE_FACTORY_BASE]?: EditorFactory | undefined;
 };
 
 function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
@@ -32,53 +25,36 @@ function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
     );
 }
 
-function isWrappedEditorFactory(value: EditorFactory | undefined): value is WrappedEditorFactory {
-    return value !== undefined && Reflect.has(value, MODE_FACTORY_BASE);
-}
-
-function enhanceEditor(
-    editor: EditorLike,
-    pi: ExtensionAPI,
+export function applyModeEditor(
+    controller: ModeController,
     ctx: ExtensionContext,
-    requestRender: () => void,
-): EditorLike {
-    const defaultBorderColor = editor.borderColor;
-
-    const borderColor = (text: string) => {
-        const isBashMode = editor.getText().trimStart().startsWith("!");
-        if (isBashMode) {
-            return ctx.ui.theme.getBashModeBorderColor()(text);
-        }
-        return getModeBorderColor(ctx, pi, getCurrentMode(), defaultBorderColor)(text);
-    };
-
-    Object.defineProperty(editor, "borderColor", {
-        get: () => borderColor,
-        set: () => {},
-        configurable: true,
-        enumerable: true,
-    });
-
-    setRequestEditorRender(requestRender);
-    return editor;
-}
-
-export function applyModeEditor(pi: ExtensionAPI, ctx: ExtensionContext): void {
-    if (!ctx.hasUI) return;
-
-    const configuredFactory = ctx.ui.getEditorComponent();
-    let existing: WrappedEditorFactory | undefined;
-    if (isWrappedEditorFactory(configuredFactory)) {
-        existing = configuredFactory;
-    }
-    const baseFactory = existing?.[MODE_FACTORY_BASE] ?? configuredFactory;
-    const factory: WrappedEditorFactory = (tui, theme, keybindings) => {
-        const editor =
-            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
-        if (!isEditorLike(editor)) return editor;
-        return enhanceEditor(editor, pi, ctx, () => tui.requestRender());
-    };
-    factory[MODE_FACTORY_BASE] = baseFactory;
-
-    ctx.ui.setEditorComponent(factory);
+): { dispose(): void } | undefined {
+    if (!ctx.hasUI) return undefined;
+    return registerEditorEnhancer(
+        ctx,
+        MODE_EDITOR_ENHANCER,
+        (tui, theme, keybindings) => new CustomEditor(tui, theme, keybindings),
+        (editor, tui) => {
+            if (!isEditorLike(editor)) return editor;
+            const defaultBorderColor = editor.borderColor;
+            const borderColor = (text: string): string => {
+                if (editor.getText().trimStart().startsWith("!")) {
+                    return ctx.ui.theme.getBashModeBorderColor()(text);
+                }
+                return controller.getModeBorderColor(
+                    ctx,
+                    controller.currentMode,
+                    defaultBorderColor,
+                )(text);
+            };
+            Object.defineProperty(editor, "borderColor", {
+                get: () => borderColor,
+                set: () => {},
+                configurable: true,
+                enumerable: true,
+            });
+            controller.setEditorRenderRequest(() => tui.requestRender());
+            return editor;
+        },
+    );
 }

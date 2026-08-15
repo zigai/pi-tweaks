@@ -8,7 +8,7 @@ import {
     expandProjectMentions,
     expandProjectMentionsInMessages,
 } from "../src/expand-mentions.ts";
-import type { ProjectDirectory } from "../src/types.ts";
+import type { ProjectDirectory } from "../src/projects.ts";
 
 type AssistantContextMessage = Extract<ContextEvent["messages"][number], { role: "assistant" }>;
 

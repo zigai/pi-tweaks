@@ -1,3 +1,4 @@
+import { installKeyedLinkedMethodPatch } from "@zigai/pi-extension-internals";
 import { TuiMainScreen, type Component } from "@earendil-works/pi-tui";
 
 import { getFooterComponentKind } from "./footer-component.ts";
@@ -30,8 +31,7 @@ type ComponentContainer = Component & {
 };
 
 type PatchableTuiPrototype = {
-    render?: (this: PatchableTuiInstance, width: number) => string[];
-    [FOOTER_SHRINK_PADDING_PATCH_MARKER]?: true;
+    render(this: PatchableTuiInstance, width: number): string[];
 };
 
 type ChildLineRange = {
@@ -387,44 +387,42 @@ function padAtVisibleBoundary(
  * Install an idempotent TUI render patch that compacts Pi's bottom chrome and
  * pads shrinking transcripts above it so status/widgets, editor, and footer stay attached.
  */
-export function installFooterShrinkPaddingPatch(): void {
+export function installFooterShrinkPaddingPatch(): { dispose(): void } | undefined {
     const prototypeValue: unknown = TuiMainScreen.prototype;
     if (
         (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
         prototypeValue === null
     ) {
-        return;
+        return undefined;
     }
-    const renderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
-    if (typeof renderValue !== "function") return;
+    const renderValue: unknown = Reflect.get(prototypeValue, "render");
+    if (typeof renderValue !== "function") return undefined;
     // SAFETY: The guarded TUI adapter verifies the private render method before
     // patching its minimal prototype seam.
     const prototype = prototypeValue as PatchableTuiPrototype;
-    if (prototype[FOOTER_SHRINK_PADDING_PATCH_MARKER] === true) return;
 
-    // SAFETY: The immediately preceding runtime guard proves the private TUI render seam is callable.
-    const originalRender = renderValue as NonNullable<PatchableTuiPrototype["render"]>;
-
-    prototype.render = function patchedFooterShrinkPaddingRender(
-        this: PatchableTuiInstance,
-        width: number,
-    ): string[] {
-        const leaveFrame = enterChildLineRangesFrame(this, width);
-        try {
-            const renderedLines = renderWithChildLineRanges(this, width, originalRender);
-            const lines = compactBottomChromeSpacing(this, renderedLines, width);
-            if (!shouldPadShrink(this, lines.lines)) return lines.lines;
-            return padAtVisibleBoundary(
-                this,
-                lines.lines,
-                this.previousLines.length,
-                width,
-                lines.removedRows,
-            );
-        } finally {
-            leaveFrame();
-        }
-    };
-
-    prototype[FOOTER_SHRINK_PADDING_PATCH_MARKER] = true;
+    return installKeyedLinkedMethodPatch(
+        prototype,
+        "render",
+        FOOTER_SHRINK_PADDING_PATCH_MARKER,
+        undefined,
+        (predecessor) =>
+            function (this: PatchableTuiInstance, width: number): string[] {
+                const leaveFrame = enterChildLineRangesFrame(this, width);
+                try {
+                    const renderedLines = renderWithChildLineRanges(this, width, predecessor);
+                    const lines = compactBottomChromeSpacing(this, renderedLines, width);
+                    if (!shouldPadShrink(this, lines.lines)) return lines.lines;
+                    return padAtVisibleBoundary(
+                        this,
+                        lines.lines,
+                        this.previousLines.length,
+                        width,
+                        lines.removedRows,
+                    );
+                } finally {
+                    leaveFrame();
+                }
+            },
+    );
 }

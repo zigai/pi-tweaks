@@ -9,16 +9,14 @@ import { KeybindingsManager, setKeybindings } from "@earendil-works/pi-tui";
 import { test } from "vitest";
 
 import treeTimestampsExtension from "../src/index.ts";
-import { PATCH_KEY } from "../src/constants.ts";
-import { loadTreeInternals } from "../src/internal-imports.ts";
-import { patchTreeSelector } from "../src/patch-tree-selector.ts";
-import type {
-    FlatTreeNode,
-    ThemeModule,
-    TreeListInstance,
-    TreeNode,
-    TreeSelectorModule,
-} from "../src/types.ts";
+import { PATCH_KEY, patchTreeSelector } from "../src/patch-tree-selector.ts";
+import {
+    loadTreeInternals,
+    type ThemeModule,
+    type TreeSelectorModule,
+} from "../src/internal-imports.ts";
+import type { FlatTreeNode, TreeNode } from "../src/tree-node.ts";
+import type { TreeListInstance } from "../src/tree-state.ts";
 
 const FILTER_ALL_KEY = "\x01";
 

@@ -14,15 +14,19 @@ import {
     expandProjectMentions,
     expandProjectMentionsInMessages,
 } from "./expand-mentions.ts";
-import { createProjectDirectorySource, listProjectDirectories } from "./projects.ts";
+import {
+    createProjectDirectorySource,
+    listProjectDirectories,
+    type ProjectDirectory,
+} from "./projects.ts";
 import {
     applyMentionProjectCliFlags,
     loadMentionProjectSettings,
     INCLUDE_DOT_FOLDERS_FLAG,
     INCLUDE_NON_GIT_FLAG,
+    type MentionProjectSettings,
     type MentionProjectSettingsContext,
 } from "./settings.ts";
-import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
 
 function mentionProjectSettings(
     pi: Pick<ExtensionAPI, "getFlag">,

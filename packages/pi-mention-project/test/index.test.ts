@@ -12,8 +12,8 @@ import {
     registerProjectMentionExtension,
     type ProjectMentionExtensionApi,
 } from "../src/index.ts";
+import type { ProjectDirectory } from "../src/projects.ts";
 import type { MentionProjectSettingsContext } from "../src/settings.ts";
-import type { ProjectDirectory } from "../src/types.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mention-project-index-agent-"));

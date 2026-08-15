@@ -1,129 +1,126 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import {
+    installLinkedMethodPatch,
+    type LinkedMethodPatchHandle,
+} from "@zigai/pi-extension-internals";
 
-import { getUiTweaksPatchState } from "./patch-state.ts";
-
-const PRESERVE_COMPACTION_HISTORY_PATCH_KEY = Symbol.for(
-    "zigai.pi-ui-tweaks.preserve-compaction-history-patched",
+const PRESERVE_COMPACTION_HISTORY_PATCH = Symbol.for(
+    "zigai.pi-ui-tweaks.preserve-compaction-history-patch",
 );
-
+export type PreserveCompactionHistoryConfig = { readonly preserveCompactionHistory: boolean };
+export type PreserveCompactionHistoryHandle = {
+    update(config: PreserveCompactionHistoryConfig): void;
+    dispose(): void;
+};
 type CompactionEvent = {
     readonly type?: unknown;
     readonly aborted?: unknown;
     readonly result?: unknown;
 };
-
-type ChatContainer = {
-    clear: () => void;
-};
-
+type ChatContainer = { clear: () => void };
+type HandleEvent = (this: InteractiveModeCompactionTarget, event: unknown) => Promise<void>;
 type InteractiveModeCompactionTarget = {
-    [PRESERVE_COMPACTION_HISTORY_PATCH_KEY]?: true;
     chatContainer: ChatContainer;
-    handleEvent: (event: unknown) => Promise<void>;
+    handleEvent: HandleEvent;
     rebuildChatFromMessages: () => void;
+    [PRESERVE_COMPACTION_HISTORY_PATCH]?: PreserveCompactionHistoryRecord;
 };
-
+type PreserveCompactionHistoryRecord = {
+    readonly original: HandleEvent;
+    readonly patch: LinkedMethodPatchHandle<
+        InteractiveModeCompactionTarget,
+        [unknown],
+        Promise<void>
+    >;
+    readonly handle: PreserveCompactionHistoryHandle;
+};
 function isObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
 }
-
 function isSuccessfulCompaction(event: unknown): event is CompactionEvent {
-    if (!isObject(event)) {
-        return false;
-    }
-
     return (
+        isObject(event) &&
         Reflect.get(event, "type") === "compaction_end" &&
         Reflect.get(event, "aborted") === false &&
         Reflect.get(event, "result") !== undefined
     );
 }
-
 function isInteractiveModeCompactionTarget(
     value: unknown,
 ): value is InteractiveModeCompactionTarget {
-    if (!isObject(value)) {
-        return false;
-    }
-
-    const chatContainer: unknown = Reflect.get(value, "chatContainer") as unknown;
+    if (!isObject(value)) return false;
+    const chatContainer: unknown = Reflect.get(value, "chatContainer");
     return (
         isObject(chatContainer) &&
         typeof Reflect.get(chatContainer, "clear") === "function" &&
         typeof Reflect.get(value, "rebuildChatFromMessages") === "function"
     );
 }
-
 function warnPreserveCompactionHistoryPatchUnavailable(reason?: string): void {
     let suffix = "";
-    if (reason !== undefined && reason.length > 0) {
-        suffix = `: ${reason}`;
-    }
-
+    if (reason !== undefined) suffix = `: ${reason}`;
     console.warn(
         `[pi-ui-tweaks] preserve compaction history patch unavailable; Pi internals may have changed${suffix}`,
     );
 }
 
-/**
- * Sets whether successful live compactions retain the existing rendered transcript.
- */
-export function setPreserveCompactionHistory(enabled: boolean): void {
-    getUiTweaksPatchState().preserveCompactionHistory = enabled;
-}
-
-/**
- * Installs an idempotent patch that preserves rendered history during live compaction.
- */
-export function installPreserveCompactionHistoryPatch(prototype?: unknown): void {
-    const prototypeValue: unknown = prototype ?? InteractiveMode.prototype;
-    if (!isObject(prototypeValue)) {
-        warnPreserveCompactionHistoryPatchUnavailable();
-        return;
-    }
-
-    const originalHandleEventValue: unknown = Reflect.get(prototypeValue, "handleEvent") as unknown;
-    if (typeof originalHandleEventValue !== "function") {
+/** Installs or updates the live-compaction transcript-preservation patch. */
+export function installPreserveCompactionHistoryPatch(
+    config: PreserveCompactionHistoryConfig,
+    target: unknown = InteractiveMode.prototype,
+): PreserveCompactionHistoryHandle {
+    if (!isObject(target) || typeof Reflect.get(target, "handleEvent") !== "function") {
         warnPreserveCompactionHistoryPatchUnavailable("missing handleEvent");
-        return;
+        return { update(): void {}, dispose(): void {} };
     }
-
-    // SAFETY: The runtime guard verifies the prototype method before the private
-    // InteractiveMode adapter is narrowed to the patch target.
-    const targetPrototype = prototypeValue as InteractiveModeCompactionTarget;
-    if (targetPrototype[PRESERVE_COMPACTION_HISTORY_PATCH_KEY] === true) {
-        return;
+    // SAFETY: The runtime guard proves handleEvent is callable.
+    const prototype = target as InteractiveModeCompactionTarget;
+    const installed = prototype[PRESERVE_COMPACTION_HISTORY_PATCH];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
     }
-
-    // SAFETY: InteractiveMode.handleEvent is an async runtime method. The wrapper
-    // forwards its event unchanged and restores temporary method replacements.
-    const originalHandleEvent =
-        originalHandleEventValue as InteractiveModeCompactionTarget["handleEvent"];
-
-    targetPrototype.handleEvent = async function patchedHandleEvent(
-        this: InteractiveModeCompactionTarget,
-        event: unknown,
-    ): Promise<void> {
-        if (
-            !getUiTweaksPatchState().preserveCompactionHistory ||
-            !isSuccessfulCompaction(event) ||
-            !isInteractiveModeCompactionTarget(this)
-        ) {
-            return originalHandleEvent.call(this, event);
-        }
-
-        const originalClear = this.chatContainer.clear;
-        const originalRebuildChatFromMessages = this.rebuildChatFromMessages;
-        this.chatContainer.clear = () => {};
-        this.rebuildChatFromMessages = () => {};
-
-        try {
-            await originalHandleEvent.call(this, event);
-        } finally {
-            this.chatContainer.clear = originalClear;
-            this.rebuildChatFromMessages = originalRebuildChatFromMessages;
-        }
+    let current = config;
+    const patch = installLinkedMethodPatch(
+        prototype,
+        "handleEvent",
+        (predecessor) =>
+            async function patchedHandleEvent(
+                this: InteractiveModeCompactionTarget,
+                event: unknown,
+            ): Promise<void> {
+                if (
+                    !current.preserveCompactionHistory ||
+                    !isSuccessfulCompaction(event) ||
+                    !isInteractiveModeCompactionTarget(this)
+                )
+                    return predecessor.call(this, event);
+                const originalClear = this.chatContainer.clear;
+                const originalRebuild = this.rebuildChatFromMessages;
+                this.chatContainer.clear = () => {};
+                this.rebuildChatFromMessages = () => {};
+                try {
+                    await predecessor.call(this, event);
+                } finally {
+                    this.chatContainer.clear = originalClear;
+                    this.rebuildChatFromMessages = originalRebuild;
+                }
+            },
+    );
+    let disposed = false;
+    const handle: PreserveCompactionHistoryHandle = {
+        update(next): void {
+            if (!disposed) current = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            patch.dispose();
+            if (prototype[PRESERVE_COMPACTION_HISTORY_PATCH]?.handle === handle) {
+                delete prototype[PRESERVE_COMPACTION_HISTORY_PATCH];
+            }
+        },
     };
-
-    targetPrototype[PRESERVE_COMPACTION_HISTORY_PATCH_KEY] = true;
+    prototype[PRESERVE_COMPACTION_HISTORY_PATCH] = { original: patch.predecessor, patch, handle };
+    return handle;
 }

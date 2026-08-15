@@ -5,7 +5,7 @@ import {
     projectMentionPattern,
     projectNameSet,
 } from "./mention-syntax.ts";
-import type { ProjectDirectory } from "./types.ts";
+import type { ProjectDirectory } from "./projects.ts";
 
 function projectMap(projects: ProjectDirectory[]): Map<string, ProjectDirectory> {
     const byName = new Map<string, ProjectDirectory>();

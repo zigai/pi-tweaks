@@ -3,13 +3,19 @@ import {
     parseProjectMentionName,
     projectMentionPattern,
 } from "./mention-syntax.ts";
-import type { EditorEnhancerContext } from "./types.ts";
+type ProjectMentionColorContext = {
+    readonly ui: {
+        readonly theme: {
+            fg(role: string, text: string): string;
+        };
+    };
+};
 
 export { isProjectMentionContext };
 
 export function colorProjectMentions(
     line: string,
-    ctx: EditorEnhancerContext,
+    ctx: ProjectMentionColorContext,
     trigger: string,
     knownNames: ReadonlySet<string>,
 ): string {

@@ -7,7 +7,7 @@ import { afterAll, test } from "vitest";
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 import mentionSkillExtension, { type MentionSkillExtensionApi } from "../src/index.ts";
 import type { MentionSkillSettingsContext } from "../src/settings.ts";
-import type { SkillCommand } from "../src/types.ts";
+import type { SkillCommand } from "../src/skill-commands.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(path.join(tmpdir(), "pi-mention-index-agent-"));

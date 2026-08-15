@@ -3,11 +3,11 @@ import { test, vi } from "vitest";
 import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { Loader, type TUI } from "@earendil-works/pi-tui";
 
-import { WIDGET_KEY } from "../src/constants.ts";
 import statusBarExtension from "../src/index.ts";
 import { resetStatusBarStateForTests } from "../src/status-bar-api.ts";
 import {
     resetWorkedForWidgetCache,
+    WIDGET_KEY,
     WORKED_FOR_STATE_ENTRY,
     type WorkedForState,
 } from "../src/worked-for-widget.ts";

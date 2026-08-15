@@ -2,8 +2,16 @@ import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { FOOTER_LAYOUT } from "./constants.ts";
-import { FOOTER_CUSTOM_SLOT_ID_PATTERN, type FooterLayout, type FooterSlotId } from "./types.ts";
+import {
+    FOOTER_CUSTOM_SLOT_ID_PATTERN,
+    type FooterLayout,
+    type FooterSlotId,
+} from "./footer-model.ts";
+const FOOTER_LAYOUT = {
+    left: ["path", "branch", "provider", "model", "thinking"],
+    right: ["context"],
+    hidden: [],
+} as const;
 
 export type FooterConfig = {
     readonly separator: string;

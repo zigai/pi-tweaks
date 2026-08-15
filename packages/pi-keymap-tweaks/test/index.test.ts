@@ -9,7 +9,7 @@ import {
     type Terminal,
 } from "@earendil-works/pi-tui";
 import { KeybindingsManager } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
-import { applyKeymapEditor, type KeymapEditorContext } from "../src/index.ts";
+import { applyKeymapEditor, type KeymapEditorContext } from "../src/editor-keymap.ts";
 
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";

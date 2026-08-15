@@ -1,6 +1,16 @@
+import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { registerEditorEnhancer, type EditorEnhancerHandle } from "@zigai/pi-extension-internals";
+
 import { autocompleteStartIndex, colorSkillMentions, isSkillMentionContext } from "./rendering.ts";
-import { applyEditorEnhancer } from "./editor-enhancer.ts";
-import type { EditorEnhancerContext, EditorLike } from "./types.ts";
+
+type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
+type EditorLike = ReturnType<EditorFactory>;
+
+export type MentionSkillEditorContext = Pick<ExtensionContext, "hasUI"> & {
+    ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent"> & {
+        theme: Pick<ExtensionContext["ui"]["theme"], "fg">;
+    };
+};
 
 const MENTION_EDITOR_ENHANCER = Symbol.for("zigai.pi-mention-skill.editor-enhancer");
 
@@ -22,7 +32,7 @@ function tryTriggerAutocomplete(editor: EditorLike): void {
 
 function enhanceEditor(
     editor: EditorLike,
-    ctx: EditorEnhancerContext,
+    ctx: MentionSkillEditorContext,
     trigger: string,
     getSkillNames: SkillNameSnapshot,
 ): EditorLike {
@@ -63,13 +73,14 @@ function enhanceEditor(
 }
 
 export function applyMentionSkillEditor(
-    ctx: EditorEnhancerContext,
+    ctx: MentionSkillEditorContext,
     trigger: string,
     getSkillNames: SkillNameSnapshot,
-): void {
-    if (!ctx.hasUI) return;
-
-    applyEditorEnhancer(ctx, MENTION_EDITOR_ENHANCER, (editor) =>
-        enhanceEditor(editor, ctx, trigger, getSkillNames),
+): EditorEnhancerHandle<Parameters<EditorFactory>, EditorLike> {
+    return registerEditorEnhancer(
+        ctx,
+        MENTION_EDITOR_ENHANCER,
+        (tui, theme, keybindings) => new CustomEditor(tui, theme, keybindings),
+        (editor) => enhanceEditor(editor, ctx, trigger, getSkillNames),
     );
 }

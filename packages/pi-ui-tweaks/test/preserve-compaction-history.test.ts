@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import {
-    installPreserveCompactionHistoryPatch,
-    setPreserveCompactionHistory,
-} from "../src/preserve-compaction-history.ts";
+import { installPreserveCompactionHistoryPatch } from "../src/preserve-compaction-history.ts";
 
 class FakeInteractiveMode {
     clearCount = 0;
@@ -35,8 +32,10 @@ class FakeInteractiveMode {
 }
 
 test("preserve compaction history leaves successful live compaction UI intact", async () => {
-    setPreserveCompactionHistory(true);
-    installPreserveCompactionHistoryPatch(FakeInteractiveMode.prototype);
+    installPreserveCompactionHistoryPatch(
+        { preserveCompactionHistory: true },
+        FakeInteractiveMode.prototype,
+    );
 
     const mode = new FakeInteractiveMode();
     await mode.handleEvent({ type: "compaction_end", aborted: false, result: {} });
@@ -44,12 +43,17 @@ test("preserve compaction history leaves successful live compaction UI intact", 
     assert.equal(mode.clearCount, 0);
     assert.equal(mode.rebuildCount, 0);
     assert.equal(mode.summaryCount, 1);
-    setPreserveCompactionHistory(false);
+    installPreserveCompactionHistoryPatch(
+        { preserveCompactionHistory: false },
+        FakeInteractiveMode.prototype,
+    );
 });
 
 test("preserve compaction history keeps Pi's normal redraw when disabled", async () => {
-    setPreserveCompactionHistory(false);
-    installPreserveCompactionHistoryPatch(FakeInteractiveMode.prototype);
+    installPreserveCompactionHistoryPatch(
+        { preserveCompactionHistory: false },
+        FakeInteractiveMode.prototype,
+    );
 
     const mode = new FakeInteractiveMode();
     await mode.handleEvent({ type: "compaction_end", aborted: false, result: {} });
@@ -57,5 +61,8 @@ test("preserve compaction history keeps Pi's normal redraw when disabled", async
     assert.equal(mode.clearCount, 1);
     assert.equal(mode.rebuildCount, 1);
     assert.equal(mode.summaryCount, 1);
-    setPreserveCompactionHistory(false);
+    installPreserveCompactionHistoryPatch(
+        { preserveCompactionHistory: false },
+        FakeInteractiveMode.prototype,
+    );
 });

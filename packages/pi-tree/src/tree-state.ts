@@ -1,11 +1,28 @@
-import { TREE_PREVIEW_ENABLED_KEY, TREE_TIMESTAMP_MODE_KEY } from "./constants.ts";
+export const TREE_TIMESTAMP_MODE_KEY = Symbol.for("zigai.pi.tree-timestamps.mode");
+export const TREE_PREVIEW_ENABLED_KEY = Symbol.for("zigai.pi.tree-timestamps.preview-enabled");
 import {
     getPersistedMaxVisibleLines,
     getPersistedMode,
     getPersistedPreviewEnabled,
     isTreeTimestampMode,
 } from "./settings.ts";
-import type { TreeListInstance, TreeTimestampMode } from "./types.ts";
+import type { FlatTreeNode, TreeNode } from "./tree-node.ts";
+import type { TreeTimestampMode } from "./timestamps.ts";
+
+export type TreeListInstance = {
+    activePathIds?: Set<string>;
+    filteredNodes?: FlatTreeNode[];
+    foldedNodes?: Set<string>;
+    maxVisibleLines?: number;
+    multipleRoots?: boolean;
+    selectedIndex?: number;
+    showLabelTimestamps?: boolean;
+    formatLabelTimestamp?: (timestamp: string) => string;
+    getStatusLabels?: () => string;
+    handleInput?: (keyData: string) => void;
+    isFoldable?: (entryId: string) => boolean;
+    getEntryDisplayText?: (node: TreeNode, isSelected: boolean) => string;
+};
 
 export function setTreeTimestampMode(treeList: TreeListInstance, mode: TreeTimestampMode): void {
     (treeList as TreeListInstance & { [TREE_TIMESTAMP_MODE_KEY]?: TreeTimestampMode })[

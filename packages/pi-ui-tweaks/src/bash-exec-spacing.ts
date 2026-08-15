@@ -1,16 +1,21 @@
 import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-
 import {
-    hasEditorFactoryLayer,
-    markEditorFactoryLayer,
+    registerEditorEnhancer,
+    type EditorEnhancerHandle,
     type EditorFactory,
-} from "./editor-factory-layers.ts";
-import { getUiTweaksPatchState } from "./patch-state.ts";
+} from "@zigai/pi-extension-internals";
 
+const BASH_EXEC_SPACING_ENHANCER = Symbol.for("zigai.pi-ui-tweaks.bash-exec-spacing-enhancer");
+const BASH_EXEC_SPACING_KEY = Symbol.for("zigai.pi-ui-tweaks.bash-exec-spacing");
+
+export type BashExecSpacingConfig = { readonly bashExecPromptSpacing: boolean };
+export type BashExecSpacingHandle = {
+    update(config: BashExecSpacingConfig): void;
+    dispose(): void;
+};
 export type BashExecSpacingEditorContext = Pick<ExtensionContext, "hasUI"> & {
     ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
 };
-
 export type BashExecSpacingEditor = {
     getCursor(): { line: number; col: number };
     getText(): string;
@@ -20,17 +25,24 @@ export type BashExecSpacingEditor = {
     requestRenderNow?: () => void;
     setText(text: string): void;
 };
-
-type EditorLike = ReturnType<EditorFactory> & BashExecSpacingEditor;
+type EditorArgs = Parameters<NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>>;
+type Editor = ReturnType<NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>>;
+type EditorLike = Editor & BashExecSpacingEditor;
+type BashExecSpacingRecord = {
+    readonly original: EditorFactory<EditorArgs, Editor> | undefined;
+    readonly enhancer: EditorEnhancerHandle<EditorArgs, Editor>;
+    readonly handle: BashExecSpacingHandle;
+};
+type MarkedUi = BashExecSpacingEditorContext["ui"] & {
+    [BASH_EXEC_SPACING_ENHANCER]?: BashExecSpacingRecord;
+};
 
 function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function")
         return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
+    return Reflect.get(value, key);
 }
-
-function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
+function isEditorLike(value: Editor): value is EditorLike {
     return (
         typeof getUnknownProperty(value, "getCursor") === "function" &&
         typeof getUnknownProperty(value, "getText") === "function" &&
@@ -39,91 +51,75 @@ function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
     );
 }
 
-function requestEditorRender(editor: BashExecSpacingEditor): void {
-    editor.requestRenderNow?.();
-}
-
-/**
- * Sets whether `!` typed at an empty prompt expands to `! ` for bash mode.
- */
-export function setBashExecPromptSpacing(enabled: boolean): void {
-    getUiTweaksPatchState().bashExecPromptSpacing = enabled;
-}
-
-export function applyBashExecPromptSpacing(editor: BashExecSpacingEditor, data: string): boolean {
-    if (!getUiTweaksPatchState().bashExecPromptSpacing) {
-        return false;
-    }
-    if (data !== "!") {
-        return false;
-    }
-
+export function applyBashExecPromptSpacing(
+    editor: BashExecSpacingEditor,
+    data: string,
+    config: BashExecSpacingConfig,
+): boolean {
+    if (!config.bashExecPromptSpacing || data !== "!") return false;
     const cursor = editor.getCursor();
-    if (cursor.line !== 0) {
-        return false;
-    }
-
+    if (cursor.line !== 0) return false;
     const text = editor.getText();
     if (text.length === 0 && cursor.col === 0) {
-        if (typeof editor.insertTextAtCursor === "function") {
-            editor.insertTextAtCursor("! ");
-        } else {
-            editor.setText("! ");
-        }
-        requestEditorRender(editor);
+        if (typeof editor.insertTextAtCursor === "function") editor.insertTextAtCursor("! ");
+        else editor.setText("! ");
+        editor.requestRenderNow?.();
         return true;
     }
-
     if (text === "!" && cursor.col === 1) {
         editor.setText("!! ");
-        requestEditorRender(editor);
+        editor.requestRenderNow?.();
         return true;
     }
-
     if (text === "! " && (cursor.col === 1 || cursor.col === 2)) {
         editor.setText("!! ");
-        requestEditorRender(editor);
+        editor.requestRenderNow?.();
         return true;
     }
-
     return false;
 }
 
-function enhanceEditor(editor: EditorLike, requestRender: () => void): EditorLike {
-    editor.requestRenderNow ??= requestRender;
-
-    const originalHandleInput = editor.handleInput.bind(editor);
-    editor.handleInput = (data: string) => {
-        if (data === "!" && editor.onExtensionShortcut?.(data) === true) {
-            return;
-        }
-        if (applyBashExecPromptSpacing(editor, data)) {
-            return;
-        }
-        originalHandleInput(data);
-    };
-
-    return editor;
-}
-
-export function applyBashExecSpacingEditor(ctx: BashExecSpacingEditorContext): void {
-    if (!ctx.hasUI) {
-        return;
+/** Installs or updates the shared bash-spacing editor enhancer. */
+export function installBashExecSpacingEditor(
+    ctx: BashExecSpacingEditorContext,
+    config: BashExecSpacingConfig,
+): BashExecSpacingHandle {
+    const ui = ctx.ui as MarkedUi;
+    const installed = ui[BASH_EXEC_SPACING_ENHANCER];
+    if (installed !== undefined) {
+        installed.handle.update(config);
+        return installed.handle;
     }
-
-    const existing = ctx.ui.getEditorComponent();
-    if (hasEditorFactoryLayer(existing, "bashExecSpacing")) {
-        return;
-    }
-
-    const baseFactory = existing;
-    const factory: EditorFactory = (tui, theme, keybindings) => {
-        const editor =
-            baseFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
-        if (!isEditorLike(editor)) return editor;
-        return enhanceEditor(editor, () => tui.requestRender());
+    let current = config;
+    const original = ctx.ui.getEditorComponent();
+    const enhancer = registerEditorEnhancer(
+        ctx,
+        BASH_EXEC_SPACING_KEY,
+        (tui, theme, keybindings) => new CustomEditor(tui, theme, keybindings),
+        (editor, tui) => {
+            if (!isEditorLike(editor)) return editor;
+            editor.requestRenderNow ??= () => tui.requestRender();
+            const predecessor = editor.handleInput.bind(editor);
+            editor.handleInput = (data: string): void => {
+                if (data === "!" && editor.onExtensionShortcut?.(data) === true) return;
+                if (!applyBashExecPromptSpacing(editor, data, current)) predecessor(data);
+            };
+            return editor;
+        },
+    );
+    let disposed = false;
+    const handle: BashExecSpacingHandle = {
+        update(next): void {
+            if (!disposed) current = next;
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            enhancer.dispose();
+            if (ui[BASH_EXEC_SPACING_ENHANCER]?.handle === handle)
+                delete ui[BASH_EXEC_SPACING_ENHANCER];
+        },
     };
-    markEditorFactoryLayer(factory, existing, "bashExecSpacing");
-
-    ctx.ui.setEditorComponent(factory);
+    ui[BASH_EXEC_SPACING_ENHANCER] = { original, enhancer, handle };
+    return handle;
 }

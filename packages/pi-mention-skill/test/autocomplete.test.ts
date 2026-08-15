@@ -3,7 +3,7 @@ import { test } from "vitest";
 
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 import { createSkillMentionProvider } from "../src/autocomplete.ts";
-import type { SkillCommand } from "../src/types.ts";
+import type { SkillCommand } from "../src/skill-commands.ts";
 
 function skillCommand(name: string, description = "test skill"): SkillCommand {
     return {

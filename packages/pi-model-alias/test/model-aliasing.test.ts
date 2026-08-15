@@ -8,39 +8,41 @@ import {
     getAliasForLookup,
     getAliasForModel,
     getAliasModelIdCollision,
+    type AliasConfig,
+    type ModelLike,
+    type ProviderAliasConfig,
 } from "../src/model-aliasing.ts";
 import { getProviderDisplayName } from "../src/provider-aliasing.ts";
-import {
-    installModelSelectorProviderPatch,
-    installScopedModelsProviderPatch,
-} from "../src/model-selector-provider-patch.ts";
+import { installModelSelectorProviderPatch } from "../src/model-selector-patch.ts";
+import { installScopedModelsProviderPatch } from "../src/scoped-model-selector-patch.ts";
 import { aliasForProviderRequest, rewritePayloadModel } from "../src/provider-payload.ts";
-import { installRegistryPatch, type PatchedModelRegistry } from "../src/registry-patch.ts";
-import type {
-    AliasConfig,
-    LoadedConfig,
-    ModelLike,
-    ProviderAliasConfig,
-    RuntimeState,
-} from "../src/types.ts";
+import {
+    installRegistryPatch,
+    loadConfigForRegistry,
+    type ModelAliasRuntimeState,
+    type PatchedModelRegistry,
+} from "../src/registry-patch.ts";
+import type { LoadedModelAliasSettings } from "../src/settings.ts";
 
 function loadedConfig(
     aliases: AliasConfig[],
-    error?: string,
+    diagnostic?: string,
     providerAliases: ProviderAliasConfig[] = [],
     stableProviderColumn = true,
-): LoadedConfig {
-    const loaded: LoadedConfig = {
+): LoadedModelAliasSettings {
+    if (diagnostic === undefined) {
+        return {
+            path: "model-aliases.json",
+            mtimeMs: 1,
+            settings: { aliases, providerAliases, stableProviderColumn },
+        };
+    }
+    return {
         path: "model-aliases.json",
         mtimeMs: 1,
-        aliases,
-        providerAliases,
-        stableProviderColumn,
+        settings: { aliases: [], providerAliases: [], stableProviderColumn: true },
+        diagnostic,
     };
-    if (error !== undefined) {
-        loaded.error = error;
-    }
-    return loaded;
 }
 
 const nativeModels: ModelLike[] = [
@@ -95,7 +97,7 @@ function textValues(children: unknown[]): string[] {
 
 test("aliases models without mutating unrelated models", () => {
     const loaded = loadedConfig(aliases);
-    const aliased = aliasModels(nativeModels, loaded);
+    const aliased = aliasModels(nativeModels, loaded.settings);
 
     assert.deepEqual(aliased, [
         { provider: "openai", id: "fast", name: "Fast" },
@@ -107,26 +109,26 @@ test("aliases models without mutating unrelated models", () => {
 test("does not apply aliases when config has a load error", () => {
     const loaded = loadedConfig(aliases, "invalid config");
 
-    assert.deepEqual(aliasModels(nativeModels, loaded), nativeModels);
+    assert.deepEqual(aliasModels(nativeModels, loaded.settings), nativeModels);
 });
 
 test("resolves provider display aliases without changing provider ids", () => {
     const loaded = loadedConfig([], undefined, [{ provider: "openai", name: "OpenAI Work" }]);
 
-    assert.equal(getProviderDisplayName("openai", "OpenAI", loaded), "OpenAI Work");
-    assert.equal(getProviderDisplayName("anthropic", "Anthropic", loaded), "Anthropic");
+    assert.equal(getProviderDisplayName("openai", "OpenAI", loaded.settings), "OpenAI Work");
+    assert.equal(getProviderDisplayName("anthropic", "Anthropic", loaded.settings), "Anthropic");
 });
 
 test("detects alias collisions with native model ids per provider", () => {
     const collision = getAliasModelIdCollision(
-        [{ provider: "openai", model: "gpt-5", alias: "gpt-5" }],
+        loadedConfig([{ provider: "openai", model: "gpt-5", alias: "gpt-5" }]).settings,
         nativeModels,
     );
 
     assert.match(collision ?? "", /conflicts with an existing model id/);
 
     const crossProviderCollision = getAliasModelIdCollision(
-        [{ provider: "anthropic", model: "claude-opus", alias: "gpt-5" }],
+        loadedConfig([{ provider: "anthropic", model: "claude-opus", alias: "gpt-5" }]).settings,
         nativeModels,
     );
     assert.equal(crossProviderCollision, undefined);
@@ -135,9 +137,9 @@ test("detects alias collisions with native model ids per provider", () => {
 test("finds aliases by model and by provider lookup", () => {
     const loaded = loadedConfig(aliases);
 
-    assert.deepEqual(getAliasForModel(nativeModels[0], loaded), aliases[0]);
-    assert.deepEqual(getAliasForLookup("anthropic", "smart", loaded), aliases[1]);
-    assert.equal(getAliasForLookup("openai", "missing", loaded), undefined);
+    assert.deepEqual(getAliasForModel(nativeModels[0], loaded.settings), aliases[0]);
+    assert.deepEqual(getAliasForLookup("anthropic", "smart", loaded.settings), aliases[1]);
+    assert.equal(getAliasForLookup("openai", "missing", loaded.settings), undefined);
 });
 
 test("rewrites provider request payloads only for object payloads", () => {
@@ -154,22 +156,22 @@ test("resolves provider request aliases from selected model or request payload",
     const selectedAliasModel = applyAlias(nativeModels[0], aliases[0]);
 
     assert.deepEqual(
-        aliasForProviderRequest({ model: "fast" }, selectedAliasModel, loaded),
+        aliasForProviderRequest({ model: "fast" }, selectedAliasModel, loaded.settings),
         aliases[0],
     );
     assert.deepEqual(
-        aliasForProviderRequest({ model: "smart" }, nativeModels[1], loaded),
+        aliasForProviderRequest({ model: "smart" }, nativeModels[1], loaded.settings),
         aliases[1],
     );
     assert.equal(
-        aliasForProviderRequest({ model: "claude-opus" }, nativeModels[1], loaded),
+        aliasForProviderRequest({ model: "claude-opus" }, nativeModels[1], loaded.settings),
         undefined,
     );
-    assert.equal(aliasForProviderRequest({ model: "fast" }, undefined, loaded), undefined);
+    assert.equal(aliasForProviderRequest({ model: "fast" }, undefined, loaded.settings), undefined);
 });
 
 test("model selector patch aliases snapshot display and search while preserving native models", () => {
-    const state: RuntimeState = {
+    const state: ModelAliasRuntimeState = {
         loadSettings: () =>
             loadedConfig([aliases[0]], undefined, [{ provider: "openai", name: "OpenAI Work" }]),
     };
@@ -277,7 +279,7 @@ test("model selector patch reapplies aliases after a refreshed snapshot", () => 
     let snapshot: ModelLike[] = [nativeModels[0]].filter(
         (model): model is ModelLike => model !== undefined,
     );
-    const state: RuntimeState = {
+    const state: ModelAliasRuntimeState = {
         loadSettings: () => loadedConfig(aliases),
     };
     const prototype = {
@@ -364,14 +366,14 @@ test("model selector provider patch can align providers to all filtered model na
         };
     }
 
-    const stableState: RuntimeState = {
+    const stableState: ModelAliasRuntimeState = {
         loadSettings: () => loadedConfig([], undefined, [], true),
     };
     const stablePrototype = createPrototype();
     installModelSelectorProviderPatch(stableState, stablePrototype);
     stablePrototype.updateList();
 
-    const visibleState: RuntimeState = {
+    const visibleState: ModelAliasRuntimeState = {
         loadSettings: () => loadedConfig([], undefined, [], false),
     };
     const visiblePrototype = createPrototype();
@@ -423,7 +425,7 @@ test("model selector provider rows stay single-line at narrow widths", () => {
             });
         },
     };
-    const state: RuntimeState = {
+    const state: ModelAliasRuntimeState = {
         loadSettings: () => loadedConfig([], undefined, [], true),
     };
 
@@ -447,7 +449,7 @@ test("scoped models patch aliases rendered and searched models without changing 
     let currentLoaded = loadedConfig([aliases[0]], undefined, [
         { provider: "openai", name: "OpenAI Work" },
     ]);
-    const state: RuntimeState = {
+    const state: ModelAliasRuntimeState = {
         loadSettings: () => currentLoaded,
     };
     type ScopedMockItem = {
@@ -548,7 +550,7 @@ test("scoped models patch aliases rendered and searched models without changing 
 
 test("registry patch aliases list and lookup methods and updates config at runtime", () => {
     let loaded = loadedConfig([aliases[0]]);
-    const state: RuntimeState = {
+    const state: ModelAliasRuntimeState = {
         loadSettings: () => loaded,
     };
     const registry: PatchedModelRegistry = {
@@ -594,4 +596,27 @@ test("registry patch aliases list and lookup methods and updates config at runti
     );
     assert.deepEqual(registry.find("openai", "gpt-5"), nativeModels[0]);
     assert.equal(registry.getProviderDisplayName("openai"), "OpenAI Work");
+});
+
+test("registry collision disables model and provider aliases and reports a diagnostic", () => {
+    const loaded = loadedConfig(
+        [{ provider: "openai", model: "gpt-5", alias: "gpt-5" }],
+        undefined,
+        [{ provider: "openai", name: "OpenAI Work" }],
+    );
+    const state: ModelAliasRuntimeState = { loadSettings: () => loaded };
+    const registry: PatchedModelRegistry = {
+        getAll: () => nativeModels,
+        getAvailable: () => nativeModels,
+        find: (provider, modelId) =>
+            nativeModels.find((model) => model.provider === provider && model.id === modelId),
+        getProviderDisplayName: (provider) => provider,
+    };
+    installRegistryPatch(registry, state);
+
+    const resolved = loadConfigForRegistry(state, registry);
+
+    assert.deepEqual(resolved.settings.aliases, []);
+    assert.deepEqual(resolved.settings.providerAliases, []);
+    assert.match(resolved.diagnostic ?? "", /conflicts with an existing model id/);
 });

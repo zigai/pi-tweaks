@@ -1,6 +1,28 @@
-import type { AliasConfig, LoadedConfig, ModelLike } from "./types.ts";
+export type ModelLike = {
+    provider: string;
+    id: string;
+    name?: string;
+};
 
-function buildModelIdSetByProvider(models: ModelLike[]): Map<string, Set<string>> {
+export type AliasConfig = {
+    provider: string;
+    model: string;
+    alias: string;
+    name?: string;
+};
+
+export type ProviderAliasConfig = {
+    provider: string;
+    name: string;
+};
+
+export type ModelAliasSettings = {
+    aliases: AliasConfig[];
+    providerAliases: ProviderAliasConfig[];
+    stableProviderColumn: boolean;
+};
+
+function buildModelIdSetByProvider(models: readonly ModelLike[]): Map<string, Set<string>> {
     const modelIds = new Map<string, Set<string>>();
     for (const model of models) {
         let providerModels = modelIds.get(model.provider);
@@ -14,11 +36,11 @@ function buildModelIdSetByProvider(models: ModelLike[]): Map<string, Set<string>
 }
 
 export function getAliasModelIdCollision(
-    aliases: AliasConfig[],
-    nativeModels: ModelLike[],
+    settings: ModelAliasSettings,
+    nativeModels: readonly ModelLike[],
 ): string | undefined {
     const modelIdsByProvider = buildModelIdSetByProvider(nativeModels);
-    for (const alias of aliases) {
+    for (const alias of settings.aliases) {
         if (modelIdsByProvider.get(alias.provider)?.has(alias.alias) === true) {
             return `alias "${alias.alias}" for provider "${alias.provider}" conflicts with an existing model id; choose an alias that is not already registered by that provider.`;
         }
@@ -26,28 +48,11 @@ export function getAliasModelIdCollision(
     return undefined;
 }
 
-export function resolveAliasesAgainstModels(
-    loaded: LoadedConfig,
-    nativeModels: ModelLike[],
-): LoadedConfig {
-    if (loaded.error !== undefined || loaded.aliases.length === 0) {
-        return loaded;
-    }
-
-    const collision = getAliasModelIdCollision(loaded.aliases, nativeModels);
-    if (collision === undefined) {
-        return loaded;
-    }
-
-    return {
-        ...loaded,
-        aliases: [],
-        error: `Failed to load ${loaded.path}: ${collision}`,
-    };
-}
-
-export function getAliasForModel(model: ModelLike, loaded: LoadedConfig): AliasConfig | undefined {
-    return loaded.aliases.find(
+export function getAliasForModel(
+    model: ModelLike,
+    settings: ModelAliasSettings,
+): AliasConfig | undefined {
+    return settings.aliases.find(
         (alias) => alias.provider === model.provider && alias.model === model.id,
     );
 }
@@ -55,9 +60,9 @@ export function getAliasForModel(model: ModelLike, loaded: LoadedConfig): AliasC
 export function getAliasForLookup(
     provider: string,
     modelId: string,
-    loaded: LoadedConfig,
+    settings: ModelAliasSettings,
 ): AliasConfig | undefined {
-    return loaded.aliases.find((alias) => alias.provider === provider && alias.alias === modelId);
+    return settings.aliases.find((alias) => alias.provider === provider && alias.alias === modelId);
 }
 
 export function applyAlias(model: ModelLike, alias: AliasConfig): ModelLike {
@@ -71,16 +76,12 @@ export function applyAlias(model: ModelLike, alias: AliasConfig): ModelLike {
     return aliased;
 }
 
-export function aliasModels(models: ModelLike[], loaded: LoadedConfig): ModelLike[] {
-    if (loaded.error !== undefined || loaded.aliases.length === 0) {
-        return models;
-    }
+export function aliasModels(models: ModelLike[], settings: ModelAliasSettings): ModelLike[] {
+    if (settings.aliases.length === 0) return models;
 
     return models.map((model) => {
-        const alias = getAliasForModel(model, loaded);
-        if (alias === undefined) {
-            return model;
-        }
+        const alias = getAliasForModel(model, settings);
+        if (alias === undefined) return model;
         return applyAlias(model, alias);
     });
 }

@@ -3,7 +3,11 @@ import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
 import { Type } from "typebox";
 
-import type { MentionSkillSettings } from "./types.ts";
+export type MentionSkillSettings = {
+    trigger: string;
+    hideSlashSkills: boolean;
+    completionSuffix: string;
+};
 
 export const DEFAULT_MENTION_TRIGGER = "$";
 export const DEFAULT_COMPLETION_SUFFIX = " ";

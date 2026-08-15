@@ -1,4 +1,4 @@
-import type { LoadedConfig, ModelLike, ProviderAliasConfig } from "./types.ts";
+import type { ModelAliasSettings, ModelLike, ProviderAliasConfig } from "./model-aliasing.ts";
 
 export type ModelSelectorItem = {
     provider: string;
@@ -8,49 +8,32 @@ export type ModelSelectorItem = {
 
 export function getProviderAlias(
     provider: string,
-    loaded: LoadedConfig,
+    settings: ModelAliasSettings,
 ): ProviderAliasConfig | undefined {
-    if (loaded.error !== undefined) {
-        return undefined;
-    }
-
-    return loaded.providerAliases.find((alias) => alias.provider === provider);
+    return settings.providerAliases.find((alias) => alias.provider === provider);
 }
 
 export function getProviderDisplayName(
     provider: string,
     fallbackName: string,
-    loaded: LoadedConfig,
+    settings: ModelAliasSettings,
 ): string {
-    const alias = getProviderAlias(provider, loaded);
-    if (alias === undefined) {
-        return fallbackName;
-    }
-    return alias.name;
+    return getProviderAlias(provider, settings)?.name ?? fallbackName;
 }
 
 export function applyProviderDisplayName(
     item: ModelSelectorItem,
-    loaded: LoadedConfig,
+    settings: ModelAliasSettings,
 ): ModelSelectorItem {
-    const alias = getProviderAlias(item.model.provider, loaded);
-    if (alias === undefined) {
-        return item;
-    }
-
-    return {
-        ...item,
-        provider: alias.name,
-    };
+    const alias = getProviderAlias(item.model.provider, settings);
+    if (alias === undefined) return item;
+    return { ...item, provider: alias.name };
 }
 
 export function applyProviderDisplayNames(
     items: ModelSelectorItem[],
-    loaded: LoadedConfig,
+    settings: ModelAliasSettings,
 ): ModelSelectorItem[] {
-    if (loaded.error !== undefined || loaded.providerAliases.length === 0) {
-        return items;
-    }
-
-    return items.map((item) => applyProviderDisplayName(item, loaded));
+    if (settings.providerAliases.length === 0) return items;
+    return items.map((item) => applyProviderDisplayName(item, settings));
 }

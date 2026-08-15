@@ -4,8 +4,17 @@ import os from "node:os";
 import path from "node:path";
 
 import { projectNameSet } from "./mention-syntax.ts";
-import type { MentionProjectSettings, ProjectDirectory } from "./types.ts";
-import { compareProjectNames } from "./util.ts";
+import type { MentionProjectSettings } from "./settings.ts";
+
+export type ProjectDirectory = {
+    name: string;
+    path: string;
+    root: string;
+};
+
+function compareProjectNames(left: string, right: string): number {
+    return left.localeCompare(right, undefined, { sensitivity: "base" });
+}
 
 export type ProjectDirectoryLoadOptions = {
     readonly signal?: AbortSignal;

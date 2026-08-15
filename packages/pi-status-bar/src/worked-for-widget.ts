@@ -1,9 +1,9 @@
 import type { ExtensionContext, SessionEntry, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component, type TUI } from "@earendil-works/pi-tui";
 
-import { WIDGET_KEY } from "./constants.ts";
 import { getStatusBarSnapshot } from "./status-bar-api.ts";
 
+export const WIDGET_KEY = "pi-status-bar.worked-for";
 export const WORKED_FOR_STATE_ENTRY = "pi-status-bar.worked-for";
 
 let workedForWidgetSignatures = new WeakMap<object, string>();

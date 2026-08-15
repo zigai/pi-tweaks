@@ -1,7 +1,10 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 
-import { MIN_PREVIEW_TOTAL_WIDTH, MIN_PREVIEW_WIDTH, MIN_TREE_WIDTH } from "./constants.ts";
-import type { TreeNode } from "./types.ts";
+import type { TreeNode } from "./tree-node.ts";
+
+const MIN_PREVIEW_TOTAL_WIDTH = 80;
+const MIN_PREVIEW_WIDTH = 24;
+const MIN_TREE_WIDTH = 32;
 
 function normalizePreviewText(value: string): string {
     return value
