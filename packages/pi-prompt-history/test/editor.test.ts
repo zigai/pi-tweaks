@@ -3,7 +3,12 @@ import { test } from "vitest";
 
 import { applyPromptHistoryEditor, type PromptHistoryEditorContext } from "../src/editor.ts";
 import type { UserMessage } from "@earendil-works/pi-ai";
-import { CustomEditor, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import {
+    CustomEditor,
+    type KeybindingsManager,
+    type SessionEntry,
+} from "@earendil-works/pi-coding-agent";
+import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
 
 type EditorFactory = NonNullable<
     Parameters<PromptHistoryEditorContext["ui"]["setEditorComponent"]>[0]
@@ -14,6 +19,11 @@ type EditorTestContext = {
     readonly addedPrompts: string[];
     readonly installedFactories: EditorFactory[];
 };
+
+function testDouble<T extends object>(value: Partial<T>): T {
+    // SAFETY: Tests supply only the members exercised by the production path under test.
+    return value as T;
+}
 
 function userEntry(content: UserMessage["content"], timestamp: number): SessionEntry {
     return {
@@ -81,7 +91,7 @@ test("prompt history preloads prompts from the current branch in branch order", 
     assert.deepEqual(context.addedPrompts, ["older current prompt", "newer current prompt"]);
 });
 
-test("prompt history preserves the host default editor and its rendering", () => {
+test("prompt history preserves a configured host editor and its rendering", () => {
     const addedPrompts: string[] = [];
     const hostEditor = {
         render(width: number) {
@@ -108,7 +118,7 @@ test("prompt history preserves the host default editor and its rendering", () =>
         },
         ui: {
             getEditorComponent() {
-                return undefined;
+                return () => hostEditor;
             },
             setEditorComponent(factory) {
                 installedFactory = factory;
@@ -133,6 +143,57 @@ test("prompt history preserves the host default editor and its rendering", () =>
     assert.equal(editor, hostEditor);
     assert.deepEqual(editor.render(80), ["<magic>workflowz</magic>"]);
     assert.deepEqual(addedPrompts, ["current prompt"]);
+});
+
+test("prompt history keeps Pi's default editor shortcut hook non-recursive", () => {
+    let installedFactory: EditorFactory | undefined;
+    const ctx: PromptHistoryEditorContext = {
+        hasUI: true,
+        sessionManager: {
+            getBranch() {
+                return [];
+            },
+        },
+        ui: {
+            getEditorComponent() {
+                return undefined;
+            },
+            setEditorComponent(factory) {
+                installedFactory = factory;
+            },
+        },
+    };
+
+    applyPromptHistoryEditor(ctx);
+    assert.notEqual(installedFactory, undefined);
+    if (installedFactory === undefined) return;
+
+    let focusedEditor: CustomEditor;
+    const testTui = testDouble<TUI>({});
+    Object.assign(testTui, {
+        getFocusedComponent() {
+            return focusedEditor;
+        },
+    });
+    const theme = testDouble<EditorTheme>({ borderColor: (text) => text });
+    const keybindings = testDouble<KeybindingsManager>({
+        matches() {
+            return false;
+        },
+    });
+    const defaultEditor = new CustomEditor(testTui, theme, keybindings);
+    focusedEditor = defaultEditor;
+    const editor = installedFactory(testTui, theme, keybindings);
+
+    assert.equal(editor instanceof CustomEditor, true);
+    if (!(editor instanceof CustomEditor)) return;
+
+    // Pi 0.84.3 delegates custom-editor shortcuts to its default editor. Returning that same
+    // instance makes the delegate call itself for every key pressed during startup.
+    editor.onExtensionShortcut ??= (data) => defaultEditor.onExtensionShortcut?.(data) ?? false;
+
+    assert.doesNotThrow(() => editor.onExtensionShortcut?.("/"));
+    assert.notEqual(editor, defaultEditor);
 });
 
 test("prompt history does not install an editor without a UI", () => {

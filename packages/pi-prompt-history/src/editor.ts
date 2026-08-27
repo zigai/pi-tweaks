@@ -1,4 +1,8 @@
-import type { ExtensionContext, KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import {
+    CustomEditor,
+    type ExtensionContext,
+    type KeybindingsManager,
+} from "@earendil-works/pi-coding-agent";
 import type { EditorComponent, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import { registerEditorEnhancer, type EditorEnhancerHandle } from "@zigai/pi-extension-internals";
 
@@ -14,27 +18,6 @@ export type PromptHistoryEditorContext = Pick<ExtensionContext, "hasUI"> & {
     ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
 };
 
-function isEditorComponent(value: unknown): value is EditorComponent {
-    if (typeof value !== "object" || value === null) return false;
-
-    return (
-        typeof Reflect.get(value, "render") === "function" &&
-        typeof Reflect.get(value, "invalidate") === "function" &&
-        typeof Reflect.get(value, "getText") === "function" &&
-        typeof Reflect.get(value, "setText") === "function" &&
-        typeof Reflect.get(value, "handleInput") === "function"
-    );
-}
-
-function getFocusedEditor(tui: TUI): EditorLike | undefined {
-    const getFocusedComponent: unknown = Reflect.get(tui, "getFocusedComponent") as unknown;
-    if (typeof getFocusedComponent !== "function") return undefined;
-
-    const focused: unknown = Reflect.apply(getFocusedComponent, tui, []) as unknown;
-    if (!isEditorComponent(focused)) return undefined;
-    return focused;
-}
-
 function enhanceEditor(editor: EditorLike, history: string[]): EditorLike {
     for (const prompt of history) {
         editor.addToHistory?.(prompt);
@@ -42,12 +25,12 @@ function enhanceEditor(editor: EditorLike, history: string[]): EditorLike {
     return editor;
 }
 
-function createFocusedEditor(tui: TUI): EditorLike {
-    const editor = getFocusedEditor(tui);
-    if (editor === undefined) {
-        throw new Error("Cannot preserve the active editor while loading prompt history");
-    }
-    return editor;
+function createDefaultEditor(
+    tui: TUI,
+    theme: EditorTheme,
+    keybindings: KeybindingsManager,
+): EditorLike {
+    return new CustomEditor(tui, theme, keybindings);
 }
 
 /** Installs an editor preloaded with prompts from the current session branch. */
@@ -58,7 +41,7 @@ export function applyPromptHistoryEditor(
         return registerEditorEnhancer(
             ctx,
             PROMPT_HISTORY_EDITOR_ENHANCER,
-            (tui) => createFocusedEditor(tui),
+            createDefaultEditor,
             (editor) => editor,
         );
     }
@@ -67,7 +50,7 @@ export function applyPromptHistoryEditor(
     return registerEditorEnhancer(
         ctx,
         PROMPT_HISTORY_EDITOR_ENHANCER,
-        (tui) => createFocusedEditor(tui),
+        createDefaultEditor,
         (editor) => enhanceEditor(editor, currentPrompts),
     );
 }
