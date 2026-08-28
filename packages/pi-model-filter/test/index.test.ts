@@ -118,7 +118,7 @@ test("loadModelFilterSettings falls back for missing and malformed config files"
     assert.match(await readFile(schemaPath, "utf8"), /Pi Model Filter settings/);
 });
 
-test("loadModelFilterSettings refreshes schema while reusing an unchanged config", async () => {
+test("loadModelFilterSettings reuses an unchanged config without reloading settings artifacts", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -138,6 +138,10 @@ test("loadModelFilterSettings refreshes schema while reusing an unchanged config
     const loadedAgain = modelFilter.loadModelFilterSettings(state);
 
     assert.equal(loadedAgain, loaded);
+    assert.equal(await readFile(schemaPath, "utf8"), "stale after scaffold");
+
+    state.configCache = undefined;
+    modelFilter.loadModelFilterSettings(state);
     assert.match(await readFile(schemaPath, "utf8"), /Pi Model Filter settings/);
 });
 
