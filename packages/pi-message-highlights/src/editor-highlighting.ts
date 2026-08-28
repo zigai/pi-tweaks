@@ -19,8 +19,8 @@ export type EditorHighlightTarget = {
     autocompleteList?: AutocompleteListLike;
 };
 
-function isFiniteNumber(value: unknown): value is number {
-    return typeof value === "number" && Number.isFinite(value);
+function isFiniteNumber(value: number): boolean {
+    return Number.isFinite(value);
 }
 
 function getEditorPaddingX(target: EditorHighlightTarget, width: number): number {
@@ -40,13 +40,12 @@ function getAutocompleteLineCount(target: EditorHighlightTarget, contentWidth: n
     return autocompleteList.render(contentWidth).length;
 }
 
-function getTrimmedContentText(
-    plainLine: string,
-    paddingX: number,
-): {
+type TrimmedContentText = {
     readonly lineTextStart: number;
     readonly text: string;
-} {
+};
+
+function getTrimmedContentText(plainLine: string, paddingX: number): TrimmedContentText {
     const lineTextStart = Math.min(paddingX, plainLine.length);
     const lineTextEnd = Math.max(lineTextStart, plainLine.length - paddingX);
     return {
@@ -77,6 +76,11 @@ function toRenderedLineRanges(
     return lineRanges;
 }
 
+type HighlightedContentLine = {
+    readonly line: string;
+    readonly searchStart: number;
+};
+
 function highlightEditorContentLine(
     line: string,
     logicalText: string,
@@ -84,7 +88,7 @@ function highlightEditorContentLine(
     searchStart: number,
     paddingX: number,
     styles: HighlightStyles,
-): { readonly line: string; readonly searchStart: number } {
+): HighlightedContentLine {
     const plainLine = plainTextFromAnsi(line);
     const content = getTrimmedContentText(plainLine, paddingX);
     if (content.text.length === 0) {

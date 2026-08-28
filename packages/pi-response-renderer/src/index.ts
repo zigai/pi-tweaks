@@ -1,3 +1,4 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Markdown, type Component } from "@earendil-works/pi-tui";
 import {
@@ -21,13 +22,57 @@ import {
 const MARKDOWN_FENCES_PATCH_KEY = Symbol.for("zigai.pi-ui-tweaks.markdown-fences-patched");
 const SCOPE = "pi-response-renderer";
 
+type ForeignMarkdownPatch = {
+    component: Component;
+    originalRender: Component["render"];
+    patchedRender: Component["render"];
+};
+
+function hasForeignMarkdownContract(component: Component): boolean {
+    return (
+        "setText" in component &&
+        typeof component.setText === "function" &&
+        "invalidate" in component &&
+        typeof component.invalidate === "function" &&
+        "text" in component &&
+        "theme" in component
+    );
+}
+
+function hideForeignMarkdownFences(patch: MarkdownFencesPatchRecord, component: Component): void {
+    const foreignMarkdownPatches = patch.foreignMarkdownPatches;
+    if (foreignMarkdownPatches === undefined) return;
+    if (foreignMarkdownPatches.some((entry) => entry.component === component)) return;
+
+    // Stored for identity-safe restoration and always invoked with its original receiver.
+    // oxlint-disable-next-line typescript/unbound-method
+    const originalRender = component.render;
+    const patchedRender = function renderWithoutFences(width: number): string[] {
+        const lines = originalRender.call(component, width).filter((line) => !isFenceLine(line));
+        return collapseAssistantBlankLines(lines, "", new Set());
+    };
+    component.render = patchedRender;
+    foreignMarkdownPatches.push({ component, originalRender, patchedRender });
+}
+
+function hideAssistantMarkdownFences(patch: MarkdownFencesPatchRecord, component: Component): void {
+    if (component instanceof Markdown) {
+        markFencesHidden(component);
+        return;
+    }
+    if (hasForeignMarkdownContract(component)) hideForeignMarkdownFences(patch, component);
+}
+
+type AssistantContentContainer = {
+    addChild: (this: AssistantContentContainer, component: Component) => void;
+};
 type AssistantMessageComponentInstance = Component & {
-    contentContainer?: { addChild(component: Component): void };
+    contentContainer?: AssistantContentContainer;
 };
 
 type AssistantMessageComponentPrototype = {
-    render(this: AssistantMessageComponentInstance, width: number): string[];
-    updateContent(this: AssistantMessageComponentInstance, message: unknown): void;
+    render: (this: AssistantMessageComponentInstance, width: number) => string[];
+    updateContent: (this: AssistantMessageComponentInstance, message: AssistantMessage) => void;
 };
 
 type MarkdownPrototype = { render?: MarkdownRender };
@@ -41,6 +86,7 @@ type MarkdownFencesPatchRecord = {
     markdownPrototype: MarkdownPrototype;
     originalMarkdownRender: MarkdownRender;
     patchedMarkdownRender: MarkdownRender;
+    foreignMarkdownPatches?: ForeignMarkdownPatch[];
     assistantRenderPatch?: AssistantRenderPatchHandle;
     assistantPrototype?: AssistantMessageComponentPrototype;
     originalAssistantUpdateContent?: AssistantMessageComponentPrototype["updateContent"];
@@ -51,26 +97,32 @@ type PatchState = typeof globalThis & {
     [MARKDOWN_FENCES_PATCH_KEY]?: MarkdownFencesPatchRecord | true;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
+function isObjectIdentity(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
-function parseAssistantPrototype(module: unknown): AssistantMessageComponentPrototype | undefined {
-    const component = getUnknownProperty(module, "AssistantMessageComponent");
-    const prototype = getUnknownProperty(component, "prototype");
-    if (
-        (typeof prototype === "object" || typeof prototype === "function") &&
-        prototype !== null &&
-        typeof getUnknownProperty(prototype, "render") === "function" &&
-        typeof getUnknownProperty(prototype, "updateContent") === "function"
-    ) {
+const assistantPrototypeParser = {
+    parse: (module: unknown): AssistantMessageComponentPrototype | undefined => {
+        if (!isObjectIdentity(module) || !("AssistantMessageComponent" in module)) {
+            return undefined;
+        }
+        const component = module.AssistantMessageComponent;
+        if (!isObjectIdentity(component) || !("prototype" in component)) return undefined;
+        const prototype = component.prototype;
+        if (
+            !isObjectIdentity(prototype) ||
+            !("render" in prototype) ||
+            typeof prototype.render !== "function" ||
+            !("updateContent" in prototype) ||
+            typeof prototype.updateContent !== "function"
+        ) {
+            return undefined;
+        }
+        // SAFETY: Both consumed lifecycle methods are callable. Their private Pi parameter
+        // signatures cannot be reflected and are fixed by the pinned Pi package version.
         return prototype as AssistantMessageComponentPrototype;
-    }
-    return undefined;
-}
+    },
+};
 
 function restoreMarkdownFencesPatch(): void {
     const state: PatchState = globalThis;
@@ -79,6 +131,15 @@ function restoreMarkdownFencesPatch(): void {
 
     if (patch.markdownPrototype.render === patch.patchedMarkdownRender) {
         patch.markdownPrototype.render = patch.originalMarkdownRender;
+    }
+    const foreignMarkdownPatches = patch.foreignMarkdownPatches;
+    if (foreignMarkdownPatches !== undefined) {
+        for (const foreignPatch of foreignMarkdownPatches) {
+            if (foreignPatch.component.render === foreignPatch.patchedRender) {
+                foreignPatch.component.render = foreignPatch.originalRender;
+            }
+        }
+        foreignMarkdownPatches.length = 0;
     }
     patch.assistantRenderPatch?.dispose();
     if (
@@ -116,12 +177,13 @@ async function patchMarkdownFences(): Promise<void> {
         markdownPrototype,
         originalMarkdownRender,
         patchedMarkdownRender,
+        foreignMarkdownPatches: [],
     };
     state[MARKDOWN_FENCES_PATCH_KEY] = patch;
 
     const assistantPrototype = await loadPiInternalModule(
         "modes/interactive/components/assistant-message.js",
-        { scope: SCOPE, feature: "assistant message patch", parse: parseAssistantPrototype },
+        { scope: SCOPE, feature: "assistant message patch", parse: assistantPrototypeParser.parse },
     );
     if (assistantPrototype === undefined) return;
 
@@ -137,35 +199,27 @@ async function patchMarkdownFences(): Promise<void> {
     );
     patch.assistantPrototype = assistantPrototype;
 
-    const originalUpdateContentValue = getUnknownProperty(assistantPrototype, "updateContent");
-    if (typeof originalUpdateContentValue !== "function") return;
-    // SAFETY: parseAssistantPrototype verified this Pi prototype method's callable contract.
-    const originalUpdateContent =
-        originalUpdateContentValue as AssistantMessageComponentPrototype["updateContent"];
+    const originalUpdateContent = assistantPrototype.updateContent;
     const patchedAssistantUpdateContent = function (
         this: AssistantMessageComponentInstance,
-        message: unknown,
+        message: AssistantMessage,
     ): void {
         const contentContainer = this.contentContainer;
-        const originalAddChild = getUnknownProperty(contentContainer, "addChild");
-        if (contentContainer !== undefined && typeof originalAddChild === "function") {
-            Reflect.set(
-                contentContainer,
-                "addChild",
-                function (
-                    this: NonNullable<AssistantMessageComponentInstance["contentContainer"]>,
-                    component: Component,
-                ): void {
-                    if (component instanceof Markdown) markFencesHidden(component);
-                    Reflect.apply(originalAddChild, this, [component]);
-                },
-            );
+        const originalAddChild = contentContainer?.addChild;
+        if (contentContainer !== undefined && originalAddChild !== undefined) {
+            contentContainer.addChild = function (
+                this: NonNullable<AssistantMessageComponentInstance["contentContainer"]>,
+                component: Component,
+            ): void {
+                hideAssistantMarkdownFences(patch, component);
+                originalAddChild.call(this, component);
+            };
         }
         try {
             originalUpdateContent.call(this, message);
         } finally {
-            if (contentContainer !== undefined && typeof originalAddChild === "function") {
-                Reflect.set(contentContainer, "addChild", originalAddChild);
+            if (contentContainer !== undefined && originalAddChild !== undefined) {
+                contentContainer.addChild = originalAddChild;
             }
         }
     };

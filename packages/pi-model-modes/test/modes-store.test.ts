@@ -138,6 +138,41 @@ test("mode config writes reject unknown config keys", async () => {
     }
 });
 
+test("ModesStore prepares settings once while resolving and loading a mode file", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-prepared-"));
+    const globalConfigPath = path.join(dir, "pi-model-modes.json");
+    const projectConfigPath = path.join(dir, "project", "pi-model-modes.json");
+    let settingsLoads = 0;
+    const store = new ModesStore(() => {
+        settingsLoads += 1;
+        return { globalConfigPath, projectConfigPath };
+    });
+
+    try {
+        await writeFile(
+            globalConfigPath,
+            JSON.stringify({
+                version: 1,
+                currentMode: "default",
+                modes: { default: { provider: "openai", modelId: "gpt-5" } },
+            }),
+            "utf8",
+        );
+
+        const resolvedPath = await store.resolvePath({ cwd: dir, projectTrusted: false });
+        const loaded = await store.load(resolvedPath, {
+            provider: "openai",
+            modelId: "gpt-5",
+        });
+
+        assert.equal(resolvedPath, globalConfigPath);
+        assert.equal(loaded.currentMode, "default");
+        assert.equal(settingsLoads, 1);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
 test("atomicWriteUtf8 creates parent directories and replaces existing content", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-model-modes-storage-"));
     try {

@@ -22,7 +22,9 @@ import {
 } from "./modes.ts";
 import modelModesSettingsDefinition, {
     defaultThinkingLevelSchema,
+    loadModelModesSettings,
     modeThinkingLevelSchema,
+    type LoadedModelModesSettings,
 } from "./settings.ts";
 
 const ModeSpecJsonSchema = Type.Object(
@@ -69,6 +71,10 @@ type ModeSpecJson = Static<typeof ModeSpecJsonSchema>;
 type DefaultModelJson = Static<typeof DefaultModelJsonSchema>;
 type ModesFileJson = Static<typeof ModesFileJsonSchema>;
 
+type NodeErrorWithCode = Error & {
+    readonly code: string;
+};
+
 function formatSchemaPath(instancePath: string): string {
     if (instancePath.length === 0) return "root";
     return instancePath
@@ -78,42 +84,39 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseModesFileJson(value: unknown, label = "pi-model-modes config.json"): ModesFileJson {
-    const errors = [...Value.Errors(ModesFileJsonSchema, value)];
-    if (errors.length > 0) {
-        const messages = errors
-            .slice(0, 5)
-            .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
-        let suffix = "";
-        if (errors.length > messages.length) {
-            suffix = `; and ${errors.length - messages.length} more`;
+const modesFileJsonDecoder = {
+    parse(value: unknown, label = "pi-model-modes config.json"): ModesFileJson {
+        const errors = [...Value.Errors(ModesFileJsonSchema, value)];
+        if (errors.length > 0) {
+            const messages = errors
+                .slice(0, 5)
+                .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
+            let suffix = "";
+            if (errors.length > messages.length) {
+                suffix = `; and ${errors.length - messages.length} more`;
+            }
+            throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
         }
-        throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
-    }
-    const parsed: unknown = Value.Parse(ModesFileJsonSchema, value);
-    // SAFETY: Value.Errors returned no schema violations, so Value.Parse returns
-    // the ModesFileJson represented by the same schema.
-    return parsed as ModesFileJson;
+        return Value.Parse(ModesFileJsonSchema, value);
+    },
+};
+
+function isNodeErrorWithCode(cause: unknown): cause is NodeErrorWithCode {
+    return cause instanceof Error && "code" in cause && typeof cause.code === "string";
 }
 
-function parseConfigObject(value: unknown, filePath: string): Record<string, unknown> {
-    return Object.fromEntries(Object.entries(parseModesFileJson(value, filePath)));
-}
-
-function getLoadErrorCode(error: unknown): string | undefined {
-    if (!(error instanceof Error)) return undefined;
-    const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value as unknown;
-    if (typeof code === "string") return code;
+function getErrorCode(cause: unknown): string | undefined {
+    if (isNodeErrorWithCode(cause)) return cause.code;
     return undefined;
 }
 
-function errorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    return String(error);
+function errorMessage(cause: unknown): string {
+    if (cause instanceof Error) return cause.message;
+    return String(cause);
 }
 
-function throwLoadError(filePath: string, error: unknown): never {
-    throw new Error(`Failed to load ${filePath}: ${errorMessage(error)}`);
+function throwLoadError(filePath: string, cause: unknown): never {
+    throw new Error(`Failed to load ${filePath}: ${errorMessage(cause)}`);
 }
 
 function sanitizeModeSpec(spec: ModeSpecJson | undefined): ModeSpec {
@@ -198,16 +201,9 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getErrorCode(error: unknown): string | undefined {
-    if (!(error instanceof Error)) return undefined;
-    const code = (error as NodeJS.ErrnoException).code;
-    if (typeof code === "string") return code;
-    return undefined;
-}
-
-function throwError(error: unknown): never {
-    if (error instanceof Error) throw error;
-    throw new Error(String(error));
+function throwError(cause: unknown): never {
+    if (cause instanceof Error) throw cause;
+    throw new Error(String(cause));
 }
 
 function getLockPathForFile(filePath: string): string {
@@ -285,13 +281,13 @@ export async function atomicWriteUtf8(filePath: string, content: string): Promis
     }
 }
 
-async function readConfigObject(filePath: string): Promise<Record<string, unknown>> {
+async function readConfigObject(filePath: string): Promise<ModesFileJson> {
     try {
         const raw = await fs.readFile(filePath, "utf8");
         const parsedJson: unknown = JSON.parse(raw);
-        return parseConfigObject(parsedJson, filePath);
+        return modesFileJsonDecoder.parse(parsedJson, filePath);
     } catch (cause: unknown) {
-        if (getLoadErrorCode(cause) === "ENOENT") return {};
+        if (getErrorCode(cause) === "ENOENT") return {};
         throwLoadError(filePath, cause);
     }
 }
@@ -301,19 +297,28 @@ export type ModesStoreContext = {
     readonly projectTrusted: boolean;
 };
 
+type LoadModelModesSettings = (
+    context: ModesStoreContext,
+) => Pick<LoadedModelModesSettings, "globalConfigPath" | "projectConfigPath">;
+
 export type SavedModes = {
     readonly data: ModesFile;
     readonly mtimeMs: number | null;
 };
 
 export class ModesStore {
+    constructor(private readonly loadSettings: LoadModelModesSettings = loadModelModesSettings) {}
+
     async resolvePath(context: ModesStoreContext): Promise<string> {
-        await prepareModesConfig(context.cwd, context.projectTrusted);
-        if (context.projectTrusted) {
-            const projectPath = getProjectModesPath(context.cwd);
-            if (await fileExists(projectPath)) return projectPath;
+        const loaded = this.loadSettings(context);
+        if (
+            context.projectTrusted &&
+            loaded.projectConfigPath !== undefined &&
+            (await fileExists(loaded.projectConfigPath))
+        ) {
+            return loaded.projectConfigPath;
         }
-        return getGlobalModesPath();
+        return loaded.globalConfigPath;
     }
 
     async load(
@@ -321,12 +326,10 @@ export class ModesStore {
         fallbackMode: ModeSpec,
         options?: { readonly throwOnInvalid?: boolean },
     ): Promise<ModesFile> {
-        if (filePath === getGlobalModesPath()) await scaffoldGlobalModesConfig();
-
         try {
             const raw = await fs.readFile(filePath, "utf8");
             const parsedJson: unknown = JSON.parse(raw);
-            const parsed = parseModesFileJson(parsedJson);
+            const parsed = modesFileJsonDecoder.parse(parsedJson);
             const modes: Record<string, ModeSpec> = {};
             for (const [key, value] of Object.entries(parsed.modes ?? {})) {
                 modes[key] = sanitizeModeSpec(value);
@@ -341,7 +344,7 @@ export class ModesStore {
             ensureDefaultModeEntries(file, fallbackMode);
             return file;
         } catch (cause: unknown) {
-            if (getLoadErrorCode(cause) === "ENOENT") return createDefaultModes(fallbackMode);
+            if (getErrorCode(cause) === "ENOENT") return createDefaultModes(fallbackMode);
             if (options?.throwOnInvalid === true) throwLoadError(filePath, cause);
             return createDefaultModes(fallbackMode);
         }

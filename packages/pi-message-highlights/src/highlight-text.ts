@@ -206,7 +206,12 @@ function resolveForegroundAfterSgr(
     return foreground;
 }
 
-function tokenizeAnsi(text: string): { readonly tokens: Token[]; readonly plainText: string } {
+type TokenizedAnsi = {
+    readonly tokens: Token[];
+    readonly plainText: string;
+};
+
+function tokenizeAnsi(text: string): TokenizedAnsi {
     const tokens: Token[] = [];
     let plainText = "";
     let foreground: string | undefined;

@@ -12,7 +12,13 @@ const PATCH_FEATURE = "thinking-level status patch";
 
 type InteractiveModePrototype = {
     showStatus(message: string): void;
-    [STATUS_PATCH_MARKER]?: StatusPatchState;
+    [STATUS_PATCH_MARKER]?: unknown;
+};
+
+type InteractiveModeModule = {
+    readonly InteractiveMode: {
+        readonly prototype: InteractiveModePrototype;
+    };
 };
 
 type ShowStatus = (this: InteractiveModePrototype, message: string) => void;
@@ -22,45 +28,67 @@ type StatusPatchState = {
     readonly handle: LinkedMethodPatchHandle<InteractiveModePrototype, [message: string], void>;
 };
 
-type ThinkingLevelStatusPatchOptions = {
-    readonly loadInteractiveModeModule?: () => Promise<unknown>;
+export type ThinkingLevelStatusPatchOptions = {
+    readonly loadInteractiveModeModule?: () => Promise<InteractiveModeModule>;
     readonly shouldShowThinkingLevelStatus?: () => boolean;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
-}
-
 function isStatusPatchState(value: unknown): value is StatusPatchState {
-    const predicate = getUnknownProperty(value, "predicate");
-    const handle = getUnknownProperty(value, "handle");
+    if (
+        typeof value !== "object" ||
+        value === null ||
+        !("predicate" in value) ||
+        !("handle" in value)
+    ) {
+        return false;
+    }
+    const { predicate, handle } = value;
     return (
-        typeof getUnknownProperty(predicate, "current") === "function" &&
-        typeof getUnknownProperty(handle, "dispose") === "function"
+        typeof predicate === "object" &&
+        predicate !== null &&
+        "current" in predicate &&
+        typeof predicate.current === "function" &&
+        typeof handle === "object" &&
+        handle !== null &&
+        "predecessor" in handle &&
+        typeof handle.predecessor === "function" &&
+        "patched" in handle &&
+        typeof handle.patched === "function" &&
+        "dispose" in handle &&
+        typeof handle.dispose === "function"
     );
 }
 
-function parseInteractiveModePrototype(module: unknown): InteractiveModePrototype | undefined {
-    const interactiveMode = getUnknownProperty(module, "InteractiveMode");
-    const prototype = getUnknownProperty(interactiveMode, "prototype");
+function isInteractiveModeModule(value: unknown): value is InteractiveModeModule {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+        return false;
+    }
+    if (!("InteractiveMode" in value)) return false;
+    const { InteractiveMode } = value;
     if (
+        (typeof InteractiveMode !== "object" || InteractiveMode === null) &&
+        typeof InteractiveMode !== "function"
+    ) {
+        return false;
+    }
+    if (!("prototype" in InteractiveMode)) return false;
+    const { prototype } = InteractiveMode;
+    return (
         ((typeof prototype === "object" && prototype !== null) ||
             typeof prototype === "function") &&
-        typeof getUnknownProperty(prototype, "showStatus") === "function"
-    ) {
-        return prototype as InteractiveModePrototype;
-    }
-    return undefined;
+        "showStatus" in prototype &&
+        typeof prototype.showStatus === "function"
+    );
 }
 
 async function loadInteractiveModePrototype(): Promise<InteractiveModePrototype | undefined> {
     return loadPiInternalModule("modes/interactive/interactive-mode.js", {
         scope: PATCH_SCOPE,
         feature: PATCH_FEATURE,
-        parse: parseInteractiveModePrototype,
+        parse(module) {
+            if (!isInteractiveModeModule(module)) return undefined;
+            return module.InteractiveMode.prototype;
+        },
     });
 }
 
@@ -82,7 +110,10 @@ export async function applyThinkingLevelStatusPatch(
     if (options.loadInteractiveModeModule === undefined) {
         prototype = await loadInteractiveModePrototype();
     } else {
-        prototype = parseInteractiveModePrototype(await options.loadInteractiveModeModule());
+        const loadedModule = await options.loadInteractiveModeModule();
+        if (isInteractiveModeModule(loadedModule)) {
+            prototype = loadedModule.InteractiveMode.prototype;
+        }
     }
     if (prototype === undefined) {
         if (options.loadInteractiveModeModule !== undefined) {

@@ -17,7 +17,7 @@ import {
     type ModeSpec,
 } from "./modes.ts";
 import { getMtimeMs, ModesStore } from "./modes-store.ts";
-import { shouldUseThinkingBorderColors, type SettingsReadContext } from "./settings.ts";
+import type { SettingsReadContext } from "./settings.ts";
 type ModeControllerPi = Pick<ExtensionAPI, "getThinkingLevel" | "setThinkingLevel" | "setModel">;
 
 export type ModeRuntime = {
@@ -30,9 +30,9 @@ export type ModeRuntime = {
     applying: boolean;
 };
 
-function errorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    return String(error);
+function errorMessage(cause: unknown): string {
+    if (cause instanceof Error) return cause.message;
+    return String(cause);
 }
 
 export class ModeController {
@@ -47,8 +47,10 @@ export class ModeController {
     };
 
     private requestEditorRender: (() => void) | undefined;
+    private useThinkingBorderColors = false;
+    private showThinkingLevelStatus = false;
     private customOverlay: ModeSpec | null = null;
-    private lastObservedModel: { provider?: string; modelId?: string } = {};
+    private lastObservedModel: Pick<ModeSpec, "provider" | "modelId"> = {};
 
     constructor(
         private readonly pi: ModeControllerPi,
@@ -65,6 +67,22 @@ export class ModeController {
 
     setEditorRenderRequest(requestRender?: () => void): void {
         this.requestEditorRender = requestRender;
+    }
+
+    setUseThinkingBorderColors(enabled: boolean): void {
+        this.useThinkingBorderColors = enabled;
+    }
+
+    get thinkingBorderColorsEnabled(): boolean {
+        return this.useThinkingBorderColors;
+    }
+
+    setShowThinkingLevelStatus(enabled: boolean): void {
+        this.showThinkingLevelStatus = enabled;
+    }
+
+    get thinkingLevelStatusEnabled(): boolean {
+        return this.showThinkingLevelStatus;
     }
 
     requestRender(): void {
@@ -94,7 +112,7 @@ export class ModeController {
             }
         }
 
-        if (!shouldUseThinkingBorderColors(this.getSettingsContext(ctx))) {
+        if (!this.useThinkingBorderColors) {
             return fallbackBorderColor ?? ((text: string) => theme.fg("borderMuted", text));
         }
         return theme.getThinkingBorderColor(this.pi.getThinkingLevel());

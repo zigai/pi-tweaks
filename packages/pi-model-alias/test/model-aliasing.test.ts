@@ -14,8 +14,16 @@ import {
 } from "../src/model-aliasing.ts";
 import { getProviderDisplayName } from "../src/provider-aliasing.ts";
 import { installModelSelectorProviderPatch } from "../src/model-selector-patch.ts";
-import { installScopedModelsProviderPatch } from "../src/scoped-model-selector-patch.ts";
-import { aliasForProviderRequest, rewritePayloadModel } from "../src/provider-payload.ts";
+import {
+    installScopedModelsProviderPatch,
+    type ScopedModelsSelectorPatchTarget,
+} from "../src/scoped-model-selector-patch.ts";
+import {
+    aliasForProviderRequest,
+    isProviderPayloadObject,
+    rewritePayloadModel,
+} from "../src/provider-payload.ts";
+import type { ProviderRowComponent } from "../src/provider-row.ts";
 import {
     installRegistryPatch,
     loadConfigForRegistry,
@@ -63,6 +71,29 @@ type TestTextComponent = {
 type RenderableTestTextComponent = TestTextComponent & {
     render(width: number): string[];
 };
+type TextFixture = Pick<TestTextComponent, "text">;
+
+type ModelSelectorMockItem = {
+    provider: string;
+    id: string;
+    model: ModelLike;
+};
+
+function isTextFixture(value: ProviderRowComponent): value is TextFixture {
+    return "text" in value && typeof value.text === "string";
+}
+
+function isRenderableTextFixture(
+    value: ProviderRowComponent,
+): value is RenderableTestTextComponent {
+    return (
+        isTextFixture(value) &&
+        "setText" in value &&
+        typeof value.setText === "function" &&
+        "render" in value &&
+        typeof value.render === "function"
+    );
+}
 
 function textComponent(text: string): TestTextComponent {
     return {
@@ -82,16 +113,10 @@ function renderableTextComponent(text: string): RenderableTestTextComponent {
     };
 }
 
-function textValues(children: unknown[]): string[] {
+function textValues(children: ProviderRowComponent[]): string[] {
     return children.flatMap((child) => {
-        if (typeof child !== "object" || child === null) {
-            return [];
-        }
-        const text: unknown = Reflect.get(child, "text") as unknown;
-        if (typeof text !== "string") {
-            return [];
-        }
-        return [text];
+        if (isTextFixture(child)) return [child.text];
+        return [];
     });
 }
 
@@ -147,8 +172,9 @@ test("rewrites provider request payloads only for object payloads", () => {
         model: "gpt-5",
         messages: [],
     });
-    assert.deepEqual(rewritePayloadModel(["not", "object"], "gpt-5"), ["not", "object"]);
-    assert.equal(rewritePayloadModel(null, "gpt-5"), null);
+    assert.equal(isProviderPayloadObject(["not", "object"]), false);
+    assert.equal(isProviderPayloadObject(null), false);
+    assert.equal(isProviderPayloadObject({ model: "fast" }), true);
 });
 
 test("resolves provider request aliases from selected model or request payload", () => {
@@ -180,11 +206,6 @@ test("model selector patch aliases snapshot display and search while preserving 
     if (openaiModel === undefined || anthropicModel === undefined) {
         throw new Error("missing model fixture");
     }
-    type ModelSelectorMockItem = {
-        provider: string;
-        id: string;
-        model: ModelLike;
-    };
     const modelItems: ModelSelectorMockItem[] = [
         {
             provider: "openai",
@@ -199,11 +220,11 @@ test("model selector patch aliases snapshot display and search while preserving 
     ];
     const successCheckmark = "\x1b[32m ✓\x1b[39m";
     const prototype = {
-        allModels: [] as ModelSelectorMockItem[],
-        scopedModelItems: [] as ModelSelectorMockItem[],
-        activeModels: [] as ModelSelectorMockItem[],
-        filteredModels: [] as ModelSelectorMockItem[],
-        listContainer: { children: [] as unknown[] },
+        allModels: Array<ModelSelectorMockItem>(),
+        scopedModelItems: Array<ModelSelectorMockItem>(),
+        activeModels: Array<ModelSelectorMockItem>(),
+        filteredModels: Array<ModelSelectorMockItem>(),
+        listContainer: { children: Array<ProviderRowComponent>() },
         searchInput: {
             render(width: number) {
                 return [`> ${" ".repeat(Math.max(0, width - 2))}`];
@@ -283,10 +304,10 @@ test("model selector patch reapplies aliases after a refreshed snapshot", () => 
         loadSettings: () => loadedConfig(aliases),
     };
     const prototype = {
-        allModels: [] as Array<{ provider: string; id: string; model: ModelLike }>,
-        scopedModelItems: [] as Array<{ provider: string; id: string; model: ModelLike }>,
-        activeModels: [] as Array<{ provider: string; id: string; model: ModelLike }>,
-        filteredModels: [] as Array<{ provider: string; id: string; model: ModelLike }>,
+        allModels: Array<ModelSelectorMockItem>(),
+        scopedModelItems: Array<ModelSelectorMockItem>(),
+        activeModels: Array<ModelSelectorMockItem>(),
+        filteredModels: Array<ModelSelectorMockItem>(),
         selectedIndex: 0,
         scope: "all",
         loadModelsFromSnapshot(): void {
@@ -346,7 +367,7 @@ test("model selector provider patch can align providers to all filtered model na
             scopedModelItems: [],
             activeModels: modelItems,
             filteredModels: modelItems,
-            listContainer: { children: [] as unknown[] },
+            listContainer: { children: Array<ProviderRowComponent>() },
             selectedIndex: 0,
             scope: "all",
             loadModelsFromSnapshot(): void {},
@@ -412,7 +433,7 @@ test("model selector provider rows stay single-line at narrow widths", () => {
         scopedModelItems: [],
         activeModels: modelItems,
         filteredModels: modelItems,
-        listContainer: { children: [] as unknown[] },
+        listContainer: { children: Array<ProviderRowComponent>() },
         selectedIndex: 0,
         scope: "all",
         loadModelsFromSnapshot(): void {},
@@ -432,8 +453,16 @@ test("model selector provider rows stay single-line at narrow widths", () => {
     installModelSelectorProviderPatch(state, prototype);
     prototype.updateList();
 
-    const first = prototype.listContainer.children[0] as RenderableTestTextComponent;
-    const second = prototype.listContainer.children[1] as RenderableTestTextComponent;
+    const first = prototype.listContainer.children[0];
+    const second = prototype.listContainer.children[1];
+    if (
+        first === undefined ||
+        second === undefined ||
+        !isRenderableTextFixture(first) ||
+        !isRenderableTextFixture(second)
+    ) {
+        throw new Error("missing renderable model row fixture");
+    }
     for (const component of [first, second]) {
         const lines = component.render(40);
         assert.equal(lines.length, 1);
@@ -457,18 +486,6 @@ test("scoped models patch aliases rendered and searched models without changing 
         model: ModelLike;
         enabled: boolean;
     };
-    type ScopedMock = {
-        filteredItems: ScopedMockItem[];
-        footerText: { setText(text: string): void };
-        listContainer: { children: unknown[] };
-        maxVisible: number;
-        searchInput: { getValue(): string; render(width: number): string[] };
-        selectedIndex: number;
-        buildItems(this: ScopedMock): ScopedMockItem[];
-        getFooterText(this: ScopedMock): string;
-        refresh(this: ScopedMock): void;
-        updateList(this: ScopedMock): void;
-    };
     let query = "";
     const footerTexts: string[] = [];
     const openaiModel = nativeModels[0];
@@ -483,7 +500,7 @@ test("scoped models patch aliases rendered and searched models without changing 
         },
     ];
     const successCheckmark = "\x1b[32m ✓\x1b[39m";
-    const prototype: ScopedMock = {
+    const prototype = {
         filteredItems: originalItems,
         footerText: {
             setText(text: string) {
@@ -501,17 +518,19 @@ test("scoped models patch aliases rendered and searched models without changing 
             },
         },
         selectedIndex: 0,
-        buildItems() {
+        buildItems(this: ScopedModelsSelectorPatchTarget) {
             return originalItems;
         },
-        getFooterText() {
+        getFooterText(this: ScopedModelsSelectorPatchTarget) {
             return "footer";
         },
-        refresh() {
+        refresh(this: ScopedModelsSelectorPatchTarget) {
             this.filteredItems = [];
         },
-        updateList() {
-            this.listContainer.children = this.filteredItems.map((item, index) => {
+        updateList(this: ScopedModelsSelectorPatchTarget) {
+            const container = this.listContainer;
+            if (container === undefined) throw new Error("missing list container fixture");
+            container.children = this.filteredItems.map((item, index) => {
                 let prefix = "  ";
                 if (index === this.selectedIndex) {
                     prefix = "→ ";
@@ -520,7 +539,7 @@ test("scoped models patch aliases rendered and searched models without changing 
                     `${prefix}${item.model.id} [${item.model.provider}]${successCheckmark}`,
                 );
             });
-            this.listContainer.children.push(
+            container.children.push(
                 textComponent("  (1/1)"),
                 {},
                 textComponent("  Model Name: GPT-5"),

@@ -51,9 +51,9 @@ export function installRegistryPatch(
 
     if (registry[REGISTRY_PATCH_MARKER] === true) return;
 
-    registry[ORIGINAL_REGISTRY_GET_ALL_KEY] = Reflect.get(registry, "getAll");
-    registry[ORIGINAL_REGISTRY_GET_AVAILABLE_KEY] = Reflect.get(registry, "getAvailable");
-    registry[ORIGINAL_REGISTRY_FIND_KEY] = Reflect.get(registry, "find");
+    registry[ORIGINAL_REGISTRY_GET_ALL_KEY] = registry["getAll"];
+    registry[ORIGINAL_REGISTRY_GET_AVAILABLE_KEY] = registry["getAvailable"];
+    registry[ORIGINAL_REGISTRY_FIND_KEY] = registry["find"];
 
     registry.getAll = function getAll(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_REGISTRY_GET_ALL_KEY]?.call(this) ?? [];

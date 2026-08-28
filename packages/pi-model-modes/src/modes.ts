@@ -288,11 +288,10 @@ export function isThinkingLevel(value: string): value is ThinkingLevel {
     return ALL_THINKING_LEVELS.some((level) => level === value);
 }
 
-export function normalizeThinkingLevel(level: unknown): ThinkingLevel | undefined {
-    if (typeof level !== "string") return undefined;
-    if (isThinkingLevel(level)) {
-        return level;
-    }
+export function normalizeThinkingLevel(
+    level: ThinkingLevel | undefined,
+): ThinkingLevel | undefined {
+    if (level !== undefined && isThinkingLevel(level)) return level;
     return undefined;
 }
 
@@ -379,7 +378,7 @@ export function shouldApplyDefaultModel(
 }
 
 export function isDefaultModeName(name: string): boolean {
-    return (DEFAULT_MODE_ORDER as readonly string[]).includes(name);
+    return DEFAULT_MODE_ORDER.some((defaultName) => defaultName === name);
 }
 
 function isReservedModeName(name: string): boolean {

@@ -1,27 +1,22 @@
 import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { EditorComponent } from "@earendil-works/pi-tui";
 import { registerEditorEnhancer } from "@zigai/pi-extension-internals";
 
 import type { ModeController } from "./mode-controller.ts";
 
 const MODE_EDITOR_ENHANCER = Symbol.for("zigai.pi-model-modes.editor-enhancer");
 
-type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
-type EditorLike = ReturnType<EditorFactory> & {
+type EditorLike = EditorComponent & {
     borderColor: (text: string) => string;
     getText(): string;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
-}
-
-function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
+function isEditorLike(value: EditorComponent): value is EditorLike {
     return (
-        typeof getUnknownProperty(value, "borderColor") === "function" &&
-        typeof getUnknownProperty(value, "getText") === "function"
+        "borderColor" in value &&
+        typeof value.borderColor === "function" &&
+        "getText" in value &&
+        typeof value.getText === "function"
     );
 }
 

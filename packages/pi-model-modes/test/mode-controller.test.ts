@@ -16,10 +16,16 @@ test("mode controllers own independent runtime state", () => {
     const second = createController();
 
     first.setEditorRenderRequest(() => {});
+    first.setUseThinkingBorderColors(true);
+    first.setShowThinkingLevelStatus(true);
 
     assert.equal(first.currentMode, "default");
     assert.equal(second.currentMode, "default");
     assert.notEqual(first.modes, second.modes);
+    assert.equal(first.thinkingBorderColorsEnabled, true);
+    assert.equal(second.thinkingBorderColorsEnabled, false);
+    assert.equal(first.thinkingLevelStatusEnabled, true);
+    assert.equal(second.thinkingLevelStatusEnabled, false);
 });
 
 test("mode controller derives settings reads from the explicit extension context", () => {

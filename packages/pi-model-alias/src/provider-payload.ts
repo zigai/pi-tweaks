@@ -5,24 +5,33 @@ import {
     type ModelLike,
 } from "./model-aliasing.ts";
 
-function payloadModel(payload: unknown): string | undefined {
-    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-        return undefined;
-    }
-    const model: unknown = Object.getOwnPropertyDescriptor(payload, "model")?.value as unknown;
-    if (typeof model === "string") return model;
+export type ProviderPayloadObject = {
+    readonly model?: unknown;
+    readonly messages?: unknown;
+};
+
+export function isProviderPayloadObject(value: unknown): value is ProviderPayloadObject {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isProviderModel(value: unknown): value is string {
+    return typeof value === "string";
+}
+
+function payloadModel(payload: ProviderPayloadObject): string | undefined {
+    const model: unknown = Object.getOwnPropertyDescriptor(payload, "model")?.value;
+    if (isProviderModel(model)) return model;
     return undefined;
 }
 
-export function rewritePayloadModel(payload: unknown, targetModel: string): unknown {
-    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-        return payload;
-    }
+export function rewritePayloadModel(
+    payload: ProviderPayloadObject,
+    targetModel: string,
+): ProviderPayloadObject {
     return { ...payload, model: targetModel };
 }
 
 export function aliasForProviderRequest(
-    payload: unknown,
+    payload: ProviderPayloadObject,
     model: ModelLike | undefined,
     settings: ModelAliasSettings,
 ): AliasConfig | undefined {

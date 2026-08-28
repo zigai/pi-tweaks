@@ -50,13 +50,10 @@ export function installModelRuntimePatch(
 
     if (runtime[MODEL_RUNTIME_PATCH_MARKER] === true) return;
 
-    runtime[ORIGINAL_RUNTIME_GET_MODELS_KEY] = Reflect.get(runtime, "getModels");
-    runtime[ORIGINAL_RUNTIME_GET_AVAILABLE_KEY] = Reflect.get(runtime, "getAvailable");
-    runtime[ORIGINAL_RUNTIME_GET_AVAILABLE_SNAPSHOT_KEY] = Reflect.get(
-        runtime,
-        "getAvailableSnapshot",
-    );
-    runtime[ORIGINAL_RUNTIME_GET_MODEL_KEY] = Reflect.get(runtime, "getModel");
+    runtime[ORIGINAL_RUNTIME_GET_MODELS_KEY] = runtime["getModels"];
+    runtime[ORIGINAL_RUNTIME_GET_AVAILABLE_KEY] = runtime["getAvailable"];
+    runtime[ORIGINAL_RUNTIME_GET_AVAILABLE_SNAPSHOT_KEY] = runtime["getAvailableSnapshot"];
+    runtime[ORIGINAL_RUNTIME_GET_MODEL_KEY] = runtime["getModel"];
 
     runtime.getModels = function getModels(this: PatchedModelRuntime, providerId?: string) {
         const models = this[ORIGINAL_RUNTIME_GET_MODELS_KEY]?.call(this, providerId) ?? [];

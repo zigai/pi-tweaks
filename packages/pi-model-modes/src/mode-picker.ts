@@ -1,7 +1,6 @@
 import {
     ModelRuntime,
     ModelSelectorComponent,
-    SettingsManager,
     type ExtensionAPI,
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
@@ -52,11 +51,16 @@ export function registerModeSelectorShortcuts(
         });
     }
 }
-type ScopedModelItem = { model: Model<Api>; thinkingLevel?: string };
+function readModelRuntime(registry: ExtensionContext["modelRegistry"]): ModelRuntime | undefined {
+    const descriptor = Object.getOwnPropertyDescriptor(registry, "runtime");
+    const candidate: unknown = descriptor?.value;
+    if (candidate instanceof ModelRuntime) return candidate;
+    return undefined;
+}
 
-function errorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    return String(error);
+function errorMessage(cause: unknown): string {
+    if (cause instanceof Error) return cause.message;
+    return String(cause);
 }
 
 export class ModePicker {
@@ -138,8 +142,8 @@ export class ModePicker {
         while (true) {
             await this.controller.ensure(ctx);
             const settingsContext = this.controller.getSettingsContext(ctx);
-            const colorsEnabled = shouldUseThinkingBorderColors(settingsContext);
-            const statusEnabled = shouldShowThinkingLevelStatus(settingsContext);
+            const colorsEnabled = this.controller.thinkingBorderColorsEnabled;
+            const statusEnabled = this.controller.thinkingLevelStatusEnabled;
             let thinkingColorsChoice = MODE_UI_THINKING_COLORS_OFF;
             if (colorsEnabled) thinkingColorsChoice = MODE_UI_THINKING_COLORS_ON;
             let thinkingStatusChoice = MODE_UI_THINKING_STATUS_OFF;
@@ -173,6 +177,9 @@ export class ModePicker {
                     );
                     continue;
                 }
+                this.controller.setUseThinkingBorderColors(
+                    shouldUseThinkingBorderColors(settingsContext),
+                );
                 this.controller.requestRender();
                 let stateLabel = "disabled";
                 if (next) stateLabel = "enabled";
@@ -190,6 +197,9 @@ export class ModePicker {
                     );
                     continue;
                 }
+                this.controller.setShowThinkingLevelStatus(
+                    shouldShowThinkingLevelStatus(settingsContext),
+                );
                 let stateLabel = "disabled";
                 if (next) stateLabel = "enabled";
                 ctx.ui.notify(`Thinking level status ${stateLabel}`, "info");
@@ -346,8 +356,8 @@ export class ModePicker {
         ctx: ExtensionContext,
         spec: ModeSpec,
     ): Promise<{ provider: string; modelId: string } | undefined> {
-        const runtime = Reflect.get(ctx.modelRegistry, "runtime") as unknown;
-        if (!(runtime instanceof ModelRuntime)) {
+        const runtime = readModelRuntime(ctx.modelRegistry);
+        if (runtime === undefined) {
             ctx.ui.notify("Model picker unavailable: Pi model runtime was not found.", "error");
             return undefined;
         }
@@ -360,9 +370,8 @@ export class ModePicker {
                 new ModelSelectorComponent(
                     tui,
                     current,
-                    SettingsManager.inMemory(),
                     runtime,
-                    [] as ScopedModelItem[],
+                    [],
                     (model) => {
                         if (model.id === undefined) {
                             done(undefined);

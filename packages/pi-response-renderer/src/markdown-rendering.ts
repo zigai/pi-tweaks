@@ -75,11 +75,104 @@ type StyledMarkdownInstance = {
     options?: MarkdownOptions;
 };
 
+type MarkdownDataDescriptor = Omit<PropertyDescriptor, "value"> & { readonly value: unknown };
+
+function isMarkdownDataDescriptor(
+    descriptor: PropertyDescriptor | undefined,
+): descriptor is MarkdownDataDescriptor {
+    return descriptor !== undefined && Object.hasOwn(descriptor, "value");
+}
+
+// oxlint-disable-next-line antislop/no-object-parameters -- Markdown themes and option bags are intentionally structural objects.
+function ownDataDescriptor(target: object, key: string): MarkdownDataDescriptor | undefined {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    if (!isMarkdownDataDescriptor(descriptor)) return undefined;
+    return descriptor;
+}
+
+function isMarkdownTheme(value: unknown): value is MarkdownTheme {
+    if (typeof value !== "object" || value === null) return false;
+    const functionKeys = [
+        "heading",
+        "link",
+        "linkUrl",
+        "code",
+        "codeBlock",
+        "codeBlockBorder",
+        "quote",
+        "quoteBorder",
+        "hr",
+        "listBullet",
+        "bold",
+        "italic",
+        "strikethrough",
+        "underline",
+    ] as const;
+    return functionKeys.every((key) => typeof ownDataDescriptor(value, key)?.value === "function");
+}
+
+function isBooleanOrUndefined(value: unknown): value is boolean | undefined {
+    return value === undefined || typeof value === "boolean";
+}
+
+function isString(value: unknown): value is string {
+    return typeof value === "string";
+}
+
+function isNumber(value: unknown): value is number {
+    return typeof value === "number";
+}
+
+function isDefaultTextStyle(value: unknown): value is DefaultTextStyle {
+    if (typeof value !== "object" || value === null) return false;
+    if ("color" in value && value.color !== undefined && typeof value.color !== "function") {
+        return false;
+    }
+    if ("bgColor" in value && value.bgColor !== undefined && typeof value.bgColor !== "function") {
+        return false;
+    }
+    const booleanKeys = ["bold", "italic", "strikethrough", "underline"] as const;
+    return booleanKeys.every((key) => {
+        const property = ownDataDescriptor(value, key)?.value;
+        return isBooleanOrUndefined(property);
+    });
+}
+
+function isMarkdownOptions(value: unknown): value is MarkdownOptions {
+    if (typeof value !== "object" || value === null) return false;
+    const booleanKeys = [
+        "preserveOrderedListMarkers",
+        "preserveBackslashEscapes",
+        "renderLatex",
+    ] as const;
+    if (
+        !booleanKeys.every((key) => {
+            const property = ownDataDescriptor(value, key)?.value;
+            return isBooleanOrUndefined(property);
+        })
+    ) {
+        return false;
+    }
+    return (
+        !("transform" in value) ||
+        value.transform === undefined ||
+        typeof value.transform === "function"
+    );
+}
+
 function getStyledMarkdownInstance(instance: Markdown): StyledMarkdownInstance {
-    // SAFETY: Markdown is the Pi TUI instance this adapter patches; its documented
-    // rendering fields are read only as optional values, but the dependency does not export them.
-    const internals: unknown = instance;
-    return internals as StyledMarkdownInstance;
+    const styled: StyledMarkdownInstance = {};
+    const text = ownDataDescriptor(instance, "text")?.value;
+    if (isString(text)) styled.text = text;
+    const paddingX = ownDataDescriptor(instance, "paddingX")?.value;
+    if (isNumber(paddingX)) styled.paddingX = paddingX;
+    const theme = ownDataDescriptor(instance, "theme")?.value;
+    if (isMarkdownTheme(theme)) styled.theme = theme;
+    const defaultTextStyle = ownDataDescriptor(instance, "defaultTextStyle")?.value;
+    if (isDefaultTextStyle(defaultTextStyle)) styled.defaultTextStyle = defaultTextStyle;
+    const options = ownDataDescriptor(instance, "options")?.value;
+    if (isMarkdownOptions(options)) styled.options = options;
+    return styled;
 }
 
 type HeadingLineTextsCache = {
@@ -157,12 +250,9 @@ function getLevelOneOrTwoHeadingSources(markdown: string): string[] {
 }
 
 function markdownPaddingX(markdownInstance: StyledMarkdownInstance): number {
-    if (
-        typeof markdownInstance.paddingX === "number" &&
-        Number.isFinite(markdownInstance.paddingX) &&
-        markdownInstance.paddingX >= 0
-    ) {
-        return markdownInstance.paddingX;
+    const paddingX = markdownInstance.paddingX;
+    if (paddingX !== undefined && Number.isFinite(paddingX) && paddingX >= 0) {
+        return paddingX;
     }
     return 0;
 }
@@ -213,7 +303,7 @@ export function resolveHeadingLineTexts(
 ): ReadonlySet<string> {
     const markdownInstance = getStyledMarkdownInstance(instance);
     const text = markdownInstance.text;
-    if (typeof text !== "string") {
+    if (text === undefined) {
         return EMPTY_HEADING_LINE_TEXTS;
     }
     const theme = markdownInstance.theme;
@@ -363,10 +453,10 @@ export function collapseAssistantBlankLines(
     });
 }
 
-export function shouldHideFences(instance: object): boolean {
+export function shouldHideFences(instance: Markdown): boolean {
     return fencesHiddenInstances.has(instance);
 }
 
-export function markFencesHidden(instance: object): void {
+export function markFencesHidden(instance: Markdown): void {
     fencesHiddenInstances.add(instance);
 }

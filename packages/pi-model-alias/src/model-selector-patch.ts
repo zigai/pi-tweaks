@@ -35,12 +35,15 @@ type ModelSelectorItem = {
 
 type RuntimeStateHolder = { state: ModelAliasRuntimeState };
 
-export type ModelSelectorPatchTarget = {
+type ModelSelectorPatchSurface = {
     [MODEL_SELECTOR_PROVIDER_PATCH_KEY]?: true;
     [MODEL_SELECTOR_PROVIDER_STATE_KEY]?: RuntimeStateHolder;
-    loadModelsFromSnapshot(this: ModelSelectorPatchTarget): void;
-    filterModels(this: ModelSelectorPatchTarget, query: string): void;
-    updateList(this: ModelSelectorPatchTarget): void;
+    loadModelsFromSnapshot: (this: ModelSelectorPatchSurface) => void;
+    filterModels: (this: ModelSelectorPatchSurface, query: string) => void;
+    updateList: (this: ModelSelectorPatchSurface) => void;
+};
+
+export type ModelSelectorPatchTarget = ModelSelectorPatchSurface & {
     allModels: ModelSelectorItem[];
     scopedModelItems: ModelSelectorItem[];
     activeModels: ModelSelectorItem[];
@@ -51,24 +54,67 @@ export type ModelSelectorPatchTarget = {
     scope: string;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
-}
-
-function isModelSelectorPatchTarget(value: unknown): value is ModelSelectorPatchTarget {
+function isModelSelectorPatchSurface(value: unknown): value is ModelSelectorPatchSurface {
     return (
         ((typeof value === "object" && value !== null) || typeof value === "function") &&
-        typeof getUnknownProperty(value, "loadModelsFromSnapshot") === "function" &&
-        typeof getUnknownProperty(value, "filterModels") === "function" &&
-        typeof getUnknownProperty(value, "updateList") === "function"
+        "loadModelsFromSnapshot" in value &&
+        typeof value.loadModelsFromSnapshot === "function" &&
+        "filterModels" in value &&
+        typeof value.filterModels === "function" &&
+        "updateList" in value &&
+        typeof value.updateList === "function"
+    );
+}
+
+function isModelLike(value: unknown): value is ModelLike {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "provider" in value &&
+        typeof value.provider === "string" &&
+        "id" in value &&
+        typeof value.id === "string"
+    );
+}
+
+function isModelSelectorItem(value: unknown): value is ModelSelectorItem {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "provider" in value &&
+        typeof value.provider === "string" &&
+        "id" in value &&
+        typeof value.id === "string" &&
+        "model" in value &&
+        isModelLike(value.model)
+    );
+}
+
+function isModelSelectorItems(value: unknown): value is ModelSelectorItem[] {
+    return Array.isArray(value) && value.every(isModelSelectorItem);
+}
+
+function isModelSelectorInstance(
+    value: ModelSelectorPatchSurface,
+): value is ModelSelectorPatchTarget {
+    return (
+        "allModels" in value &&
+        isModelSelectorItems(value.allModels) &&
+        "scopedModelItems" in value &&
+        isModelSelectorItems(value.scopedModelItems) &&
+        "activeModels" in value &&
+        isModelSelectorItems(value.activeModels) &&
+        "filteredModels" in value &&
+        isModelSelectorItems(value.filteredModels) &&
+        "selectedIndex" in value &&
+        typeof value.selectedIndex === "number" &&
+        "scope" in value &&
+        typeof value.scope === "string"
     );
 }
 
 function setPatchState(
-    target: ModelSelectorPatchTarget,
+    target: ModelSelectorPatchSurface,
     state: ModelAliasRuntimeState,
 ): RuntimeStateHolder {
     const existingState = target[MODEL_SELECTOR_PROVIDER_STATE_KEY];
@@ -128,13 +174,15 @@ function getModelDisplayId(model: ModelLike, settings: ModelAliasSettings): stri
     return alias?.alias ?? model.id;
 }
 
+type ModelSelectorSearch = {
+    readonly items: ModelSelectorItem[];
+    readonly originals: ReadonlyMap<ModelSelectorItem, ModelSelectorItem>;
+};
+
 function getSearchItems(
     target: ModelSelectorPatchTarget,
     state: ModelAliasRuntimeState,
-): {
-    readonly items: ModelSelectorItem[];
-    readonly originals: ReadonlyMap<ModelSelectorItem, ModelSelectorItem>;
-} {
+): ModelSelectorSearch {
     const items = target.activeModels;
     const settings = getSettings(target, state);
     if (settings.providerAliases.length === 0 && settings.aliases.length === 0) {
@@ -182,37 +230,37 @@ function formatModelSelectorList(
 
 export function installModelSelectorProviderPatch(
     state: ModelAliasRuntimeState,
-    prototype?: ModelSelectorPatchTarget,
+    prototype?: ModelSelectorPatchTarget | null,
 ): void {
-    const target = prototype ?? ModelSelectorComponent.prototype;
-    if (!isModelSelectorPatchTarget(target)) {
+    let target: ModelSelectorPatchSurface | null | undefined = prototype;
+    if (target === undefined && isModelSelectorPatchSurface(ModelSelectorComponent.prototype)) {
+        target = ModelSelectorComponent.prototype;
+    }
+    if (!isModelSelectorPatchSurface(target)) {
         warnProviderDisplayPatchUnavailable("model picker provider alias patch");
         return;
     }
     const patchState = setPatchState(target, state);
     if (target[MODEL_SELECTOR_PROVIDER_PATCH_KEY] === true) return;
 
-    const originalLoadModelsFromSnapshot: unknown = Reflect.get(target, "loadModelsFromSnapshot");
-    const originalFilterModels: unknown = Reflect.get(target, "filterModels");
-    if (
-        typeof originalLoadModelsFromSnapshot !== "function" ||
-        typeof originalFilterModels !== "function"
-    ) {
-        warnProviderDisplayPatchUnavailable("model picker provider alias patch");
-        return;
-    }
+    const originalLoadModelsFromSnapshot = target.loadModelsFromSnapshot;
+    const originalFilterModels = target.filterModels;
 
     target.loadModelsFromSnapshot = function loadModelsFromSnapshotWithAliases(): void {
-        Reflect.apply(originalLoadModelsFromSnapshot, this, []);
-        setModelSelectorAliases(this, patchState.state);
+        originalLoadModelsFromSnapshot.call(this);
+        if (isModelSelectorInstance(this)) setModelSelectorAliases(this, patchState.state);
     };
 
     target.filterModels = function filterModelsWithProviderAliases(query: string): void {
+        if (!isModelSelectorInstance(this)) {
+            originalFilterModels.call(this, query);
+            return;
+        }
         const originalActiveModels = this.activeModels;
         const search = getSearchItems(this, patchState.state);
         this.activeModels = search.items;
         try {
-            Reflect.apply(originalFilterModels, this, [query]);
+            originalFilterModels.call(this, query);
         } finally {
             this.activeModels = originalActiveModels;
         }
@@ -221,7 +269,11 @@ export function installModelSelectorProviderPatch(
     };
 
     installLinkedMethodPatch(target, "updateList", (predecessor) => {
-        return function updateListWithModelNames(this: ModelSelectorPatchTarget): void {
+        return function updateListWithModelNames(this: ModelSelectorPatchSurface): void {
+            if (!isModelSelectorInstance(this)) {
+                predecessor.call(this);
+                return;
+            }
             const originalFilteredModels = this.filteredModels;
             const settings = getSettings(this, patchState.state);
             this.filteredModels = originalFilteredModels.map((item) => ({

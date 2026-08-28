@@ -23,10 +23,10 @@ export type ModelAliasRuntimeState = {
 };
 
 export type BasicModelRegistry = {
-    getAll(): ModelLike[];
-    getAvailable(): ModelLike[];
-    find(provider: string, modelId: string): ModelLike | undefined;
-    getProviderDisplayName(provider: string): string;
+    getAll: () => ModelLike[];
+    getAvailable: () => ModelLike[];
+    find: (provider: string, modelId: string) => ModelLike | undefined;
+    getProviderDisplayName: (provider: string) => string;
 };
 
 export type PatchedModelRegistry = BasicModelRegistry & {
@@ -102,13 +102,10 @@ export function installRegistryPatch(
     if (registry[PATCH_MARKER] === true) return;
 
     registry[PATCH_MARKER] = true;
-    registry[ORIGINAL_GET_ALL_KEY] = Reflect.get(registry, "getAll");
-    registry[ORIGINAL_GET_AVAILABLE_KEY] = Reflect.get(registry, "getAvailable");
-    registry[ORIGINAL_FIND_KEY] = Reflect.get(registry, "find");
-    registry[ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY] = Reflect.get(
-        registry,
-        "getProviderDisplayName",
-    );
+    registry[ORIGINAL_GET_ALL_KEY] = registry.getAll;
+    registry[ORIGINAL_GET_AVAILABLE_KEY] = registry.getAvailable;
+    registry[ORIGINAL_FIND_KEY] = registry.find;
+    registry[ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY] = registry.getProviderDisplayName;
 
     registry.getAll = function getAll(this: PatchedModelRegistry) {
         const models = this[ORIGINAL_GET_ALL_KEY]?.call(this) ?? [];

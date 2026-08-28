@@ -2,7 +2,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
     installLinkedRenderPatch,
     loadPiInternalModule,
-    warnPiInternalPatchUnavailable,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
 
@@ -16,7 +15,6 @@ const SCOPE = "pi-plain-user-messages";
 type UserMessageComponentPrototype = {
     render(this: UserMessageComponentInstance, width: number): string[];
 };
-
 type UserMessagePatchHandle = LinkedMethodPatchHandle<
     UserMessageComponentInstance,
     [width: number],
@@ -27,26 +25,30 @@ type PatchState = typeof globalThis & {
     [USER_MESSAGE_PLAINTEXT_PATCH_KEY]?: UserMessagePatchHandle | true;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
+function isObjectIdentity(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
-function parseUserMessagePrototype(module: unknown): UserMessageComponentPrototype | undefined {
-    const component = getUnknownProperty(module, "UserMessageComponent");
-    const prototype = getUnknownProperty(component, "prototype");
-    if (
-        (typeof prototype === "object" || typeof prototype === "function") &&
-        prototype !== null &&
-        typeof getUnknownProperty(prototype, "render") === "function"
-    ) {
+const userMessagePrototypeParser = {
+    parse: (module: unknown): UserMessageComponentPrototype | undefined => {
+        if (!isObjectIdentity(module) || !("UserMessageComponent" in module)) {
+            return undefined;
+        }
+        const component = module.UserMessageComponent;
+        if (!isObjectIdentity(component) || !("prototype" in component)) return undefined;
+        const prototype = component.prototype;
+        if (
+            !isObjectIdentity(prototype) ||
+            !("render" in prototype) ||
+            typeof prototype.render !== "function"
+        ) {
+            return undefined;
+        }
+        // SAFETY: The consumed render method is callable; its private receiver signature
+        // is fixed by the pinned Pi package and exercised by package integration tests.
         return prototype as UserMessageComponentPrototype;
-    }
-    return undefined;
-}
-
+    },
+};
 function restoreUserMessageRenderingPatch(): void {
     const state: PatchState = globalThis;
     const patch = state[USER_MESSAGE_PLAINTEXT_PATCH_KEY];
@@ -62,13 +64,9 @@ async function patchUserMessageRendering(): Promise<void> {
     const prototype = await loadPiInternalModule("modes/interactive/components/user-message.js", {
         scope: SCOPE,
         feature: "user message patch",
-        parse: parseUserMessagePrototype,
+        parse: userMessagePrototypeParser.parse,
     });
     if (prototype === undefined) return;
-    if (typeof prototype.render !== "function") {
-        warnPiInternalPatchUnavailable(SCOPE, "user message render patch");
-        return;
-    }
 
     state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] = installLinkedRenderPatch(
         prototype,

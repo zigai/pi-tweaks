@@ -3,6 +3,7 @@ import { installLinkedMethodPatch } from "@zigai/pi-extension-internals";
 
 import {
     loadScopedModelsSelectorPrototype,
+    type ScopedModelsSelectorPrototypeCandidate,
     warnProviderDisplayPatchUnavailable,
 } from "./internal-imports.ts";
 import {
@@ -42,10 +43,10 @@ type RuntimeStateHolder = { state: ModelAliasRuntimeState };
 export type ScopedModelsSelectorPatchTarget = {
     [SCOPED_MODELS_PROVIDER_PATCH_KEY]?: true;
     [SCOPED_MODELS_PROVIDER_STATE_KEY]?: RuntimeStateHolder;
-    buildItems?(this: ScopedModelsSelectorPatchTarget): ScopedModelsSelectorItem[];
-    getFooterText?(this: ScopedModelsSelectorPatchTarget): string;
-    refresh?(this: ScopedModelsSelectorPatchTarget): void;
-    updateList(this: ScopedModelsSelectorPatchTarget): void;
+    buildItems?: (this: ScopedModelsSelectorPatchTarget) => ScopedModelsSelectorItem[];
+    getFooterText?: (this: ScopedModelsSelectorPatchTarget) => string;
+    refresh?: (this: ScopedModelsSelectorPatchTarget) => void;
+    updateList: (this: ScopedModelsSelectorPatchTarget) => void;
     filteredItems: ScopedModelsSelectorItem[];
     footerText?: ScopedModelsFooterText;
     listContainer?: ListContainer;
@@ -55,13 +56,9 @@ export type ScopedModelsSelectorPatchTarget = {
 };
 
 function isScopedModelsSelectorPatchTarget(
-    value: unknown,
+    value: ScopedModelsSelectorPrototypeCandidate,
 ): value is ScopedModelsSelectorPatchTarget {
-    return (
-        typeof value === "object" &&
-        value !== null &&
-        typeof Reflect.get(value, "updateList") === "function"
-    );
+    return "updateList" in value && typeof value.updateList === "function";
 }
 
 function setPatchState(
@@ -150,7 +147,7 @@ export function installScopedModelsProviderPatch(
     state: ModelAliasRuntimeState,
     prototype: ScopedModelsSelectorPatchTarget,
 ): void {
-    if (typeof Reflect.get(prototype, "updateList") !== "function") {
+    if (typeof prototype.updateList !== "function") {
         warnProviderDisplayPatchUnavailable(
             "scoped models provider alias patch",
             new Error("missing updateList"),
@@ -160,8 +157,8 @@ export function installScopedModelsProviderPatch(
     const patchState = setPatchState(prototype, state);
     if (prototype[SCOPED_MODELS_PROVIDER_PATCH_KEY] === true) return;
 
-    const originalRefresh: unknown = Reflect.get(prototype, "refresh");
-    const originalBuildItems: unknown = Reflect.get(prototype, "buildItems");
+    const originalRefresh = prototype.refresh;
+    const originalBuildItems = prototype.buildItems;
 
     installLinkedMethodPatch(prototype, "updateList", (predecessor) => {
         return function updateListWithProviderAliases(this: ScopedModelsSelectorPatchTarget): void {
@@ -179,9 +176,7 @@ export function installScopedModelsProviderPatch(
     if (typeof originalRefresh === "function" && typeof originalBuildItems === "function") {
         prototype.refresh = function refreshWithProviderAliasSearch(): void {
             const query = this.searchInput?.getValue();
-            const builtItems: unknown = Reflect.apply(originalBuildItems, this, []);
-            // SAFETY: Pi's validated buildItems method returns the selector items consumed here.
-            const items = builtItems as ScopedModelsSelectorItem[];
+            const items = originalBuildItems.call(this);
             const settings = getSettingsForModels(
                 patchState.state,
                 items.map((item) => item.model),
@@ -191,7 +186,7 @@ export function installScopedModelsProviderPatch(
                 query.length === 0 ||
                 (settings.providerAliases.length === 0 && settings.aliases.length === 0)
             ) {
-                Reflect.apply(originalRefresh, this, []);
+                originalRefresh.call(this);
                 return;
             }
 

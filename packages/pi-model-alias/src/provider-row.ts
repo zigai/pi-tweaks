@@ -15,8 +15,14 @@ export type ProviderRow = {
     readonly providerText: string;
 };
 
+export type ProviderRowComponent = {
+    text?: unknown;
+    setText?: unknown;
+    render?: unknown;
+};
+
 export type ListContainer = {
-    children: unknown[];
+    children: ProviderRowComponent[];
 };
 
 export type SearchInput = {
@@ -31,28 +37,30 @@ type ProviderRowLayout = {
     readonly providerText: string;
 };
 
-type RenderableTextComponent = {
+type TextComponentView = ProviderRowComponent & {
+    text?: string;
+    setText?: (text: string) => void;
+};
+
+type RenderableTextComponent = TextComponentView & {
     render(width: number): string[];
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
+function isTextComponentView(value: ProviderRowComponent): value is TextComponentView {
+    return (
+        (!("text" in value) || typeof value.text === "string") &&
+        (!("setText" in value) || typeof value.setText === "function")
+    );
 }
 
-function textComponentValue(component: unknown): string | undefined {
-    if (typeof component !== "object" || component === null) return undefined;
-    const value = getUnknownProperty(component, "text");
-    if (typeof value === "string") return value;
-    return undefined;
+function textComponentValue(component: ProviderRowComponent): string | undefined {
+    if (!isTextComponentView(component)) return undefined;
+    return component.text;
 }
 
-function setTextComponentValue(component: unknown, text: string): void {
-    if (typeof component !== "object" || component === null) return;
-    const setText = getUnknownProperty(component, "setText");
-    if (typeof setText === "function") Reflect.apply(setText, component, [text]);
+function setTextComponentValue(component: ProviderRowComponent, text: string): void {
+    if (!isTextComponentView(component) || typeof component.setText !== "function") return;
+    component.setText(text);
 }
 
 function fitProviderRow(layout: ProviderRowLayout, width: number): string {
@@ -74,16 +82,14 @@ function fitProviderRow(layout: ProviderRowLayout, width: number): string {
     return truncateToWidth(`${model}${gap}${provider}`, availableWidth, "");
 }
 
-function isRenderableTextComponent(value: unknown): value is RenderableTextComponent {
-    return (
-        typeof value === "object" &&
-        value !== null &&
-        typeof Reflect.get(value, "render") === "function"
-    );
+function isRenderableTextComponent(value: ProviderRowComponent): value is RenderableTextComponent {
+    return isTextComponentView(value) && "render" in value && typeof value.render === "function";
 }
 
-function setResponsiveProviderRow(component: unknown, layout: ProviderRowLayout): void {
-    if (typeof component !== "object" || component === null) return;
+function setResponsiveProviderRow(
+    component: ProviderRowComponent,
+    layout: ProviderRowLayout,
+): void {
     providerRowLayoutByComponent.set(component, layout);
     setTextComponentValue(component, layout.fullText);
 

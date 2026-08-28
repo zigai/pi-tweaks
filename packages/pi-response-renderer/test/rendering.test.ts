@@ -14,8 +14,8 @@ type AssistantMessageComponent = {
 };
 
 type AssistantMessageComponentPrototype = {
-    render(width: number): string[];
-    updateContent(message: AssistantMessage): void;
+    render: (this: AssistantMessageComponent, width: number) => string[];
+    updateContent: (this: AssistantMessageComponent, message: AssistantMessage) => void;
 };
 
 type AssistantMessageComponentConstructor = {
@@ -28,16 +28,34 @@ type AssistantMessageComponentConstructor = {
     ): AssistantMessageComponent;
     readonly prototype: AssistantMessageComponentPrototype;
 };
+type AssistantMessageModuleView = {
+    readonly AssistantMessageComponent?: AssistantMessageComponentConstructor;
+};
+type ParsedAssistantMessageModule = {
+    readonly AssistantMessageComponent: AssistantMessageComponentConstructor;
+};
 
 function isAssistantMessageComponentConstructor(
     value: unknown,
 ): value is AssistantMessageComponentConstructor {
     if (typeof value !== "function") return false;
-    const prototype: unknown = Reflect.get(value, "prototype");
-    if (typeof prototype !== "object" || prototype === null) return false;
-    const render: unknown = Reflect.get(prototype, "render");
-    const updateContent: unknown = Reflect.get(prototype, "updateContent");
-    return typeof render === "function" && typeof updateContent === "function";
+    // SAFETY: The callable check permits reading the constructor prototype, whose two
+    // lifecycle methods are verified before this predicate claims the component contract.
+    const constructor = value as AssistantMessageComponentConstructor;
+    return (
+        typeof constructor.prototype.render === "function" &&
+        typeof constructor.prototype.updateContent === "function"
+    );
+}
+
+function isAssistantMessageModule(value: unknown): value is ParsedAssistantMessageModule {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    // SAFETY: The namespace-object check permits reading only the dynamic component export,
+    // which is parsed by the complete constructor predicate.
+    const module = value as AssistantMessageModuleView;
+    return isAssistantMessageComponentConstructor(module.AssistantMessageComponent);
 }
 
 const identity = (text: string): string => text;
@@ -63,27 +81,15 @@ const componentUrl = pathToFileURL(
     join(dirname(codingAgentEntry), "modes/interactive/components/assistant-message.js"),
 ).href;
 // This test intentionally resolves Pi's private runtime module, which has no public export.
-const componentModule: unknown = (await import(componentUrl)) as unknown;
-if (typeof componentModule !== "object" || componentModule === null) {
+const componentModule: unknown = await import(componentUrl);
+if (!isAssistantMessageModule(componentModule)) {
     assert.fail("missing assistant message module");
 }
-const componentValue: unknown = Reflect.get(componentModule, "AssistantMessageComponent");
-if (!isAssistantMessageComponentConstructor(componentValue)) {
-    assert.fail("missing AssistantMessageComponent");
-}
+const componentValue = componentModule.AssistantMessageComponent;
 const AssistantMessageComponent = componentValue;
 const assistantMessagePrototype = componentValue.prototype;
-const originalAssistantRender: unknown = Reflect.get(assistantMessagePrototype, "render");
-const originalAssistantUpdateContent: unknown = Reflect.get(
-    assistantMessagePrototype,
-    "updateContent",
-);
-if (
-    typeof originalAssistantRender !== "function" ||
-    typeof originalAssistantUpdateContent !== "function"
-) {
-    assert.fail("missing original AssistantMessageComponent lifecycle methods");
-}
+const originalAssistantRender = assistantMessagePrototype.render;
+const originalAssistantUpdateContent = assistantMessagePrototype.updateContent;
 
 await assistantRenderingExtension();
 
@@ -304,10 +310,11 @@ test("assistant message updates render through the patch and shutdown restores i
         shutdownHandlers[0]?.();
     });
 
-    await assistantRenderingExtension(api as unknown as ExtensionAPI);
+    // SAFETY: The extension reads only the on method implemented by this lifecycle seam.
+    await assistantRenderingExtension(api as ExtensionAPI);
     const prototype = assistantMessagePrototype;
-    const patchedRender: unknown = Reflect.get(prototype, "render");
-    const patchedUpdateContent: unknown = Reflect.get(prototype, "updateContent");
+    const patchedRender = prototype.render;
+    const patchedUpdateContent = prototype.updateContent;
     assert.notEqual(patchedRender, originalAssistantRender);
     assert.notEqual(patchedUpdateContent, originalAssistantUpdateContent);
     const message = {
@@ -355,11 +362,23 @@ test("assistant message updates render through the patch and shutdown restores i
         component.render(80).map((line) => stripAnsi(line).trim()),
         ["", "Updated paragraph.", "", "Updated heading"],
     );
+    component.updateContent({
+        ...message,
+        content: [{ type: "text", text: "Before shutdown.\n\n```ts\nconst restored = true;\n```" }],
+    });
+    assert.equal(
+        component.render(80).some((line) => line.includes("```")),
+        false,
+    );
 
     assert.equal(shutdownHandlers.length, 1);
     shutdownHandlers[0]?.();
-    assert.equal(Reflect.get(prototype, "render"), originalAssistantRender);
-    assert.equal(Reflect.get(prototype, "updateContent"), originalAssistantUpdateContent);
+    assert.equal(prototype.render, originalAssistantRender);
+    assert.equal(prototype.updateContent, originalAssistantUpdateContent);
+    assert.equal(
+        component.render(80).some((line) => line.includes("```")),
+        true,
+    );
 
     const restoredComponent = new AssistantMessageComponent(
         {

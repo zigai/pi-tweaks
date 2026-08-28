@@ -52,6 +52,19 @@ function scopedItem(): ScopedModelsItem {
     };
 }
 
+test("explicit null does not patch Pi's default model selector", () => {
+    const original = Object.getOwnPropertyDescriptor(
+        ModelSelectorComponent.prototype,
+        "updateList",
+    );
+    installModelSelectorProviderPatch(runtimeState("Provider"), null);
+
+    assert.deepEqual(
+        Object.getOwnPropertyDescriptor(ModelSelectorComponent.prototype, "updateList"),
+        original,
+    );
+});
+
 test("model selector provider patch uses the latest runtime state after reinstall", () => {
     const prototype: ModelSelectorPrototype = {
         loadModelsFromSnapshot() {},
@@ -143,7 +156,7 @@ test("model selector patch matches the Pi 0.80.9 runtime prototype", () => {
     installModelSelectorProviderPatch(runtimeState("Provider"));
 
     assert.equal(
-        Reflect.get(
+        Object.hasOwn(
             ModelSelectorComponent.prototype,
             Symbol.for("zigai.pi-model-alias.model-selector-provider-patched"),
         ),

@@ -3,7 +3,6 @@ import { Editor } from "@earendil-works/pi-tui";
 import {
     installLinkedRenderPatch,
     loadPiInternalModule,
-    warnPiInternalPatchUnavailable,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
 
@@ -18,93 +17,121 @@ const MESSAGE_HIGHLIGHTS_PATCH_KEY = Symbol.for("zigai.pi-message-highlights.pat
 const SCOPE = "pi-message-highlights";
 
 type HighlightStylesProvider = () => HighlightStyles;
-type RenderablePrototype = { render(this: object, width: number): string[] };
-type RenderPatchHandle = LinkedMethodPatchHandle<object, [width: number], string[]>;
+type RenderableInstance = {
+    render(width: number): string[];
+};
+type RenderablePrototype = { render(this: RenderableInstance, width: number): string[] };
+type RenderPatchHandle = LinkedMethodPatchHandle<RenderableInstance, [width: number], string[]>;
 type MessageHighlightsPatchRecord = { patches: RenderPatchHandle[] };
 type PatchState = typeof globalThis & {
     [MESSAGE_HIGHLIGHTS_PATCH_KEY]?: MessageHighlightsPatchRecord | true;
 };
 
-type EditorHighlightPrototype = RenderablePrototype & { getText(this: object): string };
+type ThemeContract = {
+    fg?: ((color: string, text: string) => string) | undefined;
+    getColorMode?: (() => string) | undefined;
+};
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
+type EditorHighlightPrototype = RenderablePrototype & {
+    getText?: (() => string) | undefined;
+};
+
+function isObjectIdentity(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+type UnknownModuleDescriptor = Omit<PropertyDescriptor, "value"> & {
+    readonly value: unknown;
+};
+
+function isUnknownModuleDescriptor(
+    descriptor: PropertyDescriptor | undefined,
+): descriptor is UnknownModuleDescriptor {
+    return descriptor !== undefined && Object.hasOwn(descriptor, "value");
+}
+
+/* oxlint-disable antislop/no-unknown-parameters -- This is the parser boundary for a private Pi module namespace. */
+function parseMessageComponent(
+    module: unknown,
+    exportName: "AssistantMessageComponent" | "UserMessageComponent",
+): RenderablePrototype | undefined {
+    if (!isObjectIdentity(module)) return undefined;
+    const descriptor = Object.getOwnPropertyDescriptor(module, exportName);
+    if (!isUnknownModuleDescriptor(descriptor)) return undefined;
+    const component = descriptor.value;
+    if (
+        !isObjectIdentity(component) ||
+        !("prototype" in component) ||
+        !isObjectIdentity(component.prototype) ||
+        !("render" in component.prototype) ||
+        typeof component.prototype.render !== "function"
+    ) {
         return undefined;
     }
-    return Reflect.get(value, key) as unknown;
+    // SAFETY: The only consumed method is callable; its private receiver signature is fixed
+    // by the pinned Pi version and exercised by package integration tests.
+    return component.prototype as RenderablePrototype;
 }
+/* oxlint-enable antislop/no-unknown-parameters */
 
-function parseTheme(module: unknown): HighlightTheme | undefined {
-    const theme = getUnknownProperty(module, "theme");
-    if (typeof theme !== "object" || theme === null) return undefined;
-    return {
-        fg(color, text): string {
-            const fg = getUnknownProperty(theme, "fg");
-            if (typeof fg !== "function") throw new Error("Theme.fg unavailable");
-            const styled: unknown = Reflect.apply(fg, theme, [color, text]);
-            if (typeof styled !== "string") throw new Error("Theme.fg returned a non-string value");
-            return styled;
-        },
-        getColorMode(): "truecolor" | "256color" {
-            const getColorMode = getUnknownProperty(theme, "getColorMode");
-            if (typeof getColorMode !== "function")
-                throw new Error("Theme.getColorMode unavailable");
-            const mode: unknown = Reflect.apply(getColorMode, theme, []);
-            if (mode !== "truecolor" && mode !== "256color") {
-                throw new Error("Theme.getColorMode returned an unsupported value");
-            }
-            return mode;
-        },
-    };
-}
+const themeParser = {
+    parse(module: unknown): HighlightTheme | undefined {
+        // Pi exports its theme as a proxy whose properties throw until startup initializes it.
+        // Validate the stable proxy boundary now, then resolve methods lazily during rendering.
+        if (!isObjectIdentity(module) || !("theme" in module)) return undefined;
+        const theme = module.theme;
+        if (!isObjectIdentity(theme)) return undefined;
+        // SAFETY: The object/function guard permits lazy reads of only the two optional methods.
+        const contract = theme as ThemeContract;
+        return {
+            fg(color, text): string {
+                const fg = contract.fg;
+                if (typeof fg !== "function") throw new Error("Theme.fg unavailable");
+                return fg.call(theme, color, text);
+            },
+            getColorMode(): "truecolor" | "256color" {
+                const getColorMode = contract.getColorMode;
+                if (typeof getColorMode !== "function") {
+                    throw new Error("Theme.getColorMode unavailable");
+                }
+                const mode = getColorMode.call(theme);
+                if (mode !== "truecolor" && mode !== "256color") {
+                    throw new Error("Theme.getColorMode returned an unsupported value");
+                }
+                return mode;
+            },
+        };
+    },
+};
 
-function parseRenderablePrototype(exportName: string) {
-    return (module: unknown): RenderablePrototype | undefined => {
-        const exported = getUnknownProperty(module, exportName);
-        const prototype = getUnknownProperty(exported, "prototype");
-        if (
-            (typeof prototype === "object" || typeof prototype === "function") &&
-            prototype !== null &&
-            typeof getUnknownProperty(prototype, "render") === "function"
-        ) {
-            return prototype as RenderablePrototype;
-        }
-        return undefined;
-    };
-}
-
-async function loadComponentPrototype(
-    fileName: string,
-    exportName: string,
-): Promise<RenderablePrototype | undefined> {
-    return loadPiInternalModule(`modes/interactive/components/${fileName}`, {
+async function loadAssistantMessagePrototype(): Promise<RenderablePrototype | undefined> {
+    return loadPiInternalModule("modes/interactive/components/assistant-message.js", {
         scope: SCOPE,
-        feature: `${exportName} patch`,
-        parse: parseRenderablePrototype(exportName),
+        feature: "AssistantMessageComponent patch",
+        parse(module: unknown): RenderablePrototype | undefined {
+            return parseMessageComponent(module, "AssistantMessageComponent");
+        },
     });
 }
 
-function getEditorPrototype(): RenderablePrototype | undefined {
-    const prototype: unknown = Editor.prototype;
-    if (
-        typeof prototype === "object" &&
-        prototype !== null &&
-        typeof Reflect.get(prototype, "render") === "function"
-    ) {
-        return prototype as RenderablePrototype;
-    }
-    warnPiInternalPatchUnavailable(SCOPE, "Editor patch");
-    return undefined;
+async function loadUserMessagePrototype(): Promise<RenderablePrototype | undefined> {
+    return loadPiInternalModule("modes/interactive/components/user-message.js", {
+        scope: SCOPE,
+        feature: "UserMessageComponent patch",
+        parse(module: unknown): RenderablePrototype | undefined {
+            return parseMessageComponent(module, "UserMessageComponent");
+        },
+    });
 }
 
-function isEditorHighlightPrototype(
-    prototype: RenderablePrototype,
-): prototype is EditorHighlightPrototype {
-    return typeof Reflect.get(prototype, "getText") === "function";
+function getEditorPrototype(): RenderablePrototype {
+    return Editor.prototype;
 }
 
-function isEditorHighlightTarget(value: object): value is EditorHighlightTarget {
-    return typeof Reflect.get(value, "getText") === "function";
+function isEditorHighlightTarget(
+    value: EditorHighlightPrototype,
+): value is EditorHighlightPrototype & EditorHighlightTarget {
+    return typeof value.getText === "function";
 }
 
 function patchRenderablePrototype(
@@ -114,7 +141,7 @@ function patchRenderablePrototype(
     return installLinkedRenderPatch(
         prototype,
         (predecessor) =>
-            function highlightedRender(this: object, width: number): string[] {
+            function highlightedRender(this: RenderableInstance, width: number): string[] {
                 return highlightMessageLines(predecessor.call(this, width), getStyles());
             },
     );
@@ -124,11 +151,11 @@ function patchEditorPrototype(
     prototype: RenderablePrototype,
     getStyles: HighlightStylesProvider,
 ): RenderPatchHandle | undefined {
-    if (!isEditorHighlightPrototype(prototype)) return undefined;
+    if (!isEditorHighlightTarget(prototype)) return undefined;
     return installLinkedRenderPatch(
         prototype,
         (predecessor) =>
-            function highlightedEditorRender(this: object, width: number): string[] {
+            function highlightedEditorRender(this: RenderableInstance, width: number): string[] {
                 const renderedLines = predecessor.call(this, width);
                 if (isEditorHighlightTarget(this)) {
                     return highlightEditorRenderLines(this, width, renderedLines, getStyles());
@@ -155,14 +182,13 @@ async function installMessageHighlightPatch(
     const theme = await loadPiInternalModule("modes/interactive/theme/theme.js", {
         scope: SCOPE,
         feature: "theme color lookup",
-        parse: parseTheme,
+        parse(module: unknown): HighlightTheme | undefined {
+            return themeParser.parse(module);
+        },
     });
     const getStyles = () => buildHighlightStyles(theme, getConfig());
-    const assistantPrototype = await loadComponentPrototype(
-        "assistant-message.js",
-        "AssistantMessageComponent",
-    );
-    const userPrototype = await loadComponentPrototype("user-message.js", "UserMessageComponent");
+    const assistantPrototype = await loadAssistantMessagePrototype();
+    const userPrototype = await loadUserMessagePrototype();
     const editorPrototype = getEditorPrototype();
     if (
         assistantPrototype === undefined ||

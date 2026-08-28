@@ -4,7 +4,7 @@ import { test } from "vitest";
 import { applyThinkingLevelStatusPatch } from "../src/status.ts";
 
 type TestInteractiveModePrototype = {
-    showStatus(message: string): void;
+    showStatus(this: void, message: string): void;
 };
 
 test("thinking level status patch uses latest settings reader after reinstall", async () => {
@@ -47,7 +47,7 @@ test("thinking level status patch restores its linked predecessor", async () => 
             messages.push(message);
         },
     };
-    const original = Reflect.get(prototype, "showStatus");
+    const original = prototype.showStatus;
 
     const restore = await applyThinkingLevelStatusPatch({
         async loadInteractiveModeModule() {
@@ -59,7 +59,7 @@ test("thinking level status patch restores its linked predecessor", async () => 
     });
     restore();
 
-    assert.equal(Reflect.get(prototype, "showStatus"), original);
+    assert.equal(prototype.showStatus, original);
     prototype.showStatus("Thinking level: medium");
     assert.deepEqual(messages, ["Thinking level: medium"]);
 });

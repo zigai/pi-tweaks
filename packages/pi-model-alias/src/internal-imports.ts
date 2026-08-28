@@ -7,22 +7,39 @@ export function warnProviderDisplayPatchUnavailable(feature: string, cause?: unk
     warnPiInternalPatchUnavailable("pi-model-alias", feature, cause);
 }
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
+export type ScopedModelsSelectorPrototypeCandidate = {
+    updateList?: unknown;
+};
+
+type ScopedModelsSelectorModule = {
+    ScopedModelsSelectorComponent: {
+        prototype: ScopedModelsSelectorPrototypeCandidate;
+    };
+};
+
+function isScopedModelsSelectorModule(value: unknown): value is ScopedModelsSelectorModule {
+    if (typeof value !== "object" || value === null) return false;
+    if (!("ScopedModelsSelectorComponent" in value)) return false;
+    const component = value.ScopedModelsSelectorComponent;
+    if (
+        ((typeof component !== "object" || component === null) &&
+            typeof component !== "function") ||
+        !("prototype" in component)
+    ) {
+        return false;
     }
-    return Reflect.get(value, key) as unknown;
+    return typeof component.prototype === "object" && component.prototype !== null;
 }
 
 export async function loadScopedModelsSelectorPrototype<T>(
-    parsePrototype: (value: unknown) => T | undefined,
+    parsePrototype: (value: ScopedModelsSelectorPrototypeCandidate) => T | undefined,
 ): Promise<T | undefined> {
     return loadPiInternalModule("modes/interactive/components/scoped-models-selector.js", {
         scope: "pi-model-alias",
         feature: "scoped models provider alias patch",
         parse(module) {
-            const component = getUnknownProperty(module, "ScopedModelsSelectorComponent");
-            return parsePrototype(getUnknownProperty(component, "prototype"));
+            if (!isScopedModelsSelectorModule(module)) return undefined;
+            return parsePrototype(module.ScopedModelsSelectorComponent.prototype);
         },
     });
 }

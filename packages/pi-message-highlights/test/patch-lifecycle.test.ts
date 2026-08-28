@@ -23,27 +23,35 @@ type RenderPrototype = {
     render(width: number): string[];
 };
 
-type AssistantPrototype = RenderPrototype & {
-    updateContent(message: unknown): void;
-};
-
 type MessageComponent = {
     render(width: number): string[];
 };
 
-type AssistantComponentConstructor = new (
-    message: AssistantMessage,
-    hideThinkingBlock: boolean,
-    theme: MarkdownTheme,
-    hiddenThinkingLabel: string,
-    outputPad: number,
-) => MessageComponent;
+/** Declared shapes of the unexported Pi message component module exports. */
+type AssistantMessageModuleView = {
+    AssistantMessageComponent?:
+        | ((new (
+              message: AssistantMessage,
+              hideThinkingBlock: boolean,
+              theme: MarkdownTheme,
+              hiddenThinkingLabel: string,
+              outputPad: number,
+          ) => MessageComponent) & {
+              prototype?: {
+                  render?: unknown;
+                  updateContent?(message: AssistantMessage): void;
+              };
+          })
+        | undefined;
+};
 
-type UserComponentConstructor = new (
-    text: string,
-    theme: MarkdownTheme,
-    outputPad: number,
-) => MessageComponent;
+type UserMessageModuleView = {
+    UserMessageComponent?:
+        | ((new (text: string, theme: MarkdownTheme, outputPad: number) => MessageComponent) & {
+              prototype?: { render?: unknown };
+          })
+        | undefined;
+};
 
 type ThemeSnapshot = {
     readonly key: symbol;
@@ -55,10 +63,19 @@ const PI_THEME_KEYS = [
     Symbol.for("@mariozechner/pi-coding-agent:theme"),
 ] as const;
 
-function restoreThemeSnapshot(themeModule: object, snapshots: readonly ThemeSnapshot[]): void {
-    const stopThemeWatcher: unknown = Reflect.get(themeModule, "stopThemeWatcher");
+/** Declared shape of the unexported Pi theme module surface used by these tests. */
+type ThemeRuntimeModule = {
+    initTheme?: unknown;
+    stopThemeWatcher?: unknown;
+};
+
+function restoreThemeSnapshot(
+    themeModule: ThemeRuntimeModule,
+    snapshots: readonly ThemeSnapshot[],
+): void {
+    const stopThemeWatcher = themeModule.stopThemeWatcher;
     if (typeof stopThemeWatcher === "function") {
-        Reflect.apply(stopThemeWatcher, themeModule, []);
+        stopThemeWatcher.call(themeModule);
     }
 
     for (const snapshot of snapshots) {
@@ -70,21 +87,34 @@ function restoreThemeSnapshot(themeModule: object, snapshots: readonly ThemeSnap
     }
 }
 
+function suspendPiTheme(): () => void {
+    const snapshots: ThemeSnapshot[] = PI_THEME_KEYS.map((key) => ({
+        key,
+        descriptor: Object.getOwnPropertyDescriptor(globalThis, key),
+    }));
+    for (const key of PI_THEME_KEYS) Reflect.deleteProperty(globalThis, key);
+
+    return (): void => {
+        for (const snapshot of snapshots) {
+            if (snapshot.descriptor !== undefined) {
+                Object.defineProperty(globalThis, snapshot.key, snapshot.descriptor);
+                continue;
+            }
+            Reflect.deleteProperty(globalThis, snapshot.key);
+        }
+    };
+}
+
 async function initializePiTheme(): Promise<() => void> {
     const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
     const themeUrl = pathToFileURL(
         join(dirname(codingAgentEntry), "modes/interactive/theme/theme.js"),
     ).href;
     // Pi's theme module is an internal runtime file with no public package export.
-    const themeModule: unknown = (await import(themeUrl)) as unknown;
-    if (
-        (typeof themeModule !== "object" || themeModule === null) &&
-        typeof themeModule !== "function"
-    ) {
-        assert.fail("missing theme module");
-    }
-
-    const initTheme: unknown = Reflect.get(themeModule, "initTheme");
+    // SAFETY: The dynamic import yields a namespace object; initTheme is verified callable
+    // below before it is invoked, and every other member stays untouched.
+    const themeModule = (await import(themeUrl)) as ThemeRuntimeModule;
+    const initTheme = themeModule.initTheme;
     if (typeof initTheme !== "function") {
         assert.fail("missing initTheme");
     }
@@ -94,7 +124,7 @@ async function initializePiTheme(): Promise<() => void> {
         descriptor: Object.getOwnPropertyDescriptor(globalThis, key),
     }));
     try {
-        Reflect.apply(initTheme, themeModule, [undefined, false]);
+        initTheme.call(themeModule, undefined, false);
     } catch (cause) {
         restoreThemeSnapshot(themeModule, snapshots);
         throw cause;
@@ -157,20 +187,47 @@ class FakeTerminal implements Terminal {
 
 const ESC = String.fromCharCode(0x1b);
 
-async function loadComponentExport(fileName: string, exportName: string): Promise<unknown> {
+function componentModuleUrl(fileName: string): string {
     const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    const componentUrl = pathToFileURL(
-        join(dirname(codingAgentEntry), "modes/interactive/components", fileName),
-    ).href;
-    // Pi's internal component files are resolved from the installed package at runtime.
-    const componentModule: unknown = (await import(componentUrl)) as unknown;
-    if (
-        (typeof componentModule !== "object" || componentModule === null) &&
-        typeof componentModule !== "function"
-    ) {
-        assert.fail(`missing ${exportName}`);
+    return pathToFileURL(join(dirname(codingAgentEntry), "modes/interactive/components", fileName))
+        .href;
+}
+
+/** Verifies one component prototype exposes the render method the patches wrap. */
+function verifiedRenderPrototype<P extends { render?: unknown }>(
+    prototype: P | undefined,
+    label: string,
+): P & RenderPrototype {
+    if (typeof prototype?.render !== "function") {
+        assert.fail(`invalid ${label} prototype`);
     }
-    return Reflect.get(componentModule, exportName) as unknown;
+    // SAFETY: The runtime check proves render is callable; the patches wrap only that method
+    // and forward `this`, so the remaining prototype shape is irrelevant here.
+    return prototype as P & RenderPrototype;
+}
+
+async function loadAssistantMessageComponent(): Promise<
+    NonNullable<AssistantMessageModuleView["AssistantMessageComponent"]>
+> {
+    // SAFETY: Resolved from the installed Pi package at runtime; the export is verified
+    // callable below before any member is read.
+    const module = (await import(
+        componentModuleUrl("assistant-message.js")
+    )) as AssistantMessageModuleView;
+    const component = module.AssistantMessageComponent;
+    if (component === undefined) assert.fail("missing AssistantMessageComponent");
+    return component;
+}
+
+async function loadUserMessageComponent(): Promise<
+    NonNullable<UserMessageModuleView["UserMessageComponent"]>
+> {
+    // SAFETY: Resolved from the installed Pi package at runtime; the export is verified
+    // present below before any member is read.
+    const module = (await import(componentModuleUrl("user-message.js"))) as UserMessageModuleView;
+    const component = module.UserMessageComponent;
+    if (component === undefined) assert.fail("missing UserMessageComponent");
+    return component;
 }
 type LifecycleApi = {
     readonly api: ExtensionAPI;
@@ -186,42 +243,24 @@ function createLifecycleApi(): LifecycleApi {
     };
 
     // SAFETY: These extensions use only ExtensionAPI.on during this lifecycle test.
-    const untypedApi: unknown = api;
-    return { api: untypedApi as ExtensionAPI, shutdownHandlers };
+    return { api: api as ExtensionAPI, shutdownHandlers };
 }
 
-async function loadComponentPrototype<T extends RenderPrototype>(
-    fileName: string,
-    exportName: string,
-): Promise<T> {
-    const component: unknown = await loadComponentExport(fileName, exportName);
-    if (typeof component !== "function") assert.fail(`missing ${exportName}`);
-    const prototype: unknown = Reflect.get(component, "prototype");
-    if (
-        typeof prototype !== "object" ||
-        prototype === null ||
-        typeof Reflect.get(prototype, "render") !== "function"
-    ) {
-        assert.fail(`invalid ${exportName} prototype`);
-    }
-    // SAFETY: The runtime checks above establish the render-capable prototype contract.
-    return prototype as T;
-}
-
-async function exerciseMessageRenderLifecycle(): Promise<void> {
-    const assistantPrototype = await loadComponentPrototype<AssistantPrototype>(
-        "assistant-message.js",
+async function exerciseMessageRenderLifecycle(
+    afterExtensionsInstalled: () => Promise<void>,
+): Promise<void> {
+    const assistantClass = await loadAssistantMessageComponent();
+    const userClass = await loadUserMessageComponent();
+    const assistantPrototype = verifiedRenderPrototype(
+        assistantClass.prototype,
         "AssistantMessageComponent",
     );
-    const userPrototype = await loadComponentPrototype<RenderPrototype>(
-        "user-message.js",
-        "UserMessageComponent",
-    );
-    const originalAssistantRender = Reflect.get(assistantPrototype, "render");
-    const originalAssistantUpdateContent = Reflect.get(assistantPrototype, "updateContent");
-    const originalUserRender = Reflect.get(userPrototype, "render");
-    const originalEditorRender = Reflect.get(Editor.prototype, "render");
-    const originalMarkdownRender = Reflect.get(Markdown.prototype, "render");
+    const userPrototype = verifiedRenderPrototype(userClass.prototype, "UserMessageComponent");
+    const originalAssistantRender = assistantPrototype["render"];
+    const originalAssistantUpdateContent = assistantPrototype["updateContent"];
+    const originalUserRender = userPrototype["render"];
+    const originalEditorRender = Editor.prototype["render"];
+    const originalMarkdownRender = Markdown.prototype["render"];
     for (let cycle = 0; cycle < 2; cycle += 1) {
         const responseLifecycle = createLifecycleApi();
         const plainLifecycle = createLifecycleApi();
@@ -236,15 +275,10 @@ async function exerciseMessageRenderLifecycle(): Promise<void> {
             await responseRendererExtension(responseLifecycle.api);
             await plainUserMessagesExtension(plainLifecycle.api);
             await messageHighlightsExtension(highlightsLifecycle.api);
+            await afterExtensionsInstalled();
 
-            const AssistantMessageComponent = (await loadComponentExport(
-                "assistant-message.js",
-                "AssistantMessageComponent",
-            )) as AssistantComponentConstructor;
-            const UserMessageComponent = (await loadComponentExport(
-                "user-message.js",
-                "UserMessageComponent",
-            )) as UserComponentConstructor;
+            const AssistantMessageComponent = assistantClass;
+            const UserMessageComponent = userClass;
             const message = {
                 role: "assistant",
                 content: [{ type: "text", text: "Read https://example.com/docs now" }],
@@ -293,28 +327,29 @@ async function exerciseMessageRenderLifecycle(): Promise<void> {
                 stripTerminalSequences(editorRaw),
                 /Visit https:\/\/example\.com\/settings/,
             );
-            assert.notEqual(Reflect.get(assistantPrototype, "render"), originalAssistantRender);
-            assert.notEqual(Reflect.get(userPrototype, "render"), originalUserRender);
+            assert.notEqual(assistantPrototype.render, originalAssistantRender);
+            assert.notEqual(userPrototype.render, originalUserRender);
         } finally {
             shutdown();
         }
 
-        assert.equal(Reflect.get(assistantPrototype, "render"), originalAssistantRender);
-        assert.equal(
-            Reflect.get(assistantPrototype, "updateContent"),
-            originalAssistantUpdateContent,
-        );
-        assert.equal(Reflect.get(userPrototype, "render"), originalUserRender);
-        assert.equal(Reflect.get(Editor.prototype, "render"), originalEditorRender);
-        assert.equal(Reflect.get(Markdown.prototype, "render"), originalMarkdownRender);
+        assert.equal(assistantPrototype["render"], originalAssistantRender);
+        assert.equal(assistantPrototype["updateContent"], originalAssistantUpdateContent);
+        assert.equal(userPrototype["render"], originalUserRender);
+        assert.equal(Editor.prototype["render"], originalEditorRender);
+        assert.equal(Markdown.prototype["render"], originalMarkdownRender);
     }
 }
 
 test("message render wrappers restore cleanly across reload cycles", async () => {
-    const restoreTheme = await initializePiTheme();
+    const restoreOriginalTheme = suspendPiTheme();
+    let restoreInitializedTheme: (() => void) | undefined;
     try {
-        await exerciseMessageRenderLifecycle();
+        await exerciseMessageRenderLifecycle(async () => {
+            restoreInitializedTheme ??= await initializePiTheme();
+        });
     } finally {
-        restoreTheme();
+        restoreInitializedTheme?.();
+        restoreOriginalTheme();
     }
 });

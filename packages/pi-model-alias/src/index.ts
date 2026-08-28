@@ -5,13 +5,16 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { installProviderAliasUiPatches } from "./model-selector-patch.ts";
-import { aliasForProviderRequest, rewritePayloadModel } from "./provider-payload.ts";
+import {
+    aliasForProviderRequest,
+    isProviderPayloadObject,
+    rewritePayloadModel,
+} from "./provider-payload.ts";
 import {
     installRegistryPatch,
     loadConfigForRegistry,
     reportConfigError,
     type ModelAliasRuntimeState,
-    type PatchedModelRegistry,
 } from "./registry-patch.ts";
 import { loadModelAliasSettings, type ModelAliasSettingsLoadState } from "./settings.ts";
 
@@ -36,7 +39,7 @@ export default async function modelAliasExtension(pi: ExtensionAPI): Promise<voi
 
     pi.on("session_start", async (_event, ctx) => {
         setConfigContext(state, ctx);
-        const registry = ctx.modelRegistry as PatchedModelRegistry;
+        const registry = ctx.modelRegistry;
         installRegistryPatch(registry, state);
         reportConfigError(state, ctx, loadConfigForRegistry(state, registry));
     });
@@ -50,6 +53,7 @@ export default async function modelAliasExtension(pi: ExtensionAPI): Promise<voi
         setConfigContext(state, ctx);
         const loaded = loadConfigForRegistry(state, ctx.modelRegistry);
         reportConfigError(state, ctx, loaded);
+        if (!isProviderPayloadObject(event.payload)) return undefined;
         const alias = aliasForProviderRequest(event.payload, ctx.model, loaded.settings);
         if (alias === undefined) return undefined;
         return rewritePayloadModel(event.payload, alias.model);

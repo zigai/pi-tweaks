@@ -11,7 +11,45 @@ type UserMessageInstance = {
     render(width: number): string[];
 };
 
-type UserMessageConstructor = new (text: string) => UserMessageInstance;
+type UserMessageConstructor = {
+    new (text: string): UserMessageInstance;
+    readonly prototype: { readonly render?: UserMessageInstance["render"] };
+};
+
+type ThemeRuntimeModule = {
+    readonly initTheme: (settings: undefined, watch: boolean) => void;
+};
+
+type ThemeRuntimeModuleView = {
+    readonly initTheme?: ThemeRuntimeModule["initTheme"];
+};
+
+type UserMessageModuleView = {
+    readonly UserMessageComponent?: UserMessageConstructor;
+};
+type ParsedUserMessageModule = {
+    readonly UserMessageComponent: UserMessageConstructor;
+};
+
+function isThemeRuntimeModule(value: unknown): value is ThemeRuntimeModule {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    // SAFETY: The namespace-object check permits reading initTheme, whose callable
+    // contract is verified before this predicate returns true.
+    return typeof (value as ThemeRuntimeModuleView).initTheme === "function";
+}
+
+function isUserMessageModule(value: unknown): value is ParsedUserMessageModule {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    // SAFETY: The namespace-object check permits reading the dynamic component export;
+    // its constructor and render prototype contracts are both verified below.
+    const component = (value as UserMessageModuleView).UserMessageComponent;
+    const prototype = component?.prototype;
+    return typeof component === "function" && typeof prototype?.render === "function";
+}
 
 type LifecycleApi = {
     readonly api: ExtensionAPI;
@@ -26,9 +64,8 @@ function createLifecycleApi(): LifecycleApi {
         },
     };
 
-    // SAFETY: This behavior test exercises only ExtensionAPI.on used by the extension.
-    const untypedApi: unknown = api;
-    return { api: untypedApi as ExtensionAPI, shutdownHandlers };
+    // SAFETY: The extension reads only the on method implemented by this test seam.
+    return { api: api as ExtensionAPI, shutdownHandlers };
 }
 
 async function loadUserMessageConstructor(): Promise<UserMessageConstructor> {
@@ -36,39 +73,20 @@ async function loadUserMessageConstructor(): Promise<UserMessageConstructor> {
     const themePath = pathToFileURL(
         join(dirname(codingAgentEntry), "modes/interactive/theme/theme.js"),
     ).href;
-    const themeModule: unknown = (await import(themePath)) as unknown;
-    if (
-        (typeof themeModule !== "object" || themeModule === null) &&
-        typeof themeModule !== "function"
-    ) {
+    const themeModule: unknown = await import(themePath);
+    if (!isThemeRuntimeModule(themeModule)) {
         assert.fail("missing theme module");
     }
-
-    const initTheme: unknown = Reflect.get(themeModule, "initTheme");
-    if (typeof initTheme !== "function") {
-        assert.fail("missing initTheme");
-    }
-    Reflect.apply(initTheme, themeModule, [undefined, false]);
+    themeModule.initTheme.call(themeModule, undefined, false);
 
     const userMessagePath = pathToFileURL(
         join(dirname(codingAgentEntry), "modes/interactive/components/user-message.js"),
     ).href;
-    const userMessageModule: unknown = (await import(userMessagePath)) as unknown;
-    if (
-        (typeof userMessageModule !== "object" || userMessageModule === null) &&
-        typeof userMessageModule !== "function"
-    ) {
-        assert.fail("missing user message module");
-    }
-
-    const constructor: unknown = Reflect.get(userMessageModule, "UserMessageComponent");
-    if (typeof constructor !== "function") {
+    const userMessageModule: unknown = await import(userMessagePath);
+    if (!isUserMessageModule(userMessageModule)) {
         assert.fail("missing UserMessageComponent");
     }
-
-    // SAFETY: The runtime check verifies the loaded export is constructable by the
-    // user-message component seam used by Pi.
-    return constructor as UserMessageConstructor;
+    return userMessageModule.UserMessageComponent;
 }
 
 test("renders Markdown heading syntax literally in user messages", async () => {
