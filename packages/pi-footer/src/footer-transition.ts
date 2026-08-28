@@ -5,7 +5,12 @@ import {
     type SessionShutdownEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { markFooterComponent, getFooterComponentKind } from "./footer-component.ts";
+import {
+    FOOTER_COMPONENT_KIND,
+    isFooterComponent,
+    markFooterComponent,
+    type FooterComponentKind,
+} from "./footer-component.ts";
 import { createFooterComponent, type PlainFooterTheme } from "./footer-rendering.ts";
 import type { FooterConfig } from "./settings.ts";
 import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./footer-model.ts";
@@ -50,13 +55,29 @@ type FooterTransitionState = {
 
 type PatchableInteractiveModePrototype = {
     resetExtensionUI(this: FooterResetHost): void;
+    setExtensionFooter(factory: FooterFactory | undefined): void;
 };
 
 type FooterTransitionGlobal = typeof globalThis & {
     [TRANSITION_STATE_KEY]?: FooterTransitionState;
 };
 
+function isPatchableInteractiveModePrototype(
+    value: unknown,
+): value is PatchableInteractiveModePrototype {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    return (
+        "resetExtensionUI" in value &&
+        typeof value.resetExtensionUI === "function" &&
+        "setExtensionFooter" in value &&
+        typeof value.setExtensionFooter === "function"
+    );
+}
+
 function getTransitionState(): FooterTransitionState {
+    // SAFETY: globalThis is the ambient global; FooterTransitionGlobal only adds an optional namespaced transition key.
     const globalState = globalThis as FooterTransitionGlobal;
     let state = globalState[TRANSITION_STATE_KEY];
     if (state === undefined) {
@@ -132,8 +153,11 @@ function createFooterSnapshot(
     };
 }
 
-function shouldBridgeFooter(kind: string | undefined, state: FooterTransitionState): boolean {
-    if (kind !== "live" && kind !== "bridge") return false;
+function shouldBridgeFooter(
+    kind: FooterComponentKind | undefined,
+    state: FooterTransitionState,
+): boolean {
+    if (kind === undefined) return false;
     if (state.latestSnapshot === undefined) return false;
     // Session replacements tear down extension UI after `session_shutdown`, but
     // `/reload` calls `resetExtensionUI()` before the shutdown event. Treat an
@@ -161,7 +185,8 @@ function installBridgeFooter(host: FooterResetHost, snapshot: FooterSnapshot): v
     const timeout = setTimeout(() => {
         const state = getTransitionState();
         if (state.liveInstallGeneration !== generationAtInstall) return;
-        if (getFooterComponentKind(host.customFooter) !== "bridge") return;
+        const footer = host.customFooter;
+        if (!isFooterComponent(footer) || footer[FOOTER_COMPONENT_KIND] !== "bridge") return;
         host.setExtensionFooter(undefined);
     }, BRIDGE_FOOTER_TTL_MS);
     timeout.unref?.();
@@ -169,7 +194,7 @@ function installBridgeFooter(host: FooterResetHost, snapshot: FooterSnapshot): v
 
 function bridgeAfterFooterReset(
     host: FooterResetHost,
-    footerKind: string | undefined,
+    footerKind: FooterComponentKind | undefined,
     snapshot: FooterSnapshot | undefined,
     state: FooterTransitionState,
 ): void {
@@ -184,19 +209,8 @@ export function patchFooterReset(): void {
     // bridge footer in that same reset call so the built-in footer never paints
     // during the handoff.
     const prototypeValue: unknown = InteractiveMode.prototype;
-    if (
-        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
-        prototypeValue === null
-    ) {
-        return;
-    }
-    const originalResetValue: unknown = Reflect.get(prototypeValue, "resetExtensionUI");
-    const setExtensionFooterValue: unknown = Reflect.get(prototypeValue, "setExtensionFooter");
-    if (typeof originalResetValue !== "function") return;
-    if (typeof setExtensionFooterValue !== "function") return;
-    // SAFETY: The guarded Pi InteractiveMode boundary verifies both private methods
-    // required by this reset patch before exposing its minimal prototype seam.
-    const prototype = prototypeValue as PatchableInteractiveModePrototype;
+    if (!isPatchableInteractiveModePrototype(prototypeValue)) return;
+    const prototype = prototypeValue;
 
     installKeyedLinkedMethodPatch(
         prototype,
@@ -205,7 +219,10 @@ export function patchFooterReset(): void {
         bridgeAfterFooterReset,
         (predecessor, getAfterReset) =>
             function (this: FooterResetHost): void {
-                const footerKind = getFooterComponentKind(this.customFooter);
+                let footerKind: FooterComponentKind | undefined;
+                if (isFooterComponent(this.customFooter)) {
+                    footerKind = this.customFooter[FOOTER_COMPONENT_KIND];
+                }
                 const state = getTransitionState();
                 const snapshot = state.latestSnapshot;
 

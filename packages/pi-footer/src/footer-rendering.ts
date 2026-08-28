@@ -110,7 +110,7 @@ function getMcpText(ctx: FooterContext, footerData: FooterData): string | null {
     if (mcpStatus !== undefined && mcpStatus.length > 0) return mcpStatus;
 
     const serverCount = ctx.mcpServers?.length;
-    if (typeof serverCount === "number") {
+    if (serverCount !== undefined) {
         return `MCP: ${serverCount} servers`;
     }
 

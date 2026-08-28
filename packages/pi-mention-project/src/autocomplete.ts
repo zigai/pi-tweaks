@@ -12,6 +12,7 @@ import { DEFAULT_MENTION_TRIGGER, type MentionProjectSettings } from "./settings
 const MAX_SUGGESTIONS = 20;
 
 type ProjectLoader = (options?: { readonly signal?: AbortSignal }) => Promise<ProjectDirectory[]>;
+type MentionCompletion = ReturnType<AutocompleteProvider["applyCompletion"]>;
 
 function completionSuffixFor(afterCursor: string, completionSuffix: string): string {
     if (completionSuffix.length === 0) {
@@ -41,7 +42,7 @@ function applyMentionCompletion(
     value: string,
     suffix: string,
     afterCursor: string,
-): { lines: string[]; cursorLine: number; cursorCol: number } {
+): MentionCompletion {
     const textBeforeCursor = `${beforePrefix}${value}${suffix}`;
     const replacementLines = `${textBeforeCursor}${afterCursor}`.split("\n");
     const cursorLines = textBeforeCursor.split("\n");

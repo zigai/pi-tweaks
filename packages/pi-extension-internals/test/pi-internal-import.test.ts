@@ -5,6 +5,17 @@ import {
     warnPiInternalPatchUnavailable,
 } from "@zigai/pi-extension-internals";
 
+type ThemeModuleView = {
+    readonly theme: unknown;
+};
+
+function hasTheme(value: unknown): value is ThemeModuleView {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    return "theme" in value && value.theme !== undefined;
+}
+
 async function captureWarnings(run: () => Promise<void> | void): Promise<string[]> {
     const originalWarn = console.warn;
     const warnings: string[] = [];
@@ -40,10 +51,8 @@ test("loads and parses a real Pi internal module through the guarded boundary", 
         const loaded = await loadPiInternalModule("modes/interactive/theme/theme.js", {
             scope: "pi-example",
             feature: "theme",
-            parse(module) {
-                if ((typeof module !== "object" || module === null) && typeof module !== "function")
-                    return undefined;
-                if (Reflect.get(module, "theme") === undefined) return undefined;
+            parse(module: unknown): "loaded" | undefined {
+                if (!hasTheme(module)) return undefined;
                 return "loaded";
             },
         });

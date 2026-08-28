@@ -37,16 +37,90 @@ type LoaderTimer = {
     resetVersion: number;
     pausedAt?: number;
 };
-type LoaderInternals = {
-    frames: string[];
-    currentFrame: number;
-    renderIndicatorVerbatim: boolean;
-    spinnerColorFn(text: string): string;
-    message: string;
-    messageColorFn(text: string): string;
-    setText(text: string): void;
-    ui: { requestRender(): void } | null;
+type LoaderElapsed = {
+    readonly elapsedMs: number;
+    readonly startedAt: number;
 };
+type LoaderOwner = {
+    readonly frames: readonly string[];
+    readonly currentFrame: number;
+    readonly renderIndicatorVerbatim: boolean;
+    readonly spinnerColorFn: (text: string) => string;
+    readonly message: string;
+    readonly messageColorFn: (text: string) => string;
+    readonly setText: (text: string) => void;
+    readonly updateDisplay: () => void;
+    readonly paddingX: number;
+};
+type LoaderBoundary = Loader | LoaderOwner;
+type LoaderPrototypeBoundary = Loader | LoaderPrototype;
+
+function isLoaderOwner(value: unknown): value is LoaderOwner {
+    if (typeof value !== "object" || value === null) return false;
+    if (!("frames" in value) || !Array.isArray(value.frames)) return false;
+    for (const frame of value.frames) {
+        if (typeof frame !== "string") return false;
+    }
+    return (
+        "currentFrame" in value &&
+        typeof value.currentFrame === "number" &&
+        "renderIndicatorVerbatim" in value &&
+        typeof value.renderIndicatorVerbatim === "boolean" &&
+        "spinnerColorFn" in value &&
+        typeof value.spinnerColorFn === "function" &&
+        "message" in value &&
+        typeof value.message === "string" &&
+        "messageColorFn" in value &&
+        typeof value.messageColorFn === "function" &&
+        "setText" in value &&
+        typeof value.setText === "function" &&
+        "updateDisplay" in value &&
+        typeof value.updateDisplay === "function" &&
+        "paddingX" in value &&
+        typeof value.paddingX === "number" &&
+        Number.isFinite(value.paddingX) &&
+        value.paddingX >= 0
+    );
+}
+
+function parseLoaderOwner(value: LoaderBoundary): LoaderOwner | undefined {
+    if (!isLoaderOwner(value)) return undefined;
+    return {
+        frames: value.frames,
+        currentFrame: value.currentFrame,
+        renderIndicatorVerbatim: value.renderIndicatorVerbatim,
+        spinnerColorFn: (text) => value.spinnerColorFn(text),
+        message: value.message,
+        messageColorFn: (text) => value.messageColorFn(text),
+        setText: (text) => value.setText(text),
+        updateDisplay: () => value.updateDisplay(),
+        paddingX: value.paddingX,
+    };
+}
+
+function isLoaderPrototype(value: unknown): value is LoaderPrototype {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "start" in value &&
+        typeof value.start === "function" &&
+        "stop" in value &&
+        typeof value.stop === "function" &&
+        "updateDisplay" in value &&
+        typeof value.updateDisplay === "function" &&
+        "render" in value &&
+        typeof value.render === "function"
+    );
+}
+
+function parseLoaderPrototype(value: LoaderPrototypeBoundary): LoaderPrototype | undefined {
+    if (!isLoaderPrototype(value)) return undefined;
+    return value;
+}
+
+function getPatchState(): PatchState {
+    return globalThis;
+}
 
 const loaderTimers = new WeakMap<object, LoaderTimer>();
 const loaderDisplays = new WeakMap<object, LoaderDisplay>();
@@ -66,7 +140,7 @@ function getLoaderTimer(loader: Loader, now: number): LoaderTimer {
     return timer;
 }
 
-function getElapsedMs(loader: Loader, now: number): { elapsedMs: number; startedAt: number } {
+function getElapsedMs(loader: Loader, now: number): LoaderElapsed {
     const snapshot = getStatusBarSnapshot();
     const timer = getLoaderTimer(loader, now);
     if (timer.resetVersion !== snapshot.active.timerResetVersion) {
@@ -99,10 +173,8 @@ function formatElapsed(seconds: number): string {
 }
 
 function applyStatusBarDisplay(loader: Loader): void {
-    const loaderInternals: unknown = loader;
-    // SAFETY: Loader instances are created by Pi and this adapter consumes only the
-    // documented-at-runtime fields required to replace its display text.
-    const internals = loaderInternals as LoaderInternals;
+    const internals = parseLoaderOwner(loader);
+    if (internals === undefined) return;
     const snapshot = getStatusBarSnapshot();
     const frames = snapshot.active.spinnerFrames ?? internals.frames;
     const frame = frames[internals.currentFrame % Math.max(1, frames.length)] ?? "";
@@ -135,11 +207,9 @@ function renderDisplay(
 ): string[] {
     if (width <= 0) return predecessor.call(loader, width);
 
-    const paddingValue: unknown = Reflect.get(loader, "paddingX");
-    let paddingX = 1;
-    if (typeof paddingValue === "number" && Number.isFinite(paddingValue) && paddingValue >= 0) {
-        paddingX = Math.floor(paddingValue);
-    }
+    const internals = parseLoaderOwner(loader);
+    if (internals === undefined) return predecessor.call(loader, width);
+    let paddingX = Math.floor(internals.paddingX);
     paddingX = Math.min(paddingX, Math.max(0, Math.floor((width - 1) / 2)));
 
     const contentWidth = Math.max(1, width - paddingX * 2);
@@ -167,8 +237,7 @@ function renderDisplay(
 }
 
 function requestLoaderUpdate(loader: Loader): void {
-    const updateDisplay: unknown = Reflect.get(loader, "updateDisplay");
-    if (typeof updateDisplay === "function") Reflect.apply(updateDisplay, loader, []);
+    parseLoaderOwner(loader)?.updateDisplay();
 }
 
 function requestActiveLoaderRenders(): void {
@@ -195,27 +264,14 @@ function updateActiveLoaderRefreshInterval(): void {
 }
 
 export function installLoaderPatch(): () => void {
-    const state = globalThis as PatchState;
+    const state = getPatchState();
     const existingController = state[LOADER_TIME_PATCH_CONTROLLER_KEY];
     if (existingController?.version === LOADER_TIME_PATCH_VERSION) {
         return existingController.acquire();
     }
 
-    const candidate: unknown = Loader.prototype;
-    const start: unknown = Reflect.get(candidate as object, "start");
-    const stop: unknown = Reflect.get(candidate as object, "stop");
-    const updateDisplay: unknown = Reflect.get(candidate as object, "updateDisplay");
-    const render: unknown = Reflect.get(candidate as object, "render");
-    if (
-        typeof start !== "function" ||
-        typeof stop !== "function" ||
-        typeof updateDisplay !== "function" ||
-        typeof render !== "function"
-    ) {
-        return () => {};
-    }
-    // SAFETY: Each method required by LoaderPrototype was validated as callable above.
-    const prototype = candidate as LoaderPrototype;
+    const prototype = parseLoaderPrototype(Loader.prototype);
+    if (prototype === undefined) return () => {};
 
     let active = false;
     let leaseCount = 0;

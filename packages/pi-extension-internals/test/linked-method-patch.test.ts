@@ -171,7 +171,7 @@ describe("linked method patches", () => {
         const original: Renderer["render"] = function (width: number): string[] {
             return [`base:${width}`];
         };
-        const target: { render: Renderer["render"] } = { render: original };
+        const target = { render: original } satisfies { render: Renderer["render"] };
         Object.defineProperty(target, "render", {
             configurable: true,
             get: () => original,
@@ -198,7 +198,7 @@ describe("linked method patches", () => {
         const original: Renderer["render"] = function (width: number): string[] {
             return [`base:${width}`];
         };
-        const target: { render: Renderer["render"] } = { render: original };
+        const target = { render: original } satisfies { render: Renderer["render"] };
         Object.defineProperty(target, "render", {
             configurable: true,
             get: () => original,

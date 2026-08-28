@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { applyPromptHistoryEditor, type PromptHistoryEditorContext } from "../src/editor.ts";
 import type { UserMessage } from "@earendil-works/pi-ai";
-import {
-    CustomEditor,
-    type KeybindingsManager,
-    type SessionEntry,
-} from "@earendil-works/pi-coding-agent";
-import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
+import { CustomEditor, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { TuiMainScreen, type EditorTheme, type Terminal } from "@earendil-works/pi-tui";
+import { KeybindingsManager } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
+import { applyPromptHistoryEditor, type PromptHistoryEditorContext } from "../src/editor.ts";
 
 type EditorFactory = NonNullable<
     Parameters<PromptHistoryEditorContext["ui"]["setEditorComponent"]>[0]
@@ -20,9 +17,42 @@ type EditorTestContext = {
     readonly installedFactories: EditorFactory[];
 };
 
-function testDouble<T extends object>(value: Partial<T>): T {
-    // SAFETY: Tests supply only the members exercised by the production path under test.
-    return value as T;
+class FakeTerminal implements Terminal {
+    columns = 80;
+    rows = 24;
+
+    get kittyProtocolActive(): boolean {
+        return false;
+    }
+
+    start(): void {}
+    stop(): void {}
+    async drainInput(): Promise<void> {}
+    write(): void {}
+    moveBy(): void {}
+    hideCursor(): void {}
+    showCursor(): void {}
+    clearLine(): void {}
+    clearFromCursor(): void {}
+    clearScreen(): void {}
+    setTitle(): void {}
+    setProgress(): void {}
+}
+
+const identityStyle = (text: string): string => text;
+const editorTheme: EditorTheme = {
+    borderColor: identityStyle,
+    selectList: {
+        selectedPrefix: identityStyle,
+        selectedText: identityStyle,
+        description: identityStyle,
+        scrollInfo: identityStyle,
+        noMatch: identityStyle,
+    },
+};
+
+function editorFactoryArgs(): Parameters<EditorFactory> {
+    return [new TuiMainScreen(new FakeTerminal()), editorTheme, new KeybindingsManager()];
 }
 
 function userEntry(content: UserMessage["content"], timestamp: number): SessionEntry {
@@ -81,13 +111,9 @@ test("prompt history preloads prompts from the current branch in branch order", 
 
     applyPromptHistoryEditor(context.ctx);
     assert.equal(context.installedFactories.length, 1);
-    // SAFETY: Editor construction only reads borderColor from the theme before the recording
-    // addToHistory replacement runs; no TUI or keybinding operations are exercised.
-    context.installedFactories[0]?.(
-        undefined as never,
-        { borderColor: "" } as never,
-        undefined as never,
-    );
+    const factory = context.installedFactories[0];
+    if (factory === undefined) assert.fail("Expected installed editor factory");
+    factory(...editorFactoryArgs());
     assert.deepEqual(context.addedPrompts, ["older current prompt", "newer current prompt"]);
 });
 
@@ -130,15 +156,9 @@ test("prompt history preserves a configured host editor and its rendering", () =
     assert.notEqual(installedFactory, undefined);
     if (installedFactory === undefined) return;
 
-    const editor = installedFactory(
-        {
-            getFocusedComponent() {
-                return hostEditor;
-            },
-        } as never,
-        undefined as never,
-        undefined as never,
-    );
+    const [tui, theme, keybindings] = editorFactoryArgs();
+    tui.setFocus(hostEditor);
+    const editor = installedFactory(tui, theme, keybindings);
 
     assert.equal(editor, hostEditor);
     assert.deepEqual(editor.render(80), ["<magic>workflowz</magic>"]);
@@ -168,21 +188,9 @@ test("prompt history keeps Pi's default editor shortcut hook non-recursive", () 
     assert.notEqual(installedFactory, undefined);
     if (installedFactory === undefined) return;
 
-    let focusedEditor: CustomEditor;
-    const testTui = testDouble<TUI>({});
-    Object.assign(testTui, {
-        getFocusedComponent() {
-            return focusedEditor;
-        },
-    });
-    const theme = testDouble<EditorTheme>({ borderColor: (text) => text });
-    const keybindings = testDouble<KeybindingsManager>({
-        matches() {
-            return false;
-        },
-    });
+    const [testTui, theme, keybindings] = editorFactoryArgs();
     const defaultEditor = new CustomEditor(testTui, theme, keybindings);
-    focusedEditor = defaultEditor;
+    testTui.setFocus(defaultEditor);
     const editor = installedFactory(testTui, theme, keybindings);
 
     assert.equal(editor instanceof CustomEditor, true);

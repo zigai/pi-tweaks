@@ -10,10 +10,18 @@ const KEYMAP_EDITOR_ENHANCER = Symbol.for("zigai.pi-keymap-tweaks.editor-enhance
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 type EditorFactoryArgs = Parameters<EditorFactory>;
 type EditorComponent = ReturnType<EditorFactory>;
+type EditorState = {
+    lines: string[];
+    cursorLine: number;
+    cursorCol: number;
+};
+
+type EditorAction = "kill" | "type-word" | "yank" | null;
+
 type EditorInternals = {
-    state: { lines: string[]; cursorLine: number; cursorCol: number };
-    historyIndex?: unknown;
-    lastAction: unknown;
+    state: EditorState;
+    historyIndex?: number;
+    lastAction: EditorAction;
     setCursorCol(column: number): void;
     pushUndoSnapshot?: () => void;
     exitHistoryBrowsing?: () => void;
@@ -45,87 +53,111 @@ export type KeymapEditorContext = Pick<ExtensionContext, "hasUI"> & {
     ui: Pick<ExtensionContext["ui"], "getEditorComponent" | "setEditorComponent">;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
+function isString(value: unknown): value is string {
+    return typeof value === "string";
 }
 
-function getEditorInternals(editor: EditorLike): EditorInternals | undefined {
-    const state = getUnknownProperty(editor, "state");
-    const lines = getUnknownProperty(state, "lines");
-    const cursorLine = getUnknownProperty(state, "cursorLine");
-    const cursorCol = getUnknownProperty(state, "cursorCol");
-    const pushUndoSnapshot = getUnknownProperty(editor, "pushUndoSnapshot");
-    const exitHistoryBrowsing = getUnknownProperty(editor, "exitHistoryBrowsing");
+function isEditorState(value: unknown): value is EditorState {
+    if (typeof value !== "object" || value === null) return false;
+    return (
+        "lines" in value &&
+        Array.isArray(value.lines) &&
+        value.lines.every(isString) &&
+        "cursorLine" in value &&
+        typeof value.cursorLine === "number" &&
+        "cursorCol" in value &&
+        typeof value.cursorCol === "number"
+    );
+}
+
+function isEditorAction(value: unknown): value is EditorAction {
+    return value === null || value === "kill" || value === "type-word" || value === "yank";
+}
+
+function hasEditorInternals(editor: EditorLike): editor is EditorLike & EditorInternals {
     if (
-        !Array.isArray(lines) ||
-        !lines.every((line) => typeof line === "string") ||
-        typeof cursorLine !== "number" ||
-        typeof cursorCol !== "number" ||
-        typeof getUnknownProperty(editor, "setCursorCol") !== "function" ||
-        (pushUndoSnapshot !== undefined && typeof pushUndoSnapshot !== "function") ||
-        (exitHistoryBrowsing !== undefined && typeof exitHistoryBrowsing !== "function")
+        !("state" in editor) ||
+        !isEditorState(editor.state) ||
+        !("lastAction" in editor) ||
+        !isEditorAction(editor.lastAction) ||
+        !("setCursorCol" in editor) ||
+        typeof editor.setCursorCol !== "function"
     ) {
-        return undefined;
+        return false;
     }
-    // SAFETY: The checked editor adapter verifies the complete private state and
-    // required mutator before exposing the smallest internals seam used below.
-    const internals: unknown = editor;
-    return internals as EditorInternals;
+
+    if (
+        "historyIndex" in editor &&
+        editor.historyIndex !== undefined &&
+        typeof editor.historyIndex !== "number"
+    ) {
+        return false;
+    }
+    if (
+        "pushUndoSnapshot" in editor &&
+        editor.pushUndoSnapshot !== undefined &&
+        typeof editor.pushUndoSnapshot !== "function"
+    ) {
+        return false;
+    }
+    return (
+        !("exitHistoryBrowsing" in editor) ||
+        editor.exitHistoryBrowsing === undefined ||
+        typeof editor.exitHistoryBrowsing === "function"
+    );
 }
 
 function isEditorLike(value: ReturnType<EditorFactory>): value is EditorLike {
-    const onChange = getUnknownProperty(value, "onChange");
-    const onExtensionShortcut = getUnknownProperty(value, "onExtensionShortcut");
-    const requestRenderNow = getUnknownProperty(value, "requestRenderNow");
     return (
-        typeof getUnknownProperty(value, "handleInput") === "function" &&
-        typeof getUnknownProperty(value, "getText") === "function" &&
-        typeof getUnknownProperty(value, "getCursor") === "function" &&
-        typeof getUnknownProperty(value, "isShowingAutocomplete") === "function" &&
-        (onChange === undefined || typeof onChange === "function") &&
-        (onExtensionShortcut === undefined || typeof onExtensionShortcut === "function") &&
-        (requestRenderNow === undefined || typeof requestRenderNow === "function")
+        typeof value.handleInput === "function" &&
+        typeof value.getText === "function" &&
+        "getCursor" in value &&
+        typeof value.getCursor === "function" &&
+        "isShowingAutocomplete" in value &&
+        typeof value.isShowingAutocomplete === "function" &&
+        (value.onChange === undefined || typeof value.onChange === "function") &&
+        (!("onExtensionShortcut" in value) ||
+            value.onExtensionShortcut === undefined ||
+            typeof value.onExtensionShortcut === "function") &&
+        (!("requestRenderNow" in value) ||
+            value.requestRenderNow === undefined ||
+            typeof value.requestRenderNow === "function")
     );
 }
 
 function moveToCodexLineStart(editor: EditorLike): void {
-    const self = getEditorInternals(editor);
-    if (self === undefined) return;
-    const state = self.state;
+    if (!hasEditorInternals(editor)) return;
+    const state = editor.state;
 
-    self.lastAction = null;
+    editor.lastAction = null;
     if (state.cursorCol === 0 && state.cursorLine > 0) {
         state.cursorLine -= 1;
     }
-    self.setCursorCol(0);
+    editor.setCursorCol(0);
     editor.requestRenderNow?.();
 }
 
 function moveToCodexLineEnd(editor: EditorLike): void {
-    const self = getEditorInternals(editor);
-    if (self === undefined) return;
-    const state = self.state;
+    if (!hasEditorInternals(editor)) return;
+    const state = editor.state;
     const currentLine = state.lines[state.cursorLine] || "";
 
-    self.lastAction = null;
+    editor.lastAction = null;
     if (state.cursorCol >= currentLine.length && state.cursorLine < state.lines.length - 1) {
         state.cursorLine += 1;
         const nextLine = state.lines[state.cursorLine] || "";
-        self.setCursorCol(nextLine.length);
+        editor.setCursorCol(nextLine.length);
         editor.requestRenderNow?.();
         return;
     }
-    self.setCursorCol(currentLine.length);
+    editor.setCursorCol(currentLine.length);
     editor.requestRenderNow?.();
 }
 
 function isBrowsingPromptHistory(editor: EditorLike): boolean {
-    const self = getEditorInternals(editor);
-    if (self === undefined) return false;
-    return typeof self.historyIndex === "number" && self.historyIndex > -1;
+    return (
+        hasEditorInternals(editor) && editor.historyIndex !== undefined && editor.historyIndex > -1
+    );
 }
 
 function shouldBlockPromptHistoryUp(editor: EditorLike): boolean {
@@ -142,27 +174,23 @@ function deleteCurrentLine(
     writeClipboard: ClipboardWriter,
     notify: Notifier,
 ): void {
-    const internals = getEditorInternals(editor);
-    if (internals === undefined) return;
-    const currentLine = internals.state.lines[internals.state.cursorLine] ?? "";
-    if (internals.pushUndoSnapshot === undefined) return;
+    if (!hasEditorInternals(editor)) return;
+    const currentLine = editor.state.lines[editor.state.cursorLine] ?? "";
+    if (editor.pushUndoSnapshot === undefined) return;
 
-    internals.pushUndoSnapshot();
-    internals.exitHistoryBrowsing?.();
-    internals.lastAction = null;
+    editor.pushUndoSnapshot();
+    editor.exitHistoryBrowsing?.();
+    editor.lastAction = null;
 
-    if (internals.state.lines.length === 1) {
-        internals.state.lines[0] = "";
-        internals.state.cursorLine = 0;
+    if (editor.state.lines.length === 1) {
+        editor.state.lines[0] = "";
+        editor.state.cursorLine = 0;
     } else {
-        internals.state.lines.splice(internals.state.cursorLine, 1);
-        internals.state.cursorLine = Math.min(
-            internals.state.cursorLine,
-            internals.state.lines.length - 1,
-        );
+        editor.state.lines.splice(editor.state.cursorLine, 1);
+        editor.state.cursorLine = Math.min(editor.state.cursorLine, editor.state.lines.length - 1);
     }
 
-    internals.setCursorCol(0);
+    editor.setCursorCol(0);
     editor.onChange?.(editor.getText());
     editor.requestRenderNow?.();
 

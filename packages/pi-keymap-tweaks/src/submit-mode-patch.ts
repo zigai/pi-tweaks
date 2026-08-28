@@ -39,21 +39,7 @@ function shouldNormalizeLfEnter(): boolean {
     );
 }
 
-function getAgentSessionPrompt(): AgentSession["prompt"] | undefined {
-    const value: unknown = Object.getOwnPropertyDescriptor(AgentSession.prototype, "prompt")?.value;
-    if (typeof value !== "function") return undefined;
-    return value as AgentSession["prompt"];
-}
-
-function getEditorHandleInput(): Editor["handleInput"] | undefined {
-    const value: unknown = Object.getOwnPropertyDescriptor(Editor.prototype, "handleInput")?.value;
-    if (typeof value !== "function") return undefined;
-    return value as Editor["handleInput"];
-}
-
-function patchStreamingBehaviorSwap(): SubmitModePatchHandle | undefined {
-    if (getAgentSessionPrompt() === undefined) return undefined;
-
+function patchStreamingBehaviorSwap(): SubmitModePatchHandle {
     return installKeyedLinkedMethodPatch(
         AgentSession.prototype,
         "prompt",
@@ -67,7 +53,7 @@ function patchStreamingBehaviorSwap(): SubmitModePatchHandle | undefined {
 }
 
 function patchTerminalLfEnterSubmit(): SubmitModePatchHandle | undefined {
-    if (!shouldNormalizeLfEnter() || getEditorHandleInput() === undefined) return undefined;
+    if (!shouldNormalizeLfEnter()) return undefined;
 
     return installKeyedLinkedMethodPatch(
         Editor.prototype,

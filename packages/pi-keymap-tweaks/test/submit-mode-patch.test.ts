@@ -5,59 +5,78 @@ import { test } from "vitest";
 
 import { applySubmitModeKeymap } from "../src/submit-mode-patch.ts";
 
-function restoreProperty(target: object, key: PropertyKey, descriptor: PropertyDescriptor): void {
-    if (!Reflect.defineProperty(target, key, descriptor)) {
-        throw new TypeError(`Unable to restore ${String(key)}`);
-    }
+type PatchTarget = AgentSession | Editor;
+
+function restoreProperty(
+    target: PatchTarget,
+    key: PropertyKey,
+    descriptor: PropertyDescriptor,
+): void {
+    Object.defineProperty(target, key, descriptor);
+}
+
+function isPromptMethod(value: unknown): value is AgentSession["prompt"] {
+    return typeof value === "function";
+}
+
+function isHandleInputMethod(value: unknown): value is Editor["handleInput"] {
+    return typeof value === "function";
 }
 
 test("submit-mode patches transform input once and restore both predecessors", () => {
-    const agentPrototype: object = AgentSession.prototype;
-    const editorPrototype: object = Editor.prototype;
+    const agentPrototype = AgentSession.prototype;
+    const editorPrototype = Editor.prototype;
     const promptDescriptor = Object.getOwnPropertyDescriptor(agentPrototype, "prompt");
     const handleInputDescriptor = Object.getOwnPropertyDescriptor(editorPrototype, "handleInput");
     if (promptDescriptor === undefined || handleInputDescriptor === undefined) {
         assert.fail("Expected patchable Pi prompt and editor methods");
     }
 
-    let receivedOptions: unknown;
+    let receivedOptions: Parameters<AgentSession["prompt"]>[1];
     const receivedInput: string[] = [];
-    const prompt = (_text: string, options: unknown): undefined => {
+    const prompt: AgentSession["prompt"] = async function (this: AgentSession, _text, options) {
+        assert.equal(this, agentPrototype);
         receivedOptions = options;
-        return undefined;
     };
-    const handleInput = (data: string): void => {
+    const handleInput: Editor["handleInput"] = function (this: Editor, data) {
+        assert.equal(this, editorPrototype);
         receivedInput.push(data);
     };
     const previousTmux = process.env.TMUX;
     let handle: { dispose(): void } | undefined;
     try {
         process.env.TMUX = "test";
-        Reflect.defineProperty(agentPrototype, "prompt", {
+        Object.defineProperty(agentPrototype, "prompt", {
             ...promptDescriptor,
             value: prompt,
         });
-        Reflect.defineProperty(editorPrototype, "handleInput", {
+        Object.defineProperty(editorPrototype, "handleInput", {
             ...handleInputDescriptor,
             value: handleInput,
         });
 
         handle = applySubmitModeKeymap();
-        const patchedPrompt: unknown = Reflect.get(agentPrototype, "prompt");
-        const patchedHandleInput: unknown = Reflect.get(editorPrototype, "handleInput");
-        if (typeof patchedPrompt !== "function" || typeof patchedHandleInput !== "function") {
-            assert.fail("Expected installed submit-mode methods");
-        }
-        Reflect.apply(patchedPrompt, {}, ["hello", { streamingBehavior: "steer" }]);
-        Reflect.apply(patchedHandleInput, {}, ["\n"]);
+        void agentPrototype.prompt("hello", { streamingBehavior: "steer" });
+        editorPrototype.handleInput("\n");
 
         assert.deepEqual(receivedOptions, { streamingBehavior: "followUp" });
         assert.deepEqual(receivedInput, ["\r"]);
         assert.equal(applySubmitModeKeymap(), handle);
         handle.dispose();
         handle.dispose();
-        assert.equal(Reflect.get(agentPrototype, "prompt"), prompt);
-        assert.equal(Reflect.get(editorPrototype, "handleInput"), handleInput);
+        const restoredPrompt: unknown = Object.getOwnPropertyDescriptor(
+            agentPrototype,
+            "prompt",
+        )?.value;
+        const restoredHandleInput: unknown = Object.getOwnPropertyDescriptor(
+            editorPrototype,
+            "handleInput",
+        )?.value;
+        if (!isPromptMethod(restoredPrompt) || !isHandleInputMethod(restoredHandleInput)) {
+            assert.fail("Expected restored Pi methods");
+        }
+        assert.equal(restoredPrompt, prompt);
+        assert.equal(restoredHandleInput, handleInput);
     } finally {
         handle?.dispose();
         restoreProperty(agentPrototype, "prompt", promptDescriptor);

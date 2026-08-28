@@ -16,18 +16,32 @@ const MENTION_EDITOR_ENHANCER = Symbol.for("zigai.pi-mention-skill.editor-enhanc
 
 type SkillNameSnapshot = () => ReadonlySet<string>;
 
-function getOptionalEditorMethod(editor: EditorLike, name: string): (() => unknown) | undefined {
-    const method: unknown = Reflect.get(editor, name) as unknown;
-    if (typeof method !== "function") return undefined;
-    return () => Reflect.apply(method, editor, []) as unknown;
+type AutocompleteVisibility = {
+    isShowingAutocomplete(): boolean;
+};
+
+type AutocompleteTrigger = {
+    tryTriggerAutocomplete(): void;
+};
+
+function hasAutocompleteVisibility(
+    editor: EditorLike,
+): editor is EditorLike & AutocompleteVisibility {
+    return "isShowingAutocomplete" in editor && typeof editor.isShowingAutocomplete === "function";
+}
+
+function hasAutocompleteTrigger(editor: EditorLike): editor is EditorLike & AutocompleteTrigger {
+    return (
+        "tryTriggerAutocomplete" in editor && typeof editor.tryTriggerAutocomplete === "function"
+    );
 }
 
 function isShowingAutocomplete(editor: EditorLike): boolean {
-    return getOptionalEditorMethod(editor, "isShowingAutocomplete")?.() === true;
+    return hasAutocompleteVisibility(editor) && editor.isShowingAutocomplete() === true;
 }
 
 function tryTriggerAutocomplete(editor: EditorLike): void {
-    getOptionalEditorMethod(editor, "tryTriggerAutocomplete")?.();
+    if (hasAutocompleteTrigger(editor)) editor.tryTriggerAutocomplete();
 }
 
 function enhanceEditor(

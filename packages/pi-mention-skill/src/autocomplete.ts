@@ -13,6 +13,7 @@ const MAX_SUGGESTIONS = 20;
 const SKILL_COMMAND_PREFIX = "skill:";
 
 type SkillLoader = () => SkillCommand[];
+type MentionCompletion = ReturnType<AutocompleteProvider["applyCompletion"]>;
 
 function skillToItem(command: SkillCommand, trigger = DEFAULT_MENTION_TRIGGER): AutocompleteItem {
     const name = skillName(command);
@@ -81,7 +82,7 @@ function applyMentionCompletion(
     value: string,
     suffix: string,
     afterCursor: string,
-): { lines: string[]; cursorLine: number; cursorCol: number } {
+): MentionCompletion {
     const textBeforeCursor = `${beforePrefix}${value}${suffix}`;
     const replacementLines = `${textBeforeCursor}${afterCursor}`.split("\n");
     const cursorLines = textBeforeCursor.split("\n");

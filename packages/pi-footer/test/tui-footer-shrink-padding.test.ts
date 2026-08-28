@@ -21,22 +21,30 @@ type TuiInternals = {
     previousViewportTop: number;
 };
 
+function isString(value: unknown): value is string {
+    return typeof value === "string";
+}
+
+function isTuiInternals(value: unknown): value is TuiInternals {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    return (
+        "doRender" in value &&
+        typeof value.doRender === "function" &&
+        "previousLines" in value &&
+        Array.isArray(value.previousLines) &&
+        value.previousLines.every(isString) &&
+        "previousViewportTop" in value &&
+        typeof value.previousViewportTop === "number"
+    );
+}
+
 function getTuiInternals(tui: TUI): TuiInternals {
-    const value: unknown = tui;
-    const doRender: unknown = Reflect.get(tui, "doRender") as unknown;
-    const previousLines: unknown = Reflect.get(tui, "previousLines") as unknown;
-    const previousViewportTop: unknown = Reflect.get(tui, "previousViewportTop") as unknown;
-    if (
-        typeof doRender !== "function" ||
-        !Array.isArray(previousLines) ||
-        !previousLines.every((line) => typeof line === "string") ||
-        typeof previousViewportTop !== "number"
-    ) {
+    if (!isTuiInternals(tui)) {
         throw new Error("Expected TUI render internals.");
     }
-    // SAFETY: This integration-test adapter checks each private TUI member used to
-    // observe real rendering behavior; the pi-tui declaration intentionally hides them.
-    return value as TuiInternals;
+    return tui;
 }
 
 function stripTestAnsi(text: string): string {

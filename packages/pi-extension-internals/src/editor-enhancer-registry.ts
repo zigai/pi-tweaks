@@ -36,37 +36,54 @@ type EditorEnhancerRegistry<Args extends readonly unknown[], Editor> = {
     readonly factory: EditorFactory<Args, Editor>;
 };
 
-/**
- * Shared symbol properties may have been written by another bundled package version.
- * Only own data properties participate in the protocol; their values stay unknown until parsed.
- */
-function readOwnDataProperty(target: object, key: PropertyKey): unknown {
+type UnknownDataDescriptor = Omit<PropertyDescriptor, "value"> & { readonly value: unknown };
+
+function isUnknownDataDescriptor(
+    descriptor: PropertyDescriptor | undefined,
+): descriptor is UnknownDataDescriptor {
+    return descriptor !== undefined && Object.hasOwn(descriptor, "value");
+}
+
+/** Reads untrusted protocol data written by another bundled package copy. */
+// oxlint-disable-next-line antislop/no-object-parameters -- Protocol data may be attached to any Pi UI or factory object.
+function getOwnDataDescriptor(target: object, key: PropertyKey): UnknownDataDescriptor | undefined {
     const descriptor = Object.getOwnPropertyDescriptor(target, key);
-    if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) return undefined;
-    const value: unknown = descriptor.value;
-    return value;
+    if (!isUnknownDataDescriptor(descriptor)) return undefined;
+    return descriptor;
+}
+function isNonNullObject(value: unknown): value is object {
+    return typeof value === "object" && value !== null;
 }
 
-function formatProtocolVersion(version: unknown): string {
-    if (typeof version === "number") return version.toString();
-    return `invalid-${typeof version}`;
+function isNumber(value: unknown): value is number {
+    return typeof value === "number";
 }
 
-function isLegacyEnhancerKey(value: unknown): value is PropertyKey {
+function isPropertyKey(value: unknown): value is PropertyKey {
     return typeof value === "string" || typeof value === "number" || typeof value === "symbol";
 }
 
-function hasValidEnhancerEntries(value: unknown, legacy: boolean): boolean {
-    if (!(value instanceof Map)) return false;
-    const entries: ReadonlyMap<unknown, unknown> = value;
+function isGlobalSymbol(value: unknown): value is symbol {
+    return typeof value === "symbol" && Symbol.keyFor(value) !== undefined;
+}
+
+// oxlint-disable-next-line antislop/no-object-parameters -- Enhancer records are intentionally structural protocol objects.
+function hasOwnFunctionProperty(target: object, key: PropertyKey): boolean {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) return false;
+    const value: unknown = descriptor.value;
+    return typeof value === "function";
+}
+
+function hasValidEnhancerEntries(entries: ReadonlyMap<unknown, unknown>, legacy: boolean): boolean {
     for (const [key, entry] of entries) {
         if (legacy) {
-            if (!isLegacyEnhancerKey(key)) return false;
-        } else if (typeof key !== "symbol" || Symbol.keyFor(key) === undefined) {
+            if (!isPropertyKey(key)) return false;
+        } else if (!isGlobalSymbol(key)) {
             return false;
         }
-        if (typeof entry !== "object" || entry === null) return false;
-        if (typeof readOwnDataProperty(entry, "enhancer") !== "function") return false;
+        if (!isNonNullObject(entry)) return false;
+        if (!hasOwnFunctionProperty(entry, "enhancer")) return false;
     }
     return true;
 }
@@ -74,34 +91,36 @@ function hasValidEnhancerEntries(value: unknown, legacy: boolean): boolean {
 function readRegistry<Args extends readonly unknown[], Editor>(
     ui: EditorEnhancerContext<Args, Editor>["ui"],
 ): EditorEnhancerRegistry<Args, Editor> | undefined {
-    const value = readOwnDataProperty(ui, EDITOR_ENHANCER_REGISTRY);
-    if (value === undefined) return undefined;
-    if (typeof value !== "object" || value === null) {
+    const recordValue = getOwnDataDescriptor(ui, EDITOR_ENHANCER_REGISTRY)?.value;
+    if (recordValue === undefined) return undefined;
+    if (!isNonNullObject(recordValue)) {
         throw new TypeError("Incompatible editor enhancer registry");
     }
+    const record = recordValue;
 
-    const version = readOwnDataProperty(value, EDITOR_ENHANCER_PROTOCOL);
+    const version = getOwnDataDescriptor(record, EDITOR_ENHANCER_PROTOCOL)?.value;
     if (version !== undefined && version !== EDITOR_ENHANCER_PROTOCOL_VERSION) {
-        throw new TypeError(
-            `Unsupported editor enhancer protocol version ${formatProtocolVersion(version)}`,
-        );
+        let versionLabel = `invalid-${Object.prototype.toString.call(version).slice(8, -1).toLowerCase()}`;
+        if (isNumber(version)) versionLabel = version.toString();
+        throw new TypeError(`Unsupported editor enhancer protocol version ${versionLabel}`);
     }
-    const baseFactory = readOwnDataProperty(value, "baseFactory");
-    const defaultFactory = readOwnDataProperty(value, "defaultFactory");
-    const enhancers = readOwnDataProperty(value, "enhancers");
-    const factory = readOwnDataProperty(value, "factory");
+    const baseFactory = getOwnDataDescriptor(record, "baseFactory")?.value;
+    const defaultFactory = getOwnDataDescriptor(record, "defaultFactory")?.value;
+    const enhancers = getOwnDataDescriptor(record, "enhancers")?.value;
+    const factory = getOwnDataDescriptor(record, "factory")?.value;
     if (
         (baseFactory !== undefined && typeof baseFactory !== "function") ||
         typeof defaultFactory !== "function" ||
+        !(enhancers instanceof Map) ||
         !hasValidEnhancerEntries(enhancers, version === undefined) ||
         typeof factory !== "function" ||
-        readOwnDataProperty(factory, EDITOR_ENHANCER_FACTORY) !== true
+        getOwnDataDescriptor(factory, EDITOR_ENHANCER_FACTORY)?.value !== true
     ) {
         throw new TypeError("Incompatible editor enhancer registry");
     }
     if (
         version === undefined &&
-        !Reflect.defineProperty(value, EDITOR_ENHANCER_PROTOCOL, {
+        !Reflect.defineProperty(record, EDITOR_ENHANCER_PROTOCOL, {
             configurable: true,
             value: EDITOR_ENHANCER_PROTOCOL_VERSION,
         })
@@ -111,7 +130,7 @@ function readRegistry<Args extends readonly unknown[], Editor>(
 
     // SAFETY: The checks above validate every runtime field shared between independently
     // bundled protocol copies. Generic arguments are fixed by the owning Pi UI instance.
-    return value as EditorEnhancerRegistry<Args, Editor>;
+    return record as EditorEnhancerRegistry<Args, Editor>;
 }
 
 function markSharedFactory<Args extends readonly unknown[], Editor>(
@@ -133,7 +152,7 @@ function isCurrentSharedFactory<Args extends readonly unknown[], Editor>(
     return (
         factory !== undefined &&
         factory === registry.factory &&
-        readOwnDataProperty(factory, EDITOR_ENHANCER_FACTORY) === true
+        getOwnDataDescriptor(factory, EDITOR_ENHANCER_FACTORY)?.value === true
     );
 }
 
@@ -163,7 +182,7 @@ export function registerEditorEnhancer<Args extends readonly unknown[], Editor>(
     createDefaultEditor: EditorFactory<Args, Editor>,
     enhancer: EditorEnhancer<Args, Editor>,
 ): EditorEnhancerHandle<Args, Editor> {
-    if (typeof key !== "symbol" || Symbol.keyFor(key) === undefined) {
+    if (Symbol.keyFor(key) === undefined) {
         throw new TypeError("Editor enhancer keys must be created with Symbol.for(...)");
     }
     if (!ctx.hasUI) {
@@ -210,7 +229,7 @@ export function registerEditorEnhancer<Args extends readonly unknown[], Editor>(
     } catch (cause: unknown) {
         if (
             created &&
-            readOwnDataProperty(ctx.ui, EDITOR_ENHANCER_REGISTRY) === registry &&
+            getOwnDataDescriptor(ctx.ui, EDITOR_ENHANCER_REGISTRY)?.value === registry &&
             !Reflect.deleteProperty(ctx.ui, EDITOR_ENHANCER_REGISTRY)
         ) {
             throw new TypeError("Unable to roll back the editor enhancer registry", { cause });
@@ -252,7 +271,7 @@ export function registerEditorEnhancer<Args extends readonly unknown[], Editor>(
                 ctx.ui.setEditorComponent(registry.baseFactory);
             }
             if (
-                readOwnDataProperty(ctx.ui, EDITOR_ENHANCER_REGISTRY) === registry &&
+                getOwnDataDescriptor(ctx.ui, EDITOR_ENHANCER_REGISTRY)?.value === registry &&
                 !Reflect.deleteProperty(ctx.ui, EDITOR_ENHANCER_REGISTRY)
             ) {
                 throw new TypeError("Unable to remove the editor enhancer registry");

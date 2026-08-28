@@ -1,7 +1,7 @@
 import { installKeyedLinkedMethodPatch } from "@zigai/pi-extension-internals";
 import { TuiMainScreen, type Component } from "@earendil-works/pi-tui";
 
-import { getFooterComponentKind } from "./footer-component.ts";
+import { isFooterComponent } from "./footer-component.ts";
 
 const FOOTER_SHRINK_PADDING_PATCH_MARKER = Symbol.for(
     "zigai.pi-footer.tui-footer-shrink-padding-patch",
@@ -53,12 +53,17 @@ type BottomChromeSpacingResult = {
 };
 
 function isComponentContainer(component: Component): component is ComponentContainer {
-    const children: unknown = Reflect.get(component, "children") as unknown;
-    return Array.isArray(children);
+    return "children" in component && Array.isArray(component.children);
+}
+function isPatchableTuiPrototype(value: unknown): value is PatchableTuiPrototype {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    return "render" in value && typeof value.render === "function";
 }
 
 function containsFooterComponent(component: Component, visited = new Set<Component>()): boolean {
-    if (getFooterComponentKind(component) !== undefined) return true;
+    if (isFooterComponent(component)) return true;
     if (visited.has(component)) return false;
     visited.add(component);
     if (!isComponentContainer(component)) return false;
@@ -389,17 +394,8 @@ function padAtVisibleBoundary(
  */
 export function installFooterShrinkPaddingPatch(): { dispose(): void } | undefined {
     const prototypeValue: unknown = TuiMainScreen.prototype;
-    if (
-        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
-        prototypeValue === null
-    ) {
-        return undefined;
-    }
-    const renderValue: unknown = Reflect.get(prototypeValue, "render");
-    if (typeof renderValue !== "function") return undefined;
-    // SAFETY: The guarded TUI adapter verifies the private render method before
-    // patching its minimal prototype seam.
-    const prototype = prototypeValue as PatchableTuiPrototype;
+    if (!isPatchableTuiPrototype(prototypeValue)) return undefined;
+    const prototype = prototypeValue;
 
     return installKeyedLinkedMethodPatch(
         prototype,

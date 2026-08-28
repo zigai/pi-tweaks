@@ -9,13 +9,10 @@ type PatchProtocol = typeof PatchProtocolModule;
 async function loadProtocolCopy<T>(relativePath: string, copy: string): Promise<T> {
     const moduleUrl = new URL(`${relativePath}?copy=${copy}`, import.meta.url).href;
     // Dynamic import is the behavior under test: query-distinct URLs force separate module copies.
-    const loaded: unknown = await import(moduleUrl);
-    if (typeof loaded !== "object" || loaded === null) {
-        throw new TypeError(`Unable to load protocol copy ${copy}`);
-    }
     // SAFETY: Each caller supplies a checked source-module URL and immediately exercises the
-    // expected public functions through their runtime contracts.
-    return loaded as T;
+    // expected public functions through their runtime contracts; ES module imports always
+    // resolve to a namespace object.
+    return import(moduleUrl) as Promise<T>;
 }
 
 class EditorUi {

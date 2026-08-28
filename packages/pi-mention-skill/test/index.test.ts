@@ -5,7 +5,10 @@ import path from "node:path";
 import { afterAll, test } from "vitest";
 
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
-import mentionSkillExtension, { type MentionSkillExtensionApi } from "../src/index.ts";
+import mentionSkillExtension, {
+    type MentionSkillExtensionApi,
+    type MentionSkillHandlerMap,
+} from "../src/index.ts";
 import type { MentionSkillSettingsContext } from "../src/settings.ts";
 import type { SkillCommand } from "../src/skill-commands.ts";
 
@@ -56,22 +59,20 @@ function isObject(value: unknown): value is object {
 }
 
 function isContextExpansionResult(value: unknown): value is ContextExpansionResult {
-    if (!isObject(value)) {
-        return false;
-    }
-
-    const messages = Object.getOwnPropertyDescriptor(value, "messages")?.value as unknown;
-    return messages === undefined || Array.isArray(messages);
+    if (!isObject(value)) return false;
+    return !("messages" in value) || value.messages === undefined || Array.isArray(value.messages);
 }
 
-function invokeRegisteredHandler(
+function isContextHandler(value: unknown): value is MentionSkillHandlerMap["context"] {
+    return typeof value === "function";
+}
+
+function getContextHandler(
     handlers: ReadonlyMap<string, unknown>,
-    event: string,
-    args: unknown[],
-): unknown {
-    const handler = handlers.get(event);
-    if (typeof handler !== "function") throw new Error(`Expected ${event} handler`);
-    return Reflect.apply(handler, undefined, args) as unknown;
+): MentionSkillHandlerMap["context"] {
+    const handler = handlers.get("context");
+    if (!isContextHandler(handler)) throw new Error("Expected context handler");
+    return handler;
 }
 
 test("mention skill skips command enumeration when provider context has no trigger", async () => {
@@ -99,10 +100,10 @@ test("mention skill skips command enumeration when provider context has no trigg
                 timestamp: 1,
             },
         ];
-        const result = await invokeRegisteredHandler(registeredHandlers, "context", [
+        const result = await getContextHandler(registeredHandlers)(
             { type: "context", messages },
             context(cwd),
-        ]);
+        );
 
         assert.equal(result, undefined);
         assert.equal(getCommandsCount, 0);
@@ -135,10 +136,10 @@ test("mention skill expands provider context without registering an input rewrit
                 timestamp: 1,
             },
         ];
-        const result = await invokeRegisteredHandler(registeredHandlers, "context", [
+        const result = await getContextHandler(registeredHandlers)(
             { type: "context", messages },
             context(cwd),
-        ]);
+        );
 
         assert.equal(messages[0]?.role, "user");
         if (messages[0]?.role === "user" && Array.isArray(messages[0].content)) {

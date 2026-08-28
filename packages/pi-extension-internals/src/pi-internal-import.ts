@@ -1,5 +1,6 @@
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { getPackageDir } from "@earendil-works/pi-coding-agent";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 export type PiInternalModuleLoadOptions<T> = {
     readonly scope: string;
@@ -7,10 +8,9 @@ export type PiInternalModuleLoadOptions<T> = {
     readonly parse: (module: unknown) => T | undefined;
 };
 
-/** Resolves a path relative to the installed Pi coding-agent entry module. */
+/** Resolves a path relative to the installed Pi coding-agent distribution. */
 function resolvePiInternalModuleUrl(relativePath: string): string {
-    const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    const codingAgentDirectory = dirname(codingAgentEntry);
+    const codingAgentDirectory = resolve(getPackageDir(), "dist");
     if (relativePath.length === 0 || isAbsolute(relativePath)) {
         throw new TypeError("Pi internal module path must be relative to the coding-agent package");
     }
@@ -47,7 +47,6 @@ export async function loadPiInternalModule<T>(
 ): Promise<T | undefined> {
     try {
         const moduleUrl = resolvePiInternalModuleUrl(relativePath);
-        // The path is selected by callers at runtime because Pi does not export these internals.
         const imported: unknown = await import(moduleUrl);
         const parsed = options.parse(imported);
         if (parsed !== undefined) {

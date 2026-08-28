@@ -12,6 +12,25 @@ function enhancerKey(name: string): symbol {
 const EDITOR_ENHANCER_REGISTRY = Symbol.for("zigai.pi-tweaks.editor-enhancer-registry");
 const EDITOR_ENHANCER_PROTOCOL = Symbol.for("zigai.pi-tweaks.editor-enhancer-protocol-version");
 
+type InstalledRegistryView = {
+    [EDITOR_ENHANCER_PROTOCOL]?: unknown;
+    enhancers: Map<unknown, unknown>;
+};
+type UiWithRegistryView = {
+    [EDITOR_ENHANCER_REGISTRY]?: InstalledRegistryView;
+};
+
+/** Reads the registry that registerEditorEnhancer installs on a UI host. */
+function installedRegistry(ui: EditorUi): InstalledRegistryView {
+    // SAFETY: The test reads the registry immediately after registerEditorEnhancer installed
+    // it under the process-global symbol declared above.
+    const registry = (ui as UiWithRegistryView)[EDITOR_ENHANCER_REGISTRY];
+    if (registry === undefined) {
+        throw new TypeError("Expected an installed editor enhancer registry");
+    }
+    return registry;
+}
+
 class EditorUi {
     private factory: EditorFactory<FactoryArgs, Editor> | undefined;
 
@@ -167,10 +186,7 @@ describe("registerEditorEnhancer", () => {
             () => ["default"],
             (editor) => [...editor, "first"],
         );
-        const registry: unknown = Reflect.get(ui, EDITOR_ENHANCER_REGISTRY);
-        if (typeof registry !== "object" || registry === null) {
-            throw new TypeError("Expected an installed editor enhancer registry");
-        }
+        const registry = installedRegistry(ui);
         Reflect.deleteProperty(registry, EDITOR_ENHANCER_PROTOCOL);
 
         const second = registerEditorEnhancer(
@@ -180,7 +196,7 @@ describe("registerEditorEnhancer", () => {
             (editor) => [...editor, "second"],
         );
 
-        expect(Reflect.get(registry, EDITOR_ENHANCER_PROTOCOL)).toBe(1);
+        expect(registry[EDITOR_ENHANCER_PROTOCOL]).toBe(1);
         expect(renderEditor(ui)).toEqual(["default", "first", "second"]);
         second.dispose();
         first.dispose();
@@ -211,15 +227,8 @@ describe("registerEditorEnhancer", () => {
             () => ["default"],
             (editor) => [...editor, "first"],
         );
-        const registry: unknown = Reflect.get(ui, EDITOR_ENHANCER_REGISTRY);
-        if (typeof registry !== "object" || registry === null) {
-            throw new TypeError("Expected an installed editor enhancer registry");
-        }
-        const enhancers: unknown = Reflect.get(registry, "enhancers");
-        if (!(enhancers instanceof Map)) {
-            throw new TypeError("Expected an enhancer registry map");
-        }
-        const enhancerMap: Map<unknown, unknown> = enhancers;
+        const registry = installedRegistry(ui);
+        const enhancerMap = registry.enhancers;
         const malformedKey = enhancerKey("malformed-entry");
         enhancerMap.set(malformedKey, { enhancer: "not callable" });
 

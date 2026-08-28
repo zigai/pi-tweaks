@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "vitest";
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { CustomEntry, SessionEntry, Theme } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
 
 import { configureStatusBar, resetStatusBarStateForTests } from "../src/status-bar-api.ts";
 import {
@@ -25,21 +26,15 @@ function stripAnsi(value: string): string {
     return value.replace(ANSI_PATTERN, "");
 }
 
-type WidgetFactory = (
-    tui: unknown,
-    theme: { fg(role: string, text: string): string },
-) => { render(width: number): string[]; invalidate(): void };
+type StoredWidget = Parameters<WorkedForWidgetContext["ui"]["setWidget"]>[1];
+type WidgetHarness = {
+    readonly ctx: WorkedForWidgetContext;
+    readonly currentWidget: () => StoredWidget;
+    readonly updateCount: () => number;
+};
+type CustomEntryData = CustomEntry["data"];
 
-function getWidgetFactory(value: unknown): WidgetFactory {
-    if (typeof value !== "function") {
-        throw new Error("Expected widget factory");
-    }
-    // SAFETY: The status-widget integration seam stores only callable factories;
-    // this test invokes the factory only with the narrow TUI/theme/data shape it verifies.
-    return value as WidgetFactory;
-}
-
-function customEntry(id: string, data: unknown): SessionEntry {
+function customEntry(id: string, data: CustomEntryData): SessionEntry {
     return {
         type: "custom",
         id,
@@ -50,12 +45,8 @@ function customEntry(id: string, data: unknown): SessionEntry {
     };
 }
 
-function widgetContext(): {
-    ctx: WorkedForWidgetContext;
-    currentWidget: () => unknown;
-    updateCount: () => number;
-} {
-    let widget: unknown;
+function widgetContext(): WidgetHarness {
+    let widget: StoredWidget;
     let updates = 0;
     const ctx = {
         hasUI: true,
@@ -158,9 +149,10 @@ test("setWorkedForWidget renders duration and token rate within the provided wid
     setWorkedForWidget(ctx, "1m 05s", 42);
 
     const widget = currentWidget();
-    assert.equal(typeof widget, "function");
-    const factory = getWidgetFactory(widget);
-    const component = factory({}, { fg: (_role, text) => `[dim]${text}` });
+    if (widget === undefined) throw new Error("Expected widget factory");
+    const theme = { fg: (_role: string, text: string) => `[dim]${text}` };
+    // SAFETY: The widget factory does not read TUI, and this render path only calls Theme.fg.
+    const component = widget({} as TUI, theme as Theme);
 
     assert.deepEqual(component.render(80), ["[dim] Worked for 1m 05s. [42 tok/s]"]);
     const narrowLine = component.render(12)[0] ?? "";
@@ -180,9 +172,10 @@ test("setWorkedForWidget renders idle status bar overrides with the last-run sum
     setWorkedForWidget(ctx, "9s", 3);
 
     const widget = currentWidget();
-    assert.equal(typeof widget, "function");
-    const factory = getWidgetFactory(widget);
-    const component = factory({}, { fg: (_role, text) => `[dim]${text}` });
+    if (widget === undefined) throw new Error("Expected widget factory");
+    const theme = { fg: (_role: string, text: string) => `[dim]${text}` };
+    // SAFETY: The widget factory does not read TUI, and this render path only calls Theme.fg.
+    const component = widget({} as TUI, theme as Theme);
 
     assert.deepEqual(component.render(80), ["[dim] Ready · Worked for 9s. [3 tok/s]"]);
 });
@@ -197,7 +190,7 @@ test("clearWorkedForWidget removes configured idle status during active runs", (
     const { ctx, currentWidget, updateCount } = widgetContext();
 
     setWorkedForWidget(ctx, undefined);
-    assert.equal(typeof currentWidget(), "function");
+    assert.notEqual(currentWidget(), undefined);
     assert.equal(updateCount(), 1);
 
     clearWorkedForWidget(ctx);

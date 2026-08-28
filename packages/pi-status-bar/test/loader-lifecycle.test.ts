@@ -18,10 +18,51 @@ import {
 
 type LoaderUpdateDisplay = (this: Loader) => void;
 
+type LoaderPrototypeOwner = {
+    updateDisplay: LoaderUpdateDisplay;
+};
+type LoaderPrototypeBoundary = Loader | LoaderPrototypeOwner;
+
 type TuiInternals = {
     doRender(): void;
     previousLines: string[];
 };
+type LoaderFixture = {
+    readonly loader: Loader;
+    readonly renderCount: () => number;
+};
+
+function isTuiInternals(value: unknown): value is TuiInternals {
+    if (
+        typeof value !== "object" ||
+        value === null ||
+        !("doRender" in value) ||
+        typeof value.doRender !== "function" ||
+        !("previousLines" in value) ||
+        !Array.isArray(value.previousLines)
+    ) {
+        return false;
+    }
+    for (const line of value.previousLines) {
+        if (typeof line !== "string") return false;
+    }
+    return true;
+}
+
+function isLoaderPrototypeOwner(value: unknown): value is LoaderPrototypeOwner {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "updateDisplay" in value &&
+        typeof value.updateDisplay === "function"
+    );
+}
+function parseLoaderPrototypeOwner(
+    value: LoaderPrototypeBoundary,
+): LoaderPrototypeOwner | undefined {
+    if (!isLoaderPrototypeOwner(value)) return undefined;
+    return value;
+}
 
 class FakeTerminal implements Terminal {
     columns = 48;
@@ -49,45 +90,31 @@ class FakeTerminal implements Terminal {
 }
 
 function getTuiInternals(tui: TuiMainScreen): TuiInternals {
-    const value: unknown = tui;
-    const doRender: unknown = Reflect.get(tui, "doRender") as unknown;
-    const previousLines: unknown = Reflect.get(tui, "previousLines") as unknown;
-    if (
-        typeof doRender !== "function" ||
-        !Array.isArray(previousLines) ||
-        !previousLines.every((line) => typeof line === "string")
-    ) {
-        throw new Error("Expected TUI render internals");
-    }
-    return value as TuiInternals;
+    if (!isTuiInternals(tui)) throw new Error("Expected TUI render internals");
+    return tui;
 }
 
 let predecessorUpdateCount = 0;
 
-function getLoaderUpdateDisplay(): LoaderUpdateDisplay {
-    const value: unknown = Reflect.get(Loader.prototype, "updateDisplay");
-    if (typeof value !== "function") {
+function getLoaderPrototype(): LoaderPrototypeOwner {
+    const prototype = parseLoaderPrototypeOwner(Loader.prototype);
+    if (prototype === undefined) {
         throw new Error("Expected Loader.updateDisplay to be callable");
     }
-    // SAFETY: The runtime guard proves the private Loader seam is callable, and
-    // tests invoke it only with real Loader instances.
-    return value as LoaderUpdateDisplay;
+    return prototype;
 }
 
 function createExtensionApi(): ExtensionAPI {
-    const api = {
+    const api: Partial<ExtensionAPI> = {
         appendEntry(): void {},
         on(): void {},
     };
     // SAFETY: Extension registration uses only `on` and `appendEntry` in these
     // loader-focused tests.
-    return api as unknown as ExtensionAPI;
+    return api as ExtensionAPI;
 }
 
-function createLoader(frames: string[] = ["⠙"]): {
-    readonly loader: Loader;
-    readonly renderCount: () => number;
-} {
+function createLoader(frames: string[] = ["⠙"]): LoaderFixture {
     let renders = 0;
     const ui = {
         requestRender(): void {
@@ -113,11 +140,12 @@ function visibleLoaderLines(loader: Loader): string[] {
 
 beforeAll(() => {
     resetStatusBarStateForTests();
-    const originalUpdateDisplay = getLoaderUpdateDisplay();
-    Reflect.set(Loader.prototype, "updateDisplay", function precedingUpdate(this: Loader): void {
+    const prototype = getLoaderPrototype();
+    const originalUpdateDisplay = prototype.updateDisplay;
+    prototype.updateDisplay = function precedingUpdate(this: Loader): void {
         predecessorUpdateCount += 1;
         originalUpdateDisplay.call(this);
-    });
+    };
     statusBarExtension(createExtensionApi());
 });
 
@@ -167,19 +195,20 @@ describe("status loader lifecycle", () => {
         const { loader } = createLoader();
         assert.ok(predecessorUpdateCount > 0);
 
-        const statusBarUpdateDisplay = getLoaderUpdateDisplay();
+        const prototype = getLoaderPrototype();
+        const statusBarUpdateDisplay = prototype.updateDisplay;
         let laterUpdateCount = 0;
-        Reflect.set(Loader.prototype, "updateDisplay", function laterUpdate(this: Loader): void {
+        prototype.updateDisplay = function laterUpdate(this: Loader): void {
             laterUpdateCount += 1;
             statusBarUpdateDisplay.call(this);
-        });
+        };
 
         try {
             configureStatusBar({ active: { text: "Coordinating" } });
             assert.equal(laterUpdateCount, 1);
             assert.deepEqual(visibleLoaderLines(loader), ["", " ⠙ Coordinating (0s)"]);
         } finally {
-            Reflect.set(Loader.prototype, "updateDisplay", statusBarUpdateDisplay);
+            prototype.updateDisplay = statusBarUpdateDisplay;
             loader.stop();
         }
     });

@@ -1,4 +1,9 @@
-import type { ExtensionContext, SessionEntry, Theme } from "@earendil-works/pi-coding-agent";
+import type {
+    CustomEntry,
+    ExtensionContext,
+    SessionEntry,
+    Theme,
+} from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component, type TUI } from "@earendil-works/pi-tui";
 
 import { getStatusBarSnapshot } from "./status-bar-api.ts";
@@ -25,30 +30,36 @@ export function resetWorkedForWidgetCache(): void {
     workedForWidgetSignatures = new WeakMap<object, string>();
 }
 
-function parseWorkedForState(data: unknown): WorkedForState | undefined {
+type WorkedForEntryData = CustomEntry["data"];
+
+function isWorkedForState(data: WorkedForEntryData): data is WorkedForState {
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
-        return undefined;
+        return false;
     }
-
-    const durationMs: unknown = Reflect.get(data, "durationMs");
-    if (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 0) {
-        return undefined;
-    }
-
-    const tokensPerSecond: unknown = Reflect.get(data, "tokensPerSecond");
     if (
-        tokensPerSecond !== undefined &&
-        (typeof tokensPerSecond !== "number" ||
-            !Number.isFinite(tokensPerSecond) ||
-            tokensPerSecond <= 0)
+        !("durationMs" in data) ||
+        typeof data.durationMs !== "number" ||
+        !Number.isFinite(data.durationMs) ||
+        data.durationMs < 0
     ) {
-        return undefined;
+        return false;
     }
+    if (!("tokensPerSecond" in data) || data.tokensPerSecond === undefined) {
+        return true;
+    }
+    return (
+        typeof data.tokensPerSecond === "number" &&
+        Number.isFinite(data.tokensPerSecond) &&
+        data.tokensPerSecond > 0
+    );
+}
 
-    if (tokensPerSecond === undefined) {
-        return { durationMs };
+function parseWorkedForState(data: WorkedForEntryData): WorkedForState | undefined {
+    if (!isWorkedForState(data)) return undefined;
+    if (data.tokensPerSecond === undefined) {
+        return { durationMs: data.durationMs };
     }
-    return { durationMs, tokensPerSecond };
+    return { durationMs: data.durationMs, tokensPerSecond: data.tokensPerSecond };
 }
 
 export function getWorkedForStateFromBranch(ctx: {

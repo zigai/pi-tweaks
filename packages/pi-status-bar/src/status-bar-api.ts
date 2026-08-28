@@ -150,10 +150,12 @@ type StatusBarState = {
 type StatusBarGlobal = typeof globalThis & {
     [STATUS_BAR_STATE]?: StatusBarState;
 };
+// SAFETY: This intersection only adds one optional symbol-keyed slot to the
+// existing global object and does not change its runtime representation.
+const statusBarGlobal = globalThis as StatusBarGlobal;
 
 function getStatusBarState(): StatusBarState {
-    const globalState = globalThis as StatusBarGlobal;
-    let state = globalState[STATUS_BAR_STATE];
+    let state = statusBarGlobal[STATUS_BAR_STATE];
     if (state === undefined) {
         state = {
             base: { owner: Symbol("status-bar-base") },
@@ -161,7 +163,7 @@ function getStatusBarState(): StatusBarState {
             listeners: new Set(),
             timerResetVersion: 0,
         };
-        globalState[STATUS_BAR_STATE] = state;
+        statusBarGlobal[STATUS_BAR_STATE] = state;
     }
     return state;
 }
@@ -583,6 +585,5 @@ export function getStatusBarSnapshot(): StatusBarSnapshot {
 
 /** Clear global status-bar state. Intended for tests. */
 export function resetStatusBarStateForTests(): void {
-    const globalState = globalThis as StatusBarGlobal;
-    delete globalState[STATUS_BAR_STATE];
+    delete statusBarGlobal[STATUS_BAR_STATE];
 }

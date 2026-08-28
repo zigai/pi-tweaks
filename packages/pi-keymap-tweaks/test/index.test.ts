@@ -53,6 +53,14 @@ type TestEditor = EditorComponent & {
     getCursor(): { line: number; col: number };
 };
 
+function isTestEditor(editor: EditorComponent): editor is TestEditor {
+    return (
+        typeof editor.addToHistory === "function" &&
+        "getCursor" in editor &&
+        typeof editor.getCursor === "function"
+    );
+}
+
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
 const identityStyle = (text: string): string => text;
@@ -91,13 +99,10 @@ function createKeymapEditor(writeClipboard?: ClipboardWriter): TestEditor {
 
     const tui = new TUI(new FakeTerminal());
     const editor = editorFactory(tui, editorTheme, new KeybindingsManager());
-    const getCursor: unknown = Reflect.get(editor, "getCursor") as unknown;
-    if (typeof editor.addToHistory !== "function" || typeof getCursor !== "function") {
+    if (!isTestEditor(editor)) {
         throw new Error("Expected CustomEditor test seam");
     }
-    // SAFETY: The real CustomEditor factory result is checked for every additional
-    // member asserted by this integration test; its public component type hides them.
-    return editor as TestEditor;
+    return editor;
 }
 
 function renderEditor(editor: TestEditor): void {

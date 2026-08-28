@@ -11,6 +11,7 @@ import {
     createProjectMentionInputHandler,
     registerProjectMentionExtension,
     type ProjectMentionExtensionApi,
+    type ProjectMentionHandlerMap,
 } from "../src/index.ts";
 import type { ProjectDirectory } from "../src/projects.ts";
 import type { MentionProjectSettingsContext } from "../src/settings.ts";
@@ -63,19 +64,31 @@ function isObject(value: unknown): value is object {
 
 function isContextExpansionResult(value: unknown): value is ContextExpansionResult {
     if (!isObject(value)) return false;
-
-    const messages = Object.getOwnPropertyDescriptor(value, "messages")?.value as unknown;
-    return messages === undefined || Array.isArray(messages);
+    return !("messages" in value) || value.messages === undefined || Array.isArray(value.messages);
 }
 
-function invokeRegisteredHandler(
+function isInputHandler(value: unknown): value is ProjectMentionHandlerMap["input"] {
+    return typeof value === "function";
+}
+
+function isContextHandler(value: unknown): value is ProjectMentionHandlerMap["context"] {
+    return typeof value === "function";
+}
+
+function getInputHandler(
     handlers: ReadonlyMap<string, unknown>,
-    event: string,
-    args: unknown[],
-): unknown {
-    const handler = handlers.get(event);
-    if (typeof handler !== "function") throw new Error(`Expected ${event} handler`);
-    return Reflect.apply(handler, undefined, args) as unknown;
+): ProjectMentionHandlerMap["input"] {
+    const handler = handlers.get("input");
+    if (!isInputHandler(handler)) throw new Error("Expected input handler");
+    return handler;
+}
+
+function getContextHandler(
+    handlers: ReadonlyMap<string, unknown>,
+): ProjectMentionHandlerMap["context"] {
+    const handler = handlers.get("context");
+    if (!isContextHandler(handler)) throw new Error("Expected context handler");
+    return handler;
 }
 
 test("context handler skips project directory scans when user messages have no trigger", async () => {
@@ -215,14 +228,14 @@ test("mention project rewrites submitted prompts and expands provider context", 
         registerProjectMentionExtension(pi);
 
         assert.deepEqual([...registeredHandlers.keys()], ["session_start", "input", "context"]);
-        const inputResult = await invokeRegisteredHandler(registeredHandlers, "input", [
+        const inputResult = await getInputHandler(registeredHandlers)(
             {
                 type: "input",
                 text: "Please inspect #pi-tweaks",
                 source: "interactive",
             },
             context(cwd),
-        ]);
+        );
         assert.deepEqual(inputResult, {
             action: "transform",
             text: `Please inspect ${path.join(cwd, "pi-tweaks")}`,
@@ -236,10 +249,10 @@ test("mention project rewrites submitted prompts and expands provider context", 
                 timestamp: 1,
             },
         ];
-        const result = await invokeRegisteredHandler(registeredHandlers, "context", [
+        const result = await getContextHandler(registeredHandlers)(
             { type: "context", messages },
             context(cwd),
-        ]);
+        );
 
         const original = messages[0];
         assert.equal(original?.role, "user");

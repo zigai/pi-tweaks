@@ -13,8 +13,14 @@ function isTextContent(item: TextContent | ImageContent): item is TextContent {
     return item.type === "text";
 }
 
+function isTextMessageContent(
+    content: UserMessage["content"],
+): content is Extract<UserMessage["content"], string> {
+    return typeof content === "string";
+}
+
 function extractText(content: UserMessage["content"]): string {
-    if (typeof content === "string") return content.trim();
+    if (isTextMessageContent(content)) return content.trim();
     return content
         .filter(isTextContent)
         .map((item) => item.text)

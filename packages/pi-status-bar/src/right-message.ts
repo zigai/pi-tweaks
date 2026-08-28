@@ -8,6 +8,9 @@ const RIGHT_MESSAGES_CONFIG_KEY = Symbol.for("zigai.pi-status-bar.right-messages
 type RightMessageState = typeof globalThis & {
     [RIGHT_MESSAGES_CONFIG_KEY]?: RightMessagesConfig;
 };
+// SAFETY: This intersection only adds one optional symbol-keyed slot to the
+// existing global object and does not change its runtime representation.
+const rightMessageState = globalThis as RightMessageState;
 
 type SelectedRightMessage = {
     readonly elapsedMs: number;
@@ -20,14 +23,11 @@ export type RenderedRightMessage = {
 };
 
 function getRightMessagesConfig(): RightMessagesConfig {
-    return (
-        (globalThis as RightMessageState)[RIGHT_MESSAGES_CONFIG_KEY] ??
-        DEFAULT_RIGHT_MESSAGES_CONFIG
-    );
+    return rightMessageState[RIGHT_MESSAGES_CONFIG_KEY] ?? DEFAULT_RIGHT_MESSAGES_CONFIG;
 }
 
 export function setRightMessagesConfig(config: RightMessagesConfig): void {
-    (globalThis as RightMessageState)[RIGHT_MESSAGES_CONFIG_KEY] = config;
+    rightMessageState[RIGHT_MESSAGES_CONFIG_KEY] = config;
 }
 
 function getSafeRightMessageIntervalMs(config: RightMessagesConfig): number {

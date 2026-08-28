@@ -54,6 +54,7 @@ type FooterSlotGlobal = typeof globalThis & {
 };
 
 function getFooterSlotState(): FooterSlotState {
+    // SAFETY: globalThis is the ambient global; FooterSlotGlobal only adds an optional namespaced slot state key.
     const globalState = globalThis as FooterSlotGlobal;
     let state = globalState[FOOTER_SLOT_STATE];
     if (state === undefined) {

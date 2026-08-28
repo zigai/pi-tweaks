@@ -125,6 +125,15 @@ function isUserTextContentBlock(block: UserContentBlock): block is UserTextConte
     return block.type === "text";
 }
 
+type ParsedUserContent =
+    | { readonly kind: "text"; readonly text: string }
+    | { readonly kind: "blocks"; readonly blocks: UserContentBlock[] };
+
+function parseUserContent(content: UserContextMessage["content"]): ParsedUserContent {
+    if (Array.isArray(content)) return { kind: "blocks", blocks: content };
+    return { kind: "text", text: content };
+}
+
 function firstRecentMessageIndex(messages: ContextEvent["messages"]): number {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
         const message = messages[index];
@@ -150,13 +159,14 @@ function recentUserMessageIndexesWithSkillMentionTrigger(
         const message = messages[index];
         if (message?.role !== "user") continue;
 
-        if (typeof message.content === "string") {
-            if (shouldExpandContextText(message.content, trigger)) indexes.push(index);
+        const content = parseUserContent(message.content);
+        if (content.kind === "text") {
+            if (shouldExpandContextText(content.text, trigger)) indexes.push(index);
             continue;
         }
 
         if (
-            message.content.some((block) => {
+            content.blocks.some((block) => {
                 return (
                     isUserTextContentBlock(block) && shouldExpandContextText(block.text, trigger)
                 );
@@ -182,16 +192,22 @@ async function expandSkillMentionsInUserMessage(
     trigger: string,
     loadExpansion: SkillExpansionLoader,
 ): Promise<UserContextMessage> {
-    if (typeof message.content === "string") {
-        if (!shouldExpandContextText(message.content, trigger)) return message;
-        const expanded = await expandSkillMentions(message.content, skills, trigger, loadExpansion);
-        if (expanded === message.content) return message;
+    const parsedContent = parseUserContent(message.content);
+    if (parsedContent.kind === "text") {
+        if (!shouldExpandContextText(parsedContent.text, trigger)) return message;
+        const expanded = await expandSkillMentions(
+            parsedContent.text,
+            skills,
+            trigger,
+            loadExpansion,
+        );
+        if (expanded === parsedContent.text) return message;
         return { ...message, content: expanded };
     }
 
     let changed = false;
     const content: UserContentBlock[] = [];
-    for (const block of message.content) {
+    for (const block of parsedContent.blocks) {
         if (!isUserTextContentBlock(block) || !shouldExpandContextText(block.text, trigger)) {
             content.push(block);
             continue;

@@ -12,27 +12,54 @@ import {
     type WorkedForState,
 } from "../src/worked-for-widget.ts";
 
-type EventHandler = (event: unknown, ctx: unknown) => unknown;
+type LifecycleEvent = {
+    readonly message?: {
+        readonly role?: string;
+        readonly stopReason?: string;
+        readonly usage?: { readonly output: number };
+    };
+    readonly assistantMessageEvent?: { readonly type: string };
+};
 type WidgetFactory = (
-    tui: unknown,
+    tui: TUI,
     theme: { fg(role: string, text: string): string },
 ) => { render(width: number): string[] };
+type LifecycleContext = {
+    readonly hasUI: true;
+    readonly sessionManager: { getBranch(): readonly SessionEntry[] };
+    readonly ui: { setWidget(key: string, nextWidget: WidgetFactory | undefined): void };
+};
+type EventHandler = (event: LifecycleEvent, ctx: LifecycleContext) => void | Promise<void>;
+type LifecycleHarness = {
+    readonly appendEntries: WorkedForState[];
+    readonly context: LifecycleContext;
+    readonly currentWidget: () => WidgetFactory | undefined;
+    readonly invoke: (event: string, payload?: LifecycleEvent) => Promise<void>;
+};
+type LoaderPrototypeOwner = {
+    updateDisplay: (this: Loader) => void;
+};
+type LoaderPrototypeBoundary = Loader | LoaderPrototypeOwner;
 
-function getWidgetFactory(value: unknown): WidgetFactory {
-    if (typeof value !== "function") throw new Error("Expected widget factory");
-    // SAFETY: The extension stores a widget factory at this tested boundary.
-    return value as WidgetFactory;
+function isLoaderPrototypeOwner(value: unknown): value is LoaderPrototypeOwner {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "updateDisplay" in value &&
+        typeof value.updateDisplay === "function"
+    );
+}
+function parseLoaderPrototypeOwner(
+    value: LoaderPrototypeBoundary,
+): LoaderPrototypeOwner | undefined {
+    if (!isLoaderPrototypeOwner(value)) return undefined;
+    return value;
 }
 
-function createHarness(): {
-    readonly appendEntries: WorkedForState[];
-    readonly context: unknown;
-    readonly currentWidget: () => unknown;
-    readonly invoke: (event: string, payload?: unknown) => Promise<void>;
-} {
+function createHarness(): LifecycleHarness {
     const handlers = new Map<string, EventHandler>();
     const appendEntries: WorkedForState[] = [];
-    let widget: unknown;
+    let widget: WidgetFactory | undefined;
     let branch: SessionEntry[] = [];
 
     const api = {
@@ -55,17 +82,17 @@ function createHarness(): {
             handlers.set(event, handler);
         },
     };
-    // SAFETY: This lifecycle harness implements the complete ExtensionAPI surface
-    // consumed during registration and the exercised handlers.
-    statusBarExtension(api as unknown as ExtensionAPI);
+    // SAFETY: Registration uses only the `on` and `appendEntry` methods supplied
+    // by this fixture; handlers receive the lifecycle shapes modeled above.
+    statusBarExtension(api as ExtensionAPI);
 
-    const context = {
+    const context: LifecycleContext = {
         hasUI: true,
         sessionManager: {
             getBranch: () => branch,
         },
         ui: {
-            setWidget(key: string, nextWidget: unknown): void {
+            setWidget(key: string, nextWidget: WidgetFactory | undefined): void {
                 assert.equal(key, WIDGET_KEY);
                 widget = nextWidget;
             },
@@ -76,7 +103,7 @@ function createHarness(): {
         appendEntries,
         context,
         currentWidget: () => widget,
-        async invoke(event: string, payload: unknown = {}): Promise<void> {
+        async invoke(event: string, payload: LifecycleEvent = {}): Promise<void> {
             const handler = handlers.get(event);
             if (handler === undefined) throw new Error(`Missing ${event} handler`);
             await handler(payload, context);
@@ -84,8 +111,10 @@ function createHarness(): {
     };
 }
 
-function renderedWidgetText(widget: unknown): string {
-    const component = getWidgetFactory(widget)({}, { fg: (_role, text) => text });
+function renderedWidgetText(widget: WidgetFactory | undefined): string {
+    if (widget === undefined) throw new Error("Expected widget factory");
+    // SAFETY: The widget factory under test does not read its TUI argument.
+    const component = widget({} as TUI, { fg: (_role, text) => text });
     return component.render(80)[0] ?? "";
 }
 
@@ -143,19 +172,19 @@ test("status extension covers completion, abort, restore, and cleanup lifecycles
 
     await harness.invoke("session_tree");
     assert.equal(renderedWidgetText(harness.currentWidget()), " Worked for 1s.");
-
-    const statusUpdateDisplay: unknown = Reflect.get(Loader.prototype, "updateDisplay");
-    if (typeof statusUpdateDisplay !== "function") {
+    const prototype = parseLoaderPrototypeOwner(Loader.prototype);
+    if (prototype === undefined) {
         throw new Error("Expected patched Loader.updateDisplay");
     }
+    const statusUpdateDisplay = prototype.updateDisplay;
     const laterUpdateDisplay = function laterUpdateDisplay(this: Loader): void {
-        Reflect.apply(statusUpdateDisplay, this, []);
+        statusUpdateDisplay.call(this);
     };
-    Reflect.set(Loader.prototype, "updateDisplay", laterUpdateDisplay);
+    prototype.updateDisplay = laterUpdateDisplay;
 
     await harness.invoke("session_shutdown");
     assert.equal(harness.currentWidget(), undefined);
-    assert.equal(Reflect.get(Loader.prototype, "updateDisplay"), laterUpdateDisplay);
+    assert.equal(prototype.updateDisplay, laterUpdateDisplay);
 
     let renders = 0;
     const ui = {
@@ -165,7 +194,7 @@ test("status extension covers completion, abort, restore, and cleanup lifecycles
     };
     // SAFETY: Loader only calls requestRender on its TUI dependency here.
     const concurrentLoader = new Loader(
-        ui as unknown as TUI,
+        ui as TUI,
         (text) => text,
         (text) => text,
         "Working...",
@@ -185,10 +214,11 @@ test("status extension covers completion, abort, restore, and cleanup lifecycles
     concurrentLoader.stop();
 
     await concurrentHarness.invoke("session_shutdown");
-    assert.equal(Reflect.get(Loader.prototype, "updateDisplay"), laterUpdateDisplay);
+    assert.equal(prototype.updateDisplay, laterUpdateDisplay);
 
+    // SAFETY: Loader only calls requestRender on its TUI dependency here.
     const unpatchedLoader = new Loader(
-        ui as unknown as TUI,
+        ui as TUI,
         (text) => text,
         (text) => text,
         "Working...",

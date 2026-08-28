@@ -40,7 +40,17 @@ function context(cwd: string, projectTrusted: boolean): MentionSkillSettingsCont
     };
 }
 
-async function writeJson(filePath: string, value: Record<string, unknown>): Promise<void> {
+type JsonValue =
+    | boolean
+    | number
+    | string
+    | null
+    | readonly JsonValue[]
+    | { readonly [key: string]: JsonValue };
+
+type JsonObject = { readonly [key: string]: JsonValue };
+
+async function writeJson(filePath: string, value: JsonObject): Promise<void> {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, JSON.stringify(value), "utf8");
 }

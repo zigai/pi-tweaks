@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
+import type { Component } from "@earendil-works/pi-tui";
+
 import { installLiveFooter } from "../src/footer-transition.ts";
 import type { PlainFooterTheme } from "../src/footer-rendering.ts";
 import { DEFAULT_FOOTER_CONFIG } from "../src/settings.ts";
@@ -15,7 +17,7 @@ type CapturedFooterFactory = (
     tui: TestTui,
     theme: PlainFooterTheme,
     footerData: FooterData,
-) => unknown;
+) => Component;
 
 test("live footer leaves native clear-on-shrink disabled", () => {
     let capturedFactory: CapturedFooterFactory | undefined;
