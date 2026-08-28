@@ -145,7 +145,7 @@ try {
             "--prefix",
             installRoot,
             "--legacy-peer-deps",
-            "--offline",
+            "--prefer-offline",
             "--package-lock=false",
         ],
         { cwd: packageRoot, encoding: "utf8", stdio: "pipe" },
