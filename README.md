@@ -22,8 +22,6 @@ A collection of small Pi extensions for improving interaction, display, and mode
 | [@zigai/pi-prompt-history](packages/pi-prompt-history)           | Current-session prompt history for Pi's prompt editor.                | `pi install npm:@zigai/pi-prompt-history`      |
 | [@zigai/pi-trust-all-folders](packages/pi-trust-all-folders)     | Automatically trust all folders in Pi.                                | `pi install npm:@zigai/pi-trust-all-folders`   |
 
-`@zigai/pi-extension-internals` is published runtime support for the extensions above and is bundled by every package that uses it; users do not install it directly.
-
 ## License
 
 MIT

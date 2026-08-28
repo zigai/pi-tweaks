@@ -31,7 +31,7 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 - Keep `src/index.ts` as the cohesive Pi-facing extension entrypoint, not a ceremonially thin dispatcher. It owns lifecycle registration, settings application, controller construction, patch installation, and resource disposal; a single narrow Pi adapter may live there when extracting it would create a one-to-one pass-through module. Split out domain rules, persistence, reusable rendering, and independently substantial or multi-target adapters.
 - Keep package source roots flat while modules remain cohesive. Create a capability subdirectory only when that capability genuinely spans roughly three or more files; do not add one-file directories.
 - Name modules for the boundary or capability they own, such as `model-registry-patch.ts`, `modes-store.ts`, or `right-message.ts`. Do not create generic `utils.ts`, `helpers.ts`, `types.ts`, or `constants.ts` dumping grounds; colocate narrow helpers, types, and constants with their owner.
-- Use `@zigai/pi-extension-internals` only for cross-extension composition protocols and guarded Pi-internal loading. Keep its API narrow; it must not become a general utility package. Every consuming extension must declare and bundle it as a runtime dependency.
+- Use `@zigai/pi-extension-internals` only for cross-extension composition protocols and guarded Pi-internal loading. Keep its API narrow; it must not become a general utility package. Every consuming extension must declare it as a runtime dependency.
 - Removable patch installers must return idempotent handles with explicit update and disposal behavior. Store each handle with the patch marker, retain the current policy in that module, and restore the predecessor safely when disposed.
 - Split tests by feature ownership. Reserve `index.test.ts` for composition and lifecycle behavior rather than collecting unrelated feature tests.
 
@@ -54,7 +54,7 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 ## Pi Extension Config
 
 - Only extensions that need user-configurable behavior need extension-owned config. Do not put extension runtime options in Pi's core `settings.json`.
-- Use `@zigai/pi-extension-settings` for extension-owned JSON config. Configurable packages must declare it as a runtime dependency and bundle it in their npm package.
+- Use `@zigai/pi-extension-settings` for extension-owned JSON config. Configurable packages must declare it as a runtime dependency and verify it is available to Pi's managed npm installation topology.
 - Keep each extension's TypeBox source of truth and runtime settings boundary together in a flat `src/settings.ts` module using `defineExtensionSettings`. Defaults, descriptions, validation constraints, the checked-in schema, runtime decoding, and README docs derive from that module.
 - Use “settings” for the extension capability and source module; reserve “config” for concrete persisted-file concepts such as config paths and `config.schema.json`. Do not create a one-file `src/config/` directory or a parallel `config.ts`; split `settings.ts` only when a substantial domain capability earns its own specifically named module.
 - Register each definition, `config.schema.json`, and README in the package's `piExtensionSettings` manifest field.
