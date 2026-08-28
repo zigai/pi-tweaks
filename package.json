@@ -23,29 +23,20 @@
   "workspaces": [
     "packages/*"
   ],
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
   "type": "module",
-  "main": "dist/src/index.ts",
   "scripts": {
-    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "node scripts/build.mjs",
     "lint": "oxlint -c ./oxlint.config.ts .",
     "lint:fix": "oxlint -c ./oxlint.config.ts . --fix",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check": "npm run config:check && npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:package",
     "test": "vitest run --maxWorkers=8",
-    "test:package": "npm run build && node scripts/package-check.mjs",
+    "test:package": "node scripts/package-check.mjs",
     "typecheck": "tsc --noEmit",
     "release": "release --root .",
     "release:dry-run": "release --dry --root .",
     "config:generate": "pi-extension-settings generate",
-    "config:check": "pi-extension-settings check",
-    "prepack": "npm run config:check && npm run build"
+    "config:check": "pi-extension-settings check"
   },
   "dependencies": {
     "@zigai/pi-extension-settings": "0.5.2"
@@ -56,7 +47,6 @@
     "@earendil-works/pi-coding-agent": "^0.84.3",
     "@earendil-works/pi-tui": "^0.84.3",
     "@types/node": "^24.10.1",
-    "esbuild": "^0.28.1",
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0",
     "oxlint-rules": "^0.2.0",
@@ -74,7 +64,21 @@
   },
   "pi": {
     "extensions": [
-      "./dist/src/index.ts"
+      "./packages/pi-model-filter/src/index.ts",
+      "./packages/pi-ui-tweaks/src/index.ts",
+      "./packages/pi-model-alias/src/index.ts",
+      "./packages/pi-tree/src/index.ts",
+      "./packages/pi-footer/src/index.ts",
+      "./packages/pi-response-renderer/src/index.ts",
+      "./packages/pi-plain-user-messages/src/index.ts",
+      "./packages/pi-message-highlights/src/index.ts",
+      "./packages/pi-status-bar/src/index.ts",
+      "./packages/pi-keymap-tweaks/src/index.ts",
+      "./packages/pi-model-modes/src/index.ts",
+      "./packages/pi-prompt-history/src/index.ts",
+      "./packages/pi-mention-skill/src/index.ts",
+      "./packages/pi-mention-project/src/index.ts",
+      "./packages/pi-trust-all-folders/src/index.ts"
     ]
   }
 }
