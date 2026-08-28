@@ -10,16 +10,17 @@ Use this package when independently installed extensions must patch the same edi
 npm install @zigai/pi-extension-internals
 ```
 
-Extensions that use these protocols at runtime should declare the exact supported version and bundle it into their package:
+Extensions that use these protocols at runtime should declare the exact supported version as a regular dependency:
 
 ```json
 {
   "dependencies": {
     "@zigai/pi-extension-internals": "0.1.0"
-  },
-  "bundleDependencies": ["@zigai/pi-extension-internals"]
+  }
 }
 ```
+
+Keep Pi host packages in `peerDependencies`; Pi provides them when it loads the extension.
 
 ## Editor enhancers
 
@@ -69,7 +70,7 @@ A keyed reinstall updates and returns the existing handle rather than stacking a
 
 ## Guarded Pi-internal loading
 
-`loadPiInternalModule` resolves a path relative to Pi's installed entry module, imports it, and passes the unknown module namespace to a required parser. Missing modules, rejected shapes, and parser failures return `undefined` and emit one scoped warning.
+`loadPiInternalModule` resolves a path inside Pi's installed distribution, imports it, and passes the unknown module namespace to a required parser. Missing modules, rejected shapes, and parser failures return `undefined` and emit one scoped warning.
 
 ```ts
 const component = await loadPiInternalModule("modes/interactive/example.js", {

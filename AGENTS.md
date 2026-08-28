@@ -48,6 +48,8 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 - When reading Pi agent files, prefer `getAgentDir()` from `@earendil-works/pi-coding-agent` so `PI_CODING_AGENT_DIR` and Pi's own path resolution stay consistent.
 - Prototype monkey-patches must be idempotent. Keep `Symbol.for(...)` patch markers and only set them after the required prototype methods/modules have been verified.
 - Dynamic imports of Pi internal files should fail gracefully with a clear warning; a Pi minor release should not crash startup just because an internal component moved.
+- Do not start Pi-internal TUI imports from an extension factory. When a patch is required throughout an active TUI session, initialize it once at `session_start`; do not defer required behavior to a later command or first-use hook solely to move startup work. Own one in-flight activation per session, reject stale completion after reset, and restore the patch on shutdown.
+- Measure interactive startup at a deterministic presented-screen boundary in a real TUI session. RPC readiness is useful for non-UI regressions but is not evidence of perceived TUI startup speed.
 
 ## Pi Extension Config
 
@@ -77,5 +79,5 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 ## Packaging notes
 
 - Package manifests include `files` allowlists. If a README references an asset that must be present in the npm tarball, verify with `npm pack --dry-run -w <workspace>` before changing the manifest.
-- Packages with bundled runtime dependencies must list them in both `dependencies` and `bundleDependencies` and run `scripts/prepare-bundled-dependencies.ts` from `prepack`; verify each bundled dependency and its runtime files appear in the packed tarball.
+- Put extension-owned runtime libraries in `dependencies` and Pi-provided host APIs in `peerDependencies`. Verify packages in Pi's managed-install topology, where host peers are intentionally absent from the extension's `node_modules` tree.
 - Keep README install snippets and the root package table in sync when adding/removing packages.
