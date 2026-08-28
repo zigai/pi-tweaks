@@ -16,7 +16,7 @@ Run `just setup` after cloning to install dependencies and Git hooks and verify 
 npm run check
 ```
 
-The check runs generated-settings validation, formatting, lint, strict TypeScript checks, and the Vitest suite in CI order. Keep pre-commit enabled; its first hook rejects stale schemas or generated README settings documentation.
+The check runs generated-settings validation, formatting, lint, strict TypeScript checks, the Vitest suite, and npm package verification in CI order. Keep pre-commit enabled; its first hook rejects stale schemas or generated README settings documentation.
 
 ## Style and code conventions
 
@@ -51,20 +51,21 @@ The check runs generated-settings validation, formatting, lint, strict TypeScrip
 - Do not start Pi-internal TUI imports from an extension factory. When a patch is required throughout an active TUI session, initialize it once at `session_start`; do not defer required behavior to a later command or first-use hook solely to move startup work. Own one in-flight activation per session, reject stale completion after reset, and restore the patch on shutdown.
 - Measure interactive startup at a deterministic presented-screen boundary in a real TUI session. RPC readiness is useful for non-UI regressions but is not evidence of perceived TUI startup speed.
 
-## Pi Extension Config
+## Pi Extension Settings
 
-- Only extensions that need user-configurable behavior need extension-owned config. Do not put extension runtime options in Pi's core `settings.json`.
-- Use `@zigai/pi-extension-settings` for extension-owned JSON config. Configurable packages must declare it as a runtime dependency and verify it is available to Pi's managed npm installation topology.
-- Keep each extension's TypeBox source of truth and runtime settings boundary together in a flat `src/settings.ts` module using `defineExtensionSettings`. Defaults, descriptions, validation constraints, the checked-in schema, runtime decoding, and README docs derive from that module.
-- Use “settings” for the extension capability and source module; reserve “config” for concrete persisted-file concepts such as config paths and `config.schema.json`. Do not create a one-file `src/config/` directory or a parallel `config.ts`; split `settings.ts` only when a substantial domain capability earns its own specifically named module.
-- Register each definition, `config.schema.json`, and README in the package's `piExtensionSettings` manifest field.
-- Expose the package-facing loader as `load<ExtensionName>Settings`, such as `loadMentionSkillSettings`. This function owns the shared loader call and returns the extension's typed, resolved settings; ordinary extension code should call it rather than the definition or shared adapter directly.
-- Implement that loader with `loadPiExtensionSettings`. The Pi adapter uses `getAgentDir()` and `CONFIG_DIR_NAME` from `@earendil-works/pi-coding-agent`; never hardcode `~/.pi/agent` or `.pi` in runtime code.
-- Global config lives at `getAgentDir()/extension-settings/<extension-id>.json`; editor schemas live at `getAgentDir()/extension-settings/schemas/<extension-id>.schema.json`.
-- Trusted project overrides live at `ctx.cwd/CONFIG_DIR_NAME/extension-settings/<extension-id>.json`. Never read project config for an untrusted project or create project config automatically.
-- Parse config at the boundary: `JSON.parse` to `unknown`, validate/decode with TypeBox, then pass typed config inward. Do not cast `JSON.parse` output to config types or scatter hand-written shape checks.
-- The shared loader scaffolds default global config only when missing, never overwrites existing or malformed config, and installs stale or missing schemas atomically.
-- Run `just config-generate` after changing a definition. Run `just config-check` to prove checked-in schemas and README regions are current; this check is required by pre-commit and `npm run check`.
+- Only extensions with meaningful user-configurable behavior need extension-owned settings. Do not put extension runtime options in Pi's core `settings.json`.
+- Use `@zigai/pi-extension-settings` for extension-owned JSON settings. Configurable packages must declare the exact supported version as a normal runtime dependency, not a bundled dependency, and verify it in Pi's managed npm installation topology.
+- Keep authoring and runtime concerns in a flat settings capability. `src/settings-input.ts` is the build-safe TypeBox source of truth; it must not import Pi registration code, the generated artifact, or feature initialization. `src/settings.prevalidated.ts` is generated. `src/settings.ts` hydrates that artifact with `definePrevalidatedExtensionSettings` and owns the Pi-facing loader plus substantial extension-specific semantic validation.
+- Use “settings” for the capability and source modules; reserve “config” for concrete persisted-file concepts such as config paths and `config.schema.json`. Do not create a one-file `src/config/` directory or generic settings helper modules.
+- Derive resolved settings from the schema with `StaticDecode`; do not duplicate the decoded interface or cast serialized input. Parse other persisted boundaries from `unknown`, validate or decode once, then pass typed values inward.
+- Register `src/settings-input.ts`, `src/settings.prevalidated.ts`, `config.schema.json`, and the README in the package's `piExtensionSettings` manifest. Ensure the package's `files` allowlist includes all four artifacts, either directly or through a containing directory or pattern.
+- Expose the package-facing loader as `load<ExtensionName>Settings`, such as `loadMentionSkillSettings`. Ordinary extension code calls that loader rather than the definition or shared adapter directly.
+- Loading is synchronous filesystem work. Keep it out of module import and extension factories. By default, treat `session_start` as the reset boundary and load once in the first callback that needs settings; when enabled behavior must begin during `session_start`, load there. The consuming extension owns caching, the activation sentinel, diagnostic presentation, disabled behavior, stale-result rejection, reset, and disposal. Document deliberate live-reload exceptions such as mtime-based model configuration.
+- Resolution applies schema defaults, then global settings, then trusted-project settings. Objects merge recursively; arrays and scalar values replace earlier values.
+- Never hardcode Pi configuration paths. Global settings and schemas resolve through Pi's agent directory; project overrides resolve through `CONFIG_DIR_NAME` and are honored only when `ctx.isProjectTrusted()` is true.
+- Loading may scaffold a missing global settings file and install or refresh its editor schema. It never overwrites or repairs an existing settings file and never creates a project settings file. Malformed or invalid layers remain untouched and produce diagnostics that must not expose settings values or secrets.
+- Use `updatePiExtensionSettings()` for explicit settings writes instead of adding ad hoc readers, locks, or atomic writers. Call the loader first. Project updates require trust and may create a missing project file; snapshot-based editors pass the loaded revision as `expectedRevision`, while semantic updates omit it. Handle every typed outcome, and do not add another mutation queue around the settings transaction.
+- Run `just config-generate` after changing a definition. Run `just config-check` to prove checked-in prevalidation, schemas, and README regions are current; this check is required by pre-commit and `npm run check`.
 
 ## README Configuration Docs
 
