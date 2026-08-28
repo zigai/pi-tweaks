@@ -1,9 +1,5 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import {
-    getPiGlobalSettingsPath,
-    getPiProjectSettingsPath,
-    loadPiExtensionSettings,
-} from "@zigai/pi-extension-settings/pi";
+import { getPiGlobalSettingsPath, getPiProjectSettingsPath } from "@zigai/pi-extension-settings/pi";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Type, type Static } from "typebox";
@@ -20,7 +16,7 @@ import {
     type ModesFile,
     type ModeSpec,
 } from "./modes.ts";
-import modelModesSettingsDefinition, {
+import {
     defaultThinkingLevelSchema,
     loadModelModesSettings,
     modeThinkingLevelSchema,
@@ -172,16 +168,7 @@ export async function ensureDirForFile(filePath: string): Promise<void> {
 }
 
 export async function prepareModesConfig(cwd: string, projectTrusted: boolean): Promise<void> {
-    loadPiExtensionSettings(
-        modelModesSettingsDefinition,
-        { cwd, isProjectTrusted: () => projectTrusted },
-        {
-            bundledSchema: {
-                kind: "url",
-                url: new URL("../config.schema.json", import.meta.url),
-            },
-        },
-    );
+    loadModelModesSettings({ cwd, projectTrusted });
 }
 
 export async function scaffoldGlobalModesConfig(): Promise<void> {

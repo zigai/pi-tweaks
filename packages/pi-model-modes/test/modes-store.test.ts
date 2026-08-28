@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "vitest";
 
-import { getConfiguredModeShortcuts, setUseThinkingBorderColors } from "../src/settings.ts";
+import {
+    createStableBundledSchemaSource,
+    formatModelModesSettingsDiagnostic,
+    getConfiguredModeShortcuts,
+    setUseThinkingBorderColors,
+} from "../src/settings.ts";
 import {
     atomicWriteUtf8,
     ModesStore,
@@ -20,6 +26,43 @@ async function exists(filePath: string): Promise<boolean> {
         return false;
     }
 }
+
+test("bundled schema stays aligned with the loaded module across session rebinding", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "pi-model-modes-schema-"));
+    const schemaPath = path.join(directory, "config.schema.json");
+
+    try {
+        await writeFile(schemaPath, "schema loaded with definition", "utf8");
+        const source = createStableBundledSchemaSource(pathToFileURL(schemaPath));
+        assert.deepEqual(source(), {
+            kind: "content",
+            content: "schema loaded with definition",
+        });
+
+        await writeFile(schemaPath, "newer schema on disk", "utf8");
+        assert.deepEqual(source(), {
+            kind: "content",
+            content: "schema loaded with definition",
+        });
+    } finally {
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test("settings diagnostics identify the extension, artifact, and recovery action", () => {
+    const message = formatModelModesSettingsDiagnostic({
+        code: "bundled-schema-stale",
+        severity: "error",
+        scope: "schema",
+        path: "/tmp/installed/pi-model-modes.schema.json",
+        message: "The bundled settings schema is stale; run the artifact generator",
+    });
+
+    assert.match(message, /^\[pi-model-modes\]/);
+    assert.match(message, /packages\/pi-model-modes\/config\.schema\.json/);
+    assert.match(message, /npm run config:generate/);
+    assert.match(message, /reinstall or update the extension/);
+});
 
 test("scaffoldGlobalModesConfig creates missing global config and schema", async () => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;

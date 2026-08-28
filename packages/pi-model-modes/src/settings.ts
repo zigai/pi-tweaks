@@ -1,6 +1,11 @@
 import { type ResolvedSettings } from "@zigai/pi-extension-settings";
 
-import { getPiGlobalSettingsPath, loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
+import {
+    getPiGlobalSettingsPath,
+    loadPiExtensionSettings,
+    type BundledSchemaSource,
+    type SettingsDiagnostic,
+} from "@zigai/pi-extension-settings/pi";
 
 import {
     closeSync,
@@ -14,6 +19,7 @@ import {
 } from "node:fs";
 
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Type, type Static } from "typebox";
 
@@ -42,6 +48,7 @@ export default modelModesSettingsDefinition;
 const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
 const STALE_SETTINGS_LOCK_MS = 30_000;
 const EXTENSION_ID = "pi-model-modes";
+const BUNDLED_SETTINGS_SCHEMA_URL = new URL("../config.schema.json", import.meta.url);
 export type ModeShortcuts = Static<typeof modeShortcutsSchema>;
 
 const SettingsObjectSchema = Type.Object(
@@ -76,6 +83,35 @@ function getSettingsPath(): string {
     return getPiGlobalSettingsPath(EXTENSION_ID);
 }
 
+export function createStableBundledSchemaSource(url: URL): () => BundledSchemaSource {
+    let content: string | undefined;
+    return () => {
+        if (content !== undefined) return { kind: "content", content };
+
+        try {
+            content = readFileSync(url, "utf8");
+            return { kind: "content", content };
+        } catch {
+            return { kind: "url", url };
+        }
+    };
+}
+
+// Pi can retain imported definition modules while rebinding extensions for /new. Cache the schema
+// read by that same module instance so a concurrently updated source checkout cannot mix versions.
+const bundledSettingsSchemaSource = createStableBundledSchemaSource(BUNDLED_SETTINGS_SCHEMA_URL);
+
+export function formatModelModesSettingsDiagnostic(diagnostic: SettingsDiagnostic): string {
+    const prefix = `[${EXTENSION_ID}]`;
+    if (diagnostic.code === "bundled-schema-stale") {
+        return `${prefix} Generated settings schema does not match the loaded definition: ${fileURLToPath(BUNDLED_SETTINGS_SCHEMA_URL)}. In a source checkout, run "npm run config:generate" from the repository root and restart Pi; otherwise reinstall or update the extension.`;
+    }
+    if (diagnostic.code === "bundled-schema-read-failed") {
+        return `${prefix} Bundled settings schema could not be read: ${fileURLToPath(BUNDLED_SETTINGS_SCHEMA_URL)}.`;
+    }
+    return `${prefix} ${diagnostic.message}: ${diagnostic.path}`;
+}
+
 export function loadModelModesSettings(context: SettingsReadContext) {
     return loadPiExtensionSettings(
         modelModesSettingsDefinition,
@@ -83,12 +119,7 @@ export function loadModelModesSettings(context: SettingsReadContext) {
             cwd: context.cwd,
             isProjectTrusted: () => context.projectTrusted,
         },
-        {
-            bundledSchema: {
-                kind: "url",
-                url: new URL("../config.schema.json", import.meta.url),
-            },
-        },
+        { bundledSchema: bundledSettingsSchemaSource() },
     );
 }
 

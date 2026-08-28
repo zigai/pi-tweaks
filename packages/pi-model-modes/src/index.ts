@@ -5,6 +5,7 @@ import { ModeController } from "./mode-controller.ts";
 import { ModePicker, registerModeSelectorShortcuts } from "./mode-picker.ts";
 import { ModesStore } from "./modes-store.ts";
 import {
+    formatModelModesSettingsDiagnostic,
     getConfiguredModeShortcuts,
     loadModelModesSettings,
     SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY,
@@ -63,7 +64,7 @@ export default function (pi: ExtensionAPI) {
         const loaded = resolveSessionSettings(settingsContext);
         if (ctx.hasUI) {
             for (const diagnostic of loaded.diagnostics) {
-                ctx.ui.notify(diagnostic.message, diagnostic.severity);
+                ctx.ui.notify(formatModelModesSettingsDiagnostic(diagnostic), diagnostic.severity);
             }
         }
         controller.setUseThinkingBorderColors(
