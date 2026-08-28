@@ -24,17 +24,45 @@ type ThemeSnapshot = {
     readonly key: symbol;
     readonly descriptor: PropertyDescriptor | undefined;
 };
+type RuntimeThemeModule = Pick<ThemeModule, "initTheme"> & {
+    stopThemeWatcher?: () => void;
+};
+
+function isRuntimeInitTheme(value: unknown): value is RuntimeThemeModule["initTheme"] {
+    return typeof value === "function";
+}
+
+function isStopThemeWatcher(
+    value: unknown,
+): value is NonNullable<RuntimeThemeModule["stopThemeWatcher"]> {
+    return typeof value === "function";
+}
+function isRuntimeThemeModule(value: unknown): value is RuntimeThemeModule {
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") return false;
+    const stopThemeWatcher = Object.getOwnPropertyDescriptor(value, "stopThemeWatcher");
+    return (
+        isRuntimeInitTheme(Object.getOwnPropertyDescriptor(value, "initTheme")?.value) &&
+        (stopThemeWatcher === undefined || isStopThemeWatcher(stopThemeWatcher.value))
+    );
+}
+
+const runtimeThemeModuleParser = {
+    parse(value: unknown): RuntimeThemeModule {
+        if (!isRuntimeThemeModule(value)) assert.fail("missing theme module");
+        return value;
+    },
+};
 
 const PI_THEME_KEYS = [
     Symbol.for("@earendil-works/pi-coding-agent:theme"),
     Symbol.for("@mariozechner/pi-coding-agent:theme"),
 ] as const;
 
-function restoreThemeSnapshot(themeModule: object, snapshots: readonly ThemeSnapshot[]): void {
-    const stopThemeWatcher: unknown = Reflect.get(themeModule, "stopThemeWatcher");
-    if (typeof stopThemeWatcher === "function") {
-        Reflect.apply(stopThemeWatcher, themeModule, []);
-    }
+function restoreThemeSnapshot(
+    themeModule: RuntimeThemeModule,
+    snapshots: readonly ThemeSnapshot[],
+): void {
+    themeModule.stopThemeWatcher?.();
 
     for (const snapshot of snapshots) {
         if (snapshot.descriptor !== undefined) {
@@ -50,26 +78,15 @@ async function initializePiTheme(): Promise<() => void> {
     const themeUrl = pathToFileURL(
         path.join(path.dirname(codingAgentEntry), "modes/interactive/theme/theme.js"),
     ).href;
-    // Pi's theme implementation is an unexported runtime module selected from the resolved package.
-    const themeModule: unknown = (await import(themeUrl)) as unknown;
-    if (
-        (typeof themeModule !== "object" || themeModule === null) &&
-        typeof themeModule !== "function"
-    ) {
-        assert.fail("missing theme module");
-    }
-
-    const initTheme: unknown = Reflect.get(themeModule, "initTheme");
-    if (typeof initTheme !== "function") {
-        assert.fail("missing initTheme");
-    }
+    // Pi's unexported theme module must be loaded from the runtime-resolved package installation.
+    const themeModule = runtimeThemeModuleParser.parse(await import(themeUrl));
 
     const snapshots: ThemeSnapshot[] = PI_THEME_KEYS.map((key) => ({
         key,
         descriptor: Object.getOwnPropertyDescriptor(globalThis, key),
     }));
     try {
-        Reflect.apply(initTheme, themeModule, [undefined, false]);
+        themeModule.initTheme(undefined, false);
     } catch (cause) {
         restoreThemeSnapshot(themeModule, snapshots);
         throw cause;
@@ -116,8 +133,14 @@ class FakeTreeSelectorComponent {
 class InvalidTreeSelectorComponent {
     readonly list = {};
 
-    getTreeList(): unknown {
+    getTreeList() {
         return this.list;
+    }
+}
+
+class NullTreeSelectorComponent {
+    getTreeList(): null {
+        return null;
     }
 }
 
@@ -147,7 +170,8 @@ function fakeTreeInternals(
     ];
 }
 
-type RuntimeTreeList = TreeListInstance & {
+type RuntimeTreeList = {
+    readonly maxVisibleLines?: number;
     getEntryDisplayText(node: TreeNode, isSelected: boolean): string;
     getStatusLabels(): string;
     handleInput(keyData: string): void;
@@ -156,7 +180,7 @@ type RuntimeTreeList = TreeListInstance & {
 
 type RuntimeTreeSelectorInstance = InstanceType<TreeSelectorModule["TreeSelectorComponent"]>;
 
-type RuntimeGetTreeList = (this: RuntimeTreeSelectorInstance) => unknown;
+type RuntimeGetTreeList = (this: RuntimeTreeSelectorInstance) => object;
 
 function isRuntimeGetTreeList(value: unknown): value is RuntimeGetTreeList {
     return typeof value === "function";
@@ -167,29 +191,61 @@ type RuntimeTreeSelectorPrototype = {
 };
 
 function isRuntimeTreeSelectorPrototype(value: unknown): value is RuntimeTreeSelectorPrototype {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-    const getTreeList: unknown = Reflect.get(value, "getTreeList");
-    return isRuntimeGetTreeList(getTreeList);
+    if (typeof value !== "object" || value === null) return false;
+    return isRuntimeGetTreeList(Object.getOwnPropertyDescriptor(value, "getTreeList")?.value);
 }
 
-function requireObject(value: unknown, message: string): object {
-    if (typeof value !== "object" || value === null) {
-        assert.fail(message);
-    }
-    return value;
+function isRuntimeObjectIdentity(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
+function getRuntimePropertyDescriptor<Value extends object>(
+    value: Value,
+    key: PropertyKey,
+): PropertyDescriptor | undefined {
+    let owner: object | null = value;
+    while (owner !== null) {
+        const descriptor = Object.getOwnPropertyDescriptor(owner, key);
+        if (descriptor !== undefined) return descriptor;
+        const parent: unknown = Object.getPrototypeOf(owner);
+        if (!isRuntimeObjectIdentity(parent)) return undefined;
+        owner = parent;
+    }
+    return undefined;
+}
+
+function isRuntimeEntryDisplayText(
+    value: unknown,
+): value is RuntimeTreeList["getEntryDisplayText"] {
+    return typeof value === "function";
+}
+
+function isRuntimeStatusLabels(value: unknown): value is RuntimeTreeList["getStatusLabels"] {
+    return typeof value === "function";
+}
+
+function isRuntimeHandleInput(value: unknown): value is RuntimeTreeList["handleInput"] {
+    return typeof value === "function";
+}
+
+function isRuntimeRender(value: unknown): value is RuntimeTreeList["render"] {
+    return typeof value === "function";
+}
+
+function isNumber(value: unknown): value is number {
+    return typeof value === "number";
+}
 function isRuntimeTreeList(value: unknown): value is RuntimeTreeList {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return false;
-    }
+    if ((typeof value !== "object" || value === null) && typeof value !== "function") return false;
+    const maxVisibleLines = getRuntimePropertyDescriptor(value, "maxVisibleLines");
     return (
-        typeof Reflect.get(value, "getEntryDisplayText") === "function" &&
-        typeof Reflect.get(value, "getStatusLabels") === "function" &&
-        typeof Reflect.get(value, "handleInput") === "function" &&
-        typeof Reflect.get(value, "render") === "function"
+        isRuntimeEntryDisplayText(
+            getRuntimePropertyDescriptor(value, "getEntryDisplayText")?.value,
+        ) &&
+        isRuntimeStatusLabels(getRuntimePropertyDescriptor(value, "getStatusLabels")?.value) &&
+        isRuntimeHandleInput(getRuntimePropertyDescriptor(value, "handleInput")?.value) &&
+        isRuntimeRender(getRuntimePropertyDescriptor(value, "render")?.value) &&
+        (maxVisibleLines === undefined || isNumber(maxVisibleLines.value))
     );
 }
 
@@ -200,16 +256,21 @@ type RecordedExtensionLifecycle = {
 
 function createRecordedExtensionLifecycle(): RecordedExtensionLifecycle {
     const handlers = new Map<string, unknown>();
-    const api = {
-        on(event: string, handler: unknown): void {
+    const api: Pick<ExtensionAPI, "on"> = {
+        on(event, handler): void {
             handlers.set(event, handler);
         },
     };
 
-    // SAFETY: The recording boundary implements the ExtensionAPI.on shape used by this
-    // extension and retains the exact handlers Pi would invoke at runtime.
-    const extensionApi: unknown = api;
-    return { api: extensionApi as ExtensionAPI, handlers };
+    // SAFETY: The extension under test consumes only ExtensionAPI.on, implemented above
+    // with Pi's exact contextual signature; no other ExtensionAPI member is accessed.
+    return { api: api as ExtensionAPI, handlers };
+}
+
+type RecordedHandler = (...args: unknown[]) => void | Promise<void>;
+
+function isRecordedHandler(value: unknown): value is RecordedHandler {
+    return typeof value === "function";
 }
 
 async function emitRecordedHandler(
@@ -218,26 +279,33 @@ async function emitRecordedHandler(
     ...args: unknown[]
 ): Promise<void> {
     const handler = handlers.get(eventName);
-    if (typeof handler !== "function") {
-        assert.fail(`missing ${eventName} handler`);
-    }
-    await Reflect.apply(handler, undefined, args);
+    if (!isRecordedHandler(handler)) assert.fail(`missing ${eventName} handler`);
+    await handler(...args);
 }
 
-function requireRuntimeTreeList(value: unknown): RuntimeTreeList {
-    if (!isRuntimeTreeList(value)) {
-        assert.fail("installed TreeSelectorComponent returned an invalid tree list");
-    }
-    return value;
+const runtimeTreeListParser = {
+    parse(value: unknown): RuntimeTreeList {
+        if (!isRuntimeTreeList(value)) {
+            assert.fail("installed TreeSelectorComponent returned an invalid tree list");
+        }
+        return value;
+    },
+};
+function clearPatchState(): void {
+    Reflect.deleteProperty(globalThis, PATCH_KEY);
+}
+
+function getPatchState(): boolean | undefined {
+    if (Object.getOwnPropertyDescriptor(globalThis, PATCH_KEY)?.value === true) return true;
+    return undefined;
 }
 
 test("tree selector patch leaves the original selector method intact when the tree seam is invalid", async () => {
-    const globalState = globalThis as typeof globalThis & { [PATCH_KEY]?: boolean };
-    delete globalState[PATCH_KEY];
-    const originalGetTreeList: unknown = Object.getOwnPropertyDescriptor(
+    clearPatchState();
+    const originalGetTreeList = Object.getOwnPropertyDescriptor(
         InvalidTreeSelectorComponent.prototype,
         "getTreeList",
-    )?.value;
+    );
     let headerPatchCount = 0;
 
     try {
@@ -251,21 +319,48 @@ test("tree selector patch leaves the original selector method intact when the tr
             },
         });
 
-        const currentGetTreeList: unknown = Object.getOwnPropertyDescriptor(
+        const currentGetTreeList = Object.getOwnPropertyDescriptor(
             InvalidTreeSelectorComponent.prototype,
             "getTreeList",
-        )?.value;
-        assert.equal(currentGetTreeList, originalGetTreeList);
+        );
+        assert.deepEqual(currentGetTreeList, originalGetTreeList);
         assert.equal(headerPatchCount, 0);
-        assert.equal(globalState[PATCH_KEY], undefined);
+        assert.equal(getPatchState(), undefined);
     } finally {
-        delete globalState[PATCH_KEY];
+        clearPatchState();
+    }
+});
+
+test("tree selector patch degrades safely when getTreeList returns null", async () => {
+    clearPatchState();
+    const originalGetTreeList = Object.getOwnPropertyDescriptor(
+        NullTreeSelectorComponent.prototype,
+        "getTreeList",
+    );
+
+    try {
+        await patchTreeSelector({
+            async loadTreeInternals() {
+                const [, themeModule] = fakeTreeInternals([]);
+                return [{ TreeSelectorComponent: NullTreeSelectorComponent }, themeModule];
+            },
+            patchTreeHeaderText() {
+                assert.fail("header must not be patched without a valid tree list");
+            },
+        });
+
+        assert.deepEqual(
+            Object.getOwnPropertyDescriptor(NullTreeSelectorComponent.prototype, "getTreeList"),
+            originalGetTreeList,
+        );
+        assert.equal(getPatchState(), undefined);
+    } finally {
+        clearPatchState();
     }
 });
 
 test("tree selector patch updates shared settings state after reinstall", async () => {
-    const globalState = globalThis as typeof globalThis & { [PATCH_KEY]?: boolean };
-    delete globalState[PATCH_KEY];
+    clearPatchState();
     const themeNames: Array<string | undefined> = [];
 
     try {
@@ -328,13 +423,12 @@ test("tree selector patch updates shared settings state after reinstall", async 
         assert.equal(secondSelector.getTreeList().maxVisibleLines, 11);
         assert.deepEqual(themeNames, ["old-theme", "new-theme"]);
     } finally {
-        delete globalState[PATCH_KEY];
+        clearPatchState();
     }
 });
 
 test("tree selector patch composes input, status, timestamps, preview, and narrow fallback", async () => {
-    const globalState = globalThis as typeof globalThis & { [PATCH_KEY]?: boolean };
-    delete globalState[PATCH_KEY];
+    clearPatchState();
     const persistedModes: string[] = [];
     const persistedPreviewValues: boolean[] = [];
     const node: TreeNode = {
@@ -421,14 +515,13 @@ test("tree selector patch composes input, status, timestamps, preview, and narro
         tree.handleInput("x");
         assert.deepEqual(tree.handledInputs, [FILTER_ALL_KEY, "x"]);
     } finally {
-        delete globalState[PATCH_KEY];
+        clearPatchState();
     }
 });
 
 test("registered session lifecycle patches and exercises the installed Pi tree selector", async ({
     onTestFinished,
 }) => {
-    const globalState = globalThis as typeof globalThis & { [PATCH_KEY]?: boolean };
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     const agentDir = await mkdtemp(path.join(tmpdir(), "pi-tree-runtime-"));
     const configPath = path.join(agentDir, "extension-settings", "pi-tree.json");
@@ -473,17 +566,18 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
     if (originalGetTreeListDescriptor === undefined) {
         assert.fail("installed TreeSelectorComponent prototype is missing own getTreeList");
     }
-    const originalGetTreeListValue: unknown = originalGetTreeListDescriptor.value;
-    if (!isRuntimeGetTreeList(originalGetTreeListValue)) {
+    if (!isRuntimeGetTreeList(originalGetTreeListDescriptor.value)) {
         assert.fail("installed TreeSelectorComponent getTreeList is not callable");
     }
-    const originalGetTreeList = originalGetTreeListValue;
-    const treeBeforePatch = requireRuntimeTreeList(originalGetTreeList.call(selectorBeforePatch));
-    const treeListPrototypeValue: unknown = Object.getPrototypeOf(treeBeforePatch);
-    const treeListPrototype = requireObject(
-        treeListPrototypeValue,
-        "installed tree list is missing a prototype",
+    const originalGetTreeList = originalGetTreeListDescriptor.value;
+    const treeBeforePatch = runtimeTreeListParser.parse(
+        originalGetTreeList.call(selectorBeforePatch),
     );
+    const treeListPrototypeValue: unknown = Object.getPrototypeOf(treeBeforePatch);
+    if (!isRuntimeTreeList(treeListPrototypeValue)) {
+        assert.fail("installed tree list is missing a valid prototype");
+    }
+    const treeListPrototype = treeListPrototypeValue;
     const patchedMethodNames = [
         "getEntryDisplayText",
         "getStatusLabels",
@@ -498,13 +592,17 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
         }
         originalTreeListDescriptors.set(methodName, descriptor);
     }
-    const originalRender: unknown = Reflect.get(treeListPrototype, "render");
-    if (typeof originalRender !== "function") {
+    const originalRenderDescriptor = Object.getOwnPropertyDescriptor(treeListPrototype, "render");
+    if (
+        originalRenderDescriptor === undefined ||
+        !isRuntimeRender(originalRenderDescriptor.value)
+    ) {
         assert.fail("installed tree list prototype is missing render");
     }
+    const originalRender = originalRenderDescriptor.value;
     const lifecycle = createRecordedExtensionLifecycle();
 
-    delete globalState[PATCH_KEY];
+    clearPatchState();
     process.env.PI_CODING_AGENT_DIR = agentDir;
     await mkdir(path.dirname(configPath), { recursive: true });
     await writeFile(
@@ -534,12 +632,15 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
             },
         );
 
-        assert.equal(globalState[PATCH_KEY], true);
-        assert.notEqual(Reflect.get(selectorPrototype, "getTreeList"), originalGetTreeList);
+        assert.equal(getPatchState(), true);
+        assert.notDeepEqual(
+            Object.getOwnPropertyDescriptor(selectorPrototype, "getTreeList"),
+            originalGetTreeListDescriptor,
+        );
         for (const methodName of patchedMethodNames) {
-            assert.notEqual(
-                Reflect.get(treeListPrototype, methodName),
-                originalTreeListDescriptors.get(methodName)?.value,
+            assert.notDeepEqual(
+                Object.getOwnPropertyDescriptor(treeListPrototype, methodName),
+                originalTreeListDescriptors.get(methodName),
                 `session_start did not patch installed ${methodName}`,
             );
         }
@@ -554,13 +655,9 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
             undefined,
             undefined,
         );
-        const getTreeListValue: unknown = Reflect.get(selectorPrototype, "getTreeList");
-        if (!isRuntimeGetTreeList(getTreeListValue)) {
-            assert.fail("patched TreeSelectorComponent prototype is missing getTreeList");
-        }
-        const tree = requireRuntimeTreeList(getTreeListValue.call(selector));
+        const tree = runtimeTreeListParser.parse(selectorPrototype.getTreeList.call(selector));
 
-        assert.equal(Reflect.get(tree, "maxVisibleLines"), 5);
+        assert.equal(tree.maxVisibleLines, 5);
         assert.equal(tree.getStatusLabels(), "  Filter: Default | Time: Relative | Preview: On");
         const timestampedEntry = tree.getEntryDisplayText(node, false);
         assert.match(timestampedEntry, / ago /);
@@ -571,7 +668,7 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
 
         const wideRender = tree.render(100);
         assert.match(wideRender.join("\n"), / │ .*Selected response preview/);
-        const nativeNarrowRender = Reflect.apply(originalRender, tree, [40]) as string[];
+        const nativeNarrowRender = originalRender.call(tree, 40);
         assert.deepEqual(tree.render(40), nativeNarrowRender);
 
         setKeybindings(
@@ -586,18 +683,18 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
         assert.match(tree.getStatusLabels(), /Time: Absolute/);
         tree.handleInput("P");
         assert.match(tree.getStatusLabels(), /Preview: Off/);
-        const nativeWideRender = Reflect.apply(originalRender, tree, [100]) as string[];
+        const nativeWideRender = originalRender.call(tree, 100);
         assert.deepEqual(tree.render(100), nativeWideRender);
     } finally {
         for (const [methodName, descriptor] of originalTreeListDescriptors) {
             Object.defineProperty(treeListPrototype, methodName, descriptor);
         }
         Object.defineProperty(selectorPrototype, "getTreeList", originalGetTreeListDescriptor);
-        delete globalState[PATCH_KEY];
+        clearPatchState();
         try {
             const shutdownHandler = lifecycle.handlers.get("session_shutdown");
-            if (typeof shutdownHandler === "function") {
-                await Reflect.apply(shutdownHandler, undefined, []);
+            if (isRecordedHandler(shutdownHandler)) {
+                await shutdownHandler();
             }
         } finally {
             await rm(agentDir, { recursive: true, force: true });

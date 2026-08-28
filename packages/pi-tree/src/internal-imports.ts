@@ -10,38 +10,17 @@ export type TreeSelectorModule = {
         onLabel: () => undefined,
         onDelete: undefined,
         onFork: undefined,
-    ) => { getTreeList?: () => unknown };
+    ) => object;
 };
+
+function isObjectIdentity(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
+}
 
 export type ThemeModule = {
     initTheme: (name: string | undefined, force: boolean) => void;
-    theme: {
-        fg: (role: string, text: string) => string;
-        bg: (role: string, text: string) => string;
-        bold: (text: string) => string;
-    };
+    theme: object;
 };
-
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
-}
-
-function isTreeSelectorModule(value: unknown): value is TreeSelectorModule {
-    return typeof getUnknownProperty(value, "TreeSelectorComponent") === "function";
-}
-
-function isThemeModule(value: unknown): value is ThemeModule {
-    const theme = getUnknownProperty(value, "theme");
-    return (
-        typeof getUnknownProperty(value, "initTheme") === "function" &&
-        typeof getUnknownProperty(theme, "fg") === "function" &&
-        typeof getUnknownProperty(theme, "bg") === "function" &&
-        typeof getUnknownProperty(theme, "bold") === "function"
-    );
-}
 
 export async function loadTreeInternals(): Promise<[TreeSelectorModule, ThemeModule] | undefined> {
     const treeSelectorModule = await loadPiInternalModule(
@@ -49,9 +28,17 @@ export async function loadTreeInternals(): Promise<[TreeSelectorModule, ThemeMod
         {
             scope: "pi-tree",
             feature: "tree selector patch",
-            parse: (module) => {
-                if (isTreeSelectorModule(module)) return module;
-                return undefined;
+            parse(module: unknown): TreeSelectorModule | undefined {
+                if (
+                    !isObjectIdentity(module) ||
+                    !("TreeSelectorComponent" in module) ||
+                    typeof module.TreeSelectorComponent !== "function"
+                ) {
+                    return undefined;
+                }
+                // SAFETY: The export is constructible in Pi's private module contract; its
+                // returned selector and tree-list methods are validated before they are patched.
+                return module as TreeSelectorModule;
             },
         },
     );
@@ -60,9 +47,19 @@ export async function loadTreeInternals(): Promise<[TreeSelectorModule, ThemeMod
     const themeModule = await loadPiInternalModule("modes/interactive/theme/theme.js", {
         scope: "pi-tree",
         feature: "tree selector patch",
-        parse: (module) => {
-            if (isThemeModule(module)) return module;
-            return undefined;
+        parse(module: unknown): ThemeModule | undefined {
+            if (
+                !isObjectIdentity(module) ||
+                !("initTheme" in module) ||
+                typeof module.initTheme !== "function" ||
+                !("theme" in module)
+            ) {
+                return undefined;
+            }
+            if (!isObjectIdentity(module.theme)) return undefined;
+            // SAFETY: initTheme is callable and theme is an object. Its proxy-backed methods
+            // cannot be read until initialization, so the caller validates them immediately after initTheme.
+            return module as ThemeModule;
         },
     });
     if (themeModule === undefined) return undefined;

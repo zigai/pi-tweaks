@@ -18,6 +18,17 @@ function createList(): SelectList {
     );
 }
 
+test("explicit null does not patch Pi's default select-list prototype", () => {
+    const originalRender = Object.getOwnPropertyDescriptor(SelectList.prototype, "render");
+    const handle = installSelectedOptionPrefixSelectListPatch({ selectedOptionPrefix: "▌" }, null);
+
+    assert.deepEqual(
+        Object.getOwnPropertyDescriptor(SelectList.prototype, "render"),
+        originalRender,
+    );
+    handle.dispose();
+});
+
 test("selected option prefix updates generic select-list markers", () => {
     const handle = installSelectedOptionPrefixSelectListPatch({ selectedOptionPrefix: "▌" });
     assert.equal(

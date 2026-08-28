@@ -37,17 +37,22 @@ type MarkedUi = BashExecSpacingEditorContext["ui"] & {
     [BASH_EXEC_SPACING_ENHANCER]?: BashExecSpacingRecord;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function")
-        return undefined;
-    return Reflect.get(value, key);
-}
+type EditorMethodView = {
+    readonly getCursor?: unknown;
+    readonly getText?: unknown;
+    readonly handleInput?: unknown;
+    readonly setText?: unknown;
+};
+
 function isEditorLike(value: Editor): value is EditorLike {
+    // SAFETY: Pi's editor factory return type omits extension methods; this view reads only
+    // optional members and the predicate verifies every method required by EditorLike.
+    const view = value as EditorMethodView;
     return (
-        typeof getUnknownProperty(value, "getCursor") === "function" &&
-        typeof getUnknownProperty(value, "getText") === "function" &&
-        typeof getUnknownProperty(value, "handleInput") === "function" &&
-        typeof getUnknownProperty(value, "setText") === "function"
+        typeof view.getCursor === "function" &&
+        typeof view.getText === "function" &&
+        typeof view.handleInput === "function" &&
+        typeof view.setText === "function"
     );
 }
 
@@ -84,7 +89,7 @@ export function installBashExecSpacingEditor(
     ctx: BashExecSpacingEditorContext,
     config: BashExecSpacingConfig,
 ): BashExecSpacingHandle {
-    const ui = ctx.ui as MarkedUi;
+    const ui: MarkedUi = ctx.ui;
     const installed = ui[BASH_EXEC_SPACING_ENHANCER];
     if (installed !== undefined) {
         installed.handle.update(config);

@@ -31,6 +31,10 @@ type AutocompleteScrollInfoPatchRecord = {
     readonly handle: AutocompleteScrollInfoHandle;
 };
 
+type RenderView = {
+    readonly render?: SelectListScrollInfoTarget["render"];
+};
+
 function warnAutocompleteScrollInfoPatchUnavailable(reason?: string): void {
     let suffix = "";
     if (reason !== undefined) suffix = `: ${reason}`;
@@ -59,18 +63,19 @@ function inactiveAutocompleteScrollInfoHandle(): AutocompleteScrollInfoHandle {
 /** Installs or updates the autocomplete scroll/count-footer patch. */
 export function installAutocompleteScrollInfoPatch(
     config: AutocompleteScrollInfoConfig,
-    target: unknown = SelectList.prototype,
+    target: RenderView | null = SelectList.prototype,
 ): AutocompleteScrollInfoHandle {
-    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
+    if (target === null) {
         warnAutocompleteScrollInfoPatchUnavailable();
         return inactiveAutocompleteScrollInfoHandle();
     }
-    const render: unknown = Reflect.get(target, "render");
+    const render = target.render;
     if (typeof render !== "function") {
         warnAutocompleteScrollInfoPatchUnavailable("missing render");
         return inactiveAutocompleteScrollInfoHandle();
     }
-    // SAFETY: The runtime guard proves the private SelectList render seam is callable.
+    // SAFETY: The callable check proves the private render method. The remaining
+    // fields are SelectList instance state read only by the patched receiver.
     const prototype = target as SelectListScrollInfoTarget;
     const installed = prototype[AUTOCOMPLETE_SCROLL_INFO_PATCH];
     if (installed !== undefined) {

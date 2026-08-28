@@ -67,6 +67,14 @@ type PatchableFullscreenTuiPrototype = {
     doRender?: PatchableFullscreenDoRender;
     [FULLSCREEN_ANCHOR_INPUT_TO_BOTTOM_PATCHED]?: FullscreenAnchorPatchRecord;
 };
+function isPatchableFullscreenTuiPrototype(
+    value: unknown,
+): value is PatchableFullscreenTuiPrototype & { doRender: PatchableFullscreenDoRender } {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
+    // SAFETY: PatchableFullscreenTuiPrototype exposes only the method validated below.
+    const view = value as PatchableFullscreenTuiPrototype;
+    return typeof view.doRender === "function";
+}
 
 function warnAnchorInputToBottomPatchUnavailable(reason?: string): void {
     let suffix = "";
@@ -78,8 +86,21 @@ function warnAnchorInputToBottomPatchUnavailable(reason?: string): void {
     );
 }
 
+type ChildrenView = {
+    readonly children?: unknown;
+};
+
+type LayoutTypeView = {
+    readonly layoutType?: unknown;
+};
+
+type RenderView = {
+    readonly render?: PatchableTuiRender;
+};
+
 function isComponentContainer(component: Component): component is ComponentContainer {
-    const children: unknown = Reflect.get(component, "children") as unknown;
+    // SAFETY: ChildrenView exposes only the children field validated as an array below.
+    const children: unknown = (component as ChildrenView).children;
     return Array.isArray(children);
 }
 
@@ -224,7 +245,9 @@ function findComponentPath(
 
 function isVerticalLayoutStack(component: Component): component is ComponentContainer {
     if (!isComponentContainer(component)) return false;
-    return Reflect.get(component, "layoutType") === "vstack";
+    // SAFETY: LayoutTypeView exposes only the layoutType field compared below.
+    const view = component as LayoutTypeView;
+    return view.layoutType === "vstack";
 }
 
 function getFullscreenBlankPrecedingComponent(
@@ -260,9 +283,11 @@ function temporarilyCompactBlankComponent(
 ): (() => void) | undefined {
     if (component === undefined) return undefined;
 
-    const originalRenderValue: unknown = Reflect.get(component, "render");
+    // SAFETY: RenderView exposes only the render method validated below.
+    const originalRenderValue: unknown = (component as RenderView).render;
     if (typeof originalRenderValue !== "function") return undefined;
 
+    // SAFETY: The callable check proves the component render method signature supplied by Component.
     const originalRender = originalRenderValue as Component["render"];
     const ownDescriptor = Object.getOwnPropertyDescriptor(component, "render");
     const compactedRender: Component["render"] = function compactedBlankComponentRender(
@@ -414,18 +439,15 @@ type FullscreenAnchorPatchRecord = {
 
 function installMainAnchorInputToBottomPatch(
     config: AnchorInputToBottomConfig,
-    target: unknown,
+    target: PatchableTuiPrototype,
 ): AnchorInputToBottomHandle {
-    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
-        warnAnchorInputToBottomPatchUnavailable();
-        return { update(): void {}, dispose(): void {} };
-    }
-    const render: unknown = Reflect.get(target, "render");
+    const render = target.render;
     if (typeof render !== "function") {
         warnAnchorInputToBottomPatchUnavailable("missing render");
         return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The runtime guard proves the private TUI render seam is callable.
+    // SAFETY: The callable check proves the private TUI render method; patched
+    // receivers supply the child and terminal state consumed by the renderer.
     const prototype = target as PatchableTuiPrototype & { render: PatchableTuiRender };
     const installed = prototype[ANCHOR_INPUT_TO_BOTTOM_PATCHED];
     if (installed !== undefined) {
@@ -471,18 +493,11 @@ function installFullscreenAnchorInputToBottomPatch(
     config: AnchorInputToBottomConfig,
 ): AnchorInputToBottomHandle {
     const target: unknown = TuiAltScreen.prototype;
-    if (
-        (typeof target !== "object" && typeof target !== "function") ||
-        target === null ||
-        typeof Reflect.get(target, "doRender") !== "function"
-    ) {
+    if (!isPatchableFullscreenTuiPrototype(target)) {
         warnAnchorInputToBottomPatchUnavailable("missing fullscreen doRender");
         return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The runtime guard proves the private fullscreen doRender seam is callable.
-    const prototype = target as PatchableFullscreenTuiPrototype & {
-        doRender: PatchableFullscreenDoRender;
-    };
+    const prototype = target;
     const installed = prototype[FULLSCREEN_ANCHOR_INPUT_TO_BOTTOM_PATCHED];
     if (installed !== undefined) {
         installed.handle.update(config);

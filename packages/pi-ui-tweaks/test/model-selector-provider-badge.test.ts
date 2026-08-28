@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
 import { installModelSelectorProviderBadgePatch } from "../src/model-selector-provider-badge.ts";
@@ -15,7 +16,7 @@ function selector() {
             { id: "gpt-5", provider: "openai" },
             { id: "claude-sonnet-4", provider: "anthropic" },
         ],
-        listContainer: { children: [] as MutableText[] },
+        listContainer: { children: new Array<MutableText>() },
         selectedIndex: 1,
         updateList(): void {
             this.listContainer.children = [
@@ -28,6 +29,24 @@ function selector() {
     };
 }
 const theme = { fg: (color: string, text: string): string => `<${color}>${text}</${color}>` };
+
+test("explicit null does not patch Pi's default model selector", async () => {
+    const original = Object.getOwnPropertyDescriptor(
+        ModelSelectorComponent.prototype,
+        "updateList",
+    );
+    const handle = await installModelSelectorProviderBadgePatch(
+        { highlightSelectedModelProvider: true },
+        null,
+        theme,
+    );
+
+    assert.deepEqual(
+        Object.getOwnPropertyDescriptor(ModelSelectorComponent.prototype, "updateList"),
+        original,
+    );
+    handle.dispose();
+});
 
 test("selected model provider badge follows live configuration", async () => {
     const target = selector();

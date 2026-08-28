@@ -44,12 +44,22 @@ type ThemeInstance = {
     fg(color: string, text: string): string;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
-}
+type SelectListRenderView = {
+    readonly renderItem?: unknown;
+    readonly truncatePrimary?: unknown;
+};
+
+type ThemeFgView = {
+    readonly fg?: unknown;
+};
+
+type ThemeModuleView = {
+    readonly Theme?: unknown;
+};
+
+type ThemePrototypeView = {
+    readonly prototype?: unknown;
+};
 
 function normalizeSelectedOptionPrefix(prefix: string): string {
     if (prefix.length === 0) {
@@ -61,13 +71,9 @@ function normalizeSelectedOptionPrefix(prefix: string): string {
     return `${prefix} `;
 }
 
-function warnSelectedOptionPrefixPatchUnavailable(error?: unknown): void {
-    let suffix = "";
-    if (error instanceof Error && error.message.length > 0) {
-        suffix = `: ${error.message}`;
-    }
+function warnSelectedOptionPrefixPatchUnavailable(): void {
     console.warn(
-        `[pi-ui-tweaks] selected option prefix patch unavailable; Pi internals may have changed${suffix}`,
+        "[pi-ui-tweaks] selected option prefix patch unavailable; Pi internals may have changed",
     );
 }
 
@@ -75,17 +81,24 @@ function isSelectListRenderTarget(value: unknown): value is SelectListRenderTarg
     if (typeof value !== "object" || value === null) {
         return false;
     }
-    return (
-        typeof Reflect.get(value, "renderItem") === "function" &&
-        typeof Reflect.get(value, "truncatePrimary") === "function"
-    );
+    // SAFETY: SelectListRenderView exposes only the two methods validated below.
+    const view = value as SelectListRenderView;
+    return typeof view.renderItem === "function" && typeof view.truncatePrimary === "function";
 }
 
 function isThemePrototype(value: unknown): value is ThemePrototype {
     if (typeof value !== "object" || value === null) {
         return false;
     }
-    return typeof Reflect.get(value, "fg") === "function";
+    // SAFETY: ThemeFgView exposes only the fg method validated below.
+    const view = value as ThemeFgView;
+    return typeof view.fg === "function";
+}
+function isThemeConstructor(value: unknown): value is ThemePrototypeView {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    return "prototype" in value;
 }
 
 export type SelectedOptionPrefixConfig = { readonly selectedOptionPrefix: string };
@@ -116,12 +129,17 @@ function getUnselectedOptionPrefix(): string {
  */
 export function installSelectedOptionPrefixSelectListPatch(
     config: SelectedOptionPrefixConfig,
-    prototype: unknown = SelectList.prototype,
+    target?: SelectListRenderView | null,
 ): SelectedOptionPrefixHandle {
-    if (!isSelectListRenderTarget(prototype)) {
+    let candidate = target;
+    if (candidate === undefined && isSelectListRenderTarget(SelectList.prototype)) {
+        candidate = SelectList.prototype;
+    }
+    if (!isSelectListRenderTarget(candidate)) {
         warnSelectedOptionPrefixPatchUnavailable();
         return { update(): void {}, dispose(): void {} };
     }
+    const prototype = candidate;
     const installed = prototype[SELECT_LIST_PATCH_KEY];
     if (installed !== undefined) {
         installed.handle.update(config);
@@ -222,8 +240,11 @@ export async function installSelectedOptionPrefixThemePatch(
         scope: "pi-ui-tweaks",
         feature: "selected option prefix patch",
         parse(module): ThemePrototype | undefined {
-            const theme = getUnknownProperty(module, "Theme");
-            const candidate = getUnknownProperty(theme, "prototype");
+            // SAFETY: ThemeModuleView exposes only the Theme export validated below.
+            const moduleView = module as ThemeModuleView;
+            const theme = moduleView.Theme;
+            if (!isThemeConstructor(theme)) return undefined;
+            const candidate = theme.prototype;
             if (isThemePrototype(candidate)) return candidate;
             return undefined;
         },

@@ -21,6 +21,18 @@ type ModelStatusPatchRecord = {
     readonly handle: ModelStatusHandle;
 };
 
+type ShowStatusView = {
+    readonly showStatus?: ShowStatus;
+};
+function isShowStatusView(
+    value: unknown,
+): value is ShowStatusView & { readonly showStatus: ShowStatus } {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
+    // SAFETY: ShowStatusView exposes only the method validated by this predicate.
+    const view = value as ShowStatusView;
+    return typeof view.showStatus === "function";
+}
+
 function warnModelStatusPatchUnavailable(reason?: string): void {
     let suffix = "";
     if (reason !== undefined) suffix = `: ${reason}`;
@@ -38,19 +50,19 @@ function inactiveModelStatusHandle(): ModelStatusHandle {
 /** Installs or updates the model-change status patch. */
 export function installModelStatusPatch(
     config: ModelStatusConfig,
-    target: unknown = InteractiveMode.prototype,
+    target?: ShowStatusView | null,
 ): ModelStatusHandle {
-    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
-        warnModelStatusPatchUnavailable();
-        return inactiveModelStatusHandle();
+    let candidate = target;
+    if (candidate === undefined && isShowStatusView(InteractiveMode.prototype)) {
+        candidate = InteractiveMode.prototype;
     }
-    const showStatus: unknown = Reflect.get(target, "showStatus");
-    if (typeof showStatus !== "function") {
+    if (!isShowStatusView(candidate)) {
         warnModelStatusPatchUnavailable("missing showStatus");
         return inactiveModelStatusHandle();
     }
-    // SAFETY: The runtime guard proves the private InteractiveMode method is callable.
-    const prototype = target as InteractiveModeStatusTarget;
+    // SAFETY: The callable check above proves the only required private method;
+    // installLinkedMethodPatch preserves the receiver and method signature.
+    const prototype = candidate as InteractiveModeStatusTarget;
     const installed = prototype[MODEL_STATUS_PATCH];
     if (installed !== undefined) {
         installed.handle.update(config);

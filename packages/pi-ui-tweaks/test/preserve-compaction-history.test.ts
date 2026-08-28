@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
 import { installPreserveCompactionHistoryPatch } from "../src/preserve-compaction-history.ts";
+type CompactionEventFixture = {
+    readonly aborted?: boolean;
+    readonly result?: object;
+    readonly type: string;
+};
 
 class FakeInteractiveMode {
     clearCount = 0;
@@ -13,13 +19,8 @@ class FakeInteractiveMode {
         },
     };
 
-    async handleEvent(event: unknown): Promise<void> {
-        if (
-            typeof event === "object" &&
-            event !== null &&
-            Reflect.get(event, "type") === "compaction_end" &&
-            Reflect.get(event, "result") !== undefined
-        ) {
+    async handleEvent(event: CompactionEventFixture): Promise<void> {
+        if (event.type === "compaction_end" && event.result !== undefined) {
             this.chatContainer.clear();
             this.rebuildChatFromMessages();
             this.summaryCount += 1;
@@ -30,6 +31,17 @@ class FakeInteractiveMode {
         this.rebuildCount += 1;
     }
 }
+
+test("explicit null does not patch Pi's default compaction handler", () => {
+    const original = Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "handleEvent");
+    const handle = installPreserveCompactionHistoryPatch({ preserveCompactionHistory: true }, null);
+
+    assert.deepEqual(
+        Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "handleEvent"),
+        original,
+    );
+    handle.dispose();
+});
 
 test("preserve compaction history leaves successful live compaction UI intact", async () => {
     installPreserveCompactionHistoryPatch(

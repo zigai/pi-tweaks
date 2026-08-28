@@ -12,13 +12,21 @@ export type PreserveCompactionHistoryHandle = {
     update(config: PreserveCompactionHistoryConfig): void;
     dispose(): void;
 };
-type CompactionEvent = {
+type CompactionEventView = {
     readonly type?: unknown;
     readonly aborted?: unknown;
     readonly result?: unknown;
 };
+type SuccessfulCompactionEvent = CompactionEventView & {
+    readonly type: "compaction_end";
+    readonly aborted: false;
+    readonly result: unknown;
+};
 type ChatContainer = { clear: () => void };
-type HandleEvent = (this: InteractiveModeCompactionTarget, event: unknown) => Promise<void>;
+type HandleEvent = (
+    this: InteractiveModeCompactionTarget,
+    event: CompactionEventView,
+) => Promise<void>;
 type InteractiveModeCompactionTarget = {
     chatContainer: ChatContainer;
     handleEvent: HandleEvent;
@@ -29,31 +37,52 @@ type PreserveCompactionHistoryRecord = {
     readonly original: HandleEvent;
     readonly patch: LinkedMethodPatchHandle<
         InteractiveModeCompactionTarget,
-        [unknown],
+        [CompactionEventView],
         Promise<void>
     >;
     readonly handle: PreserveCompactionHistoryHandle;
 };
+
+type ChatContainerView = {
+    readonly chatContainer?: unknown;
+    readonly rebuildChatFromMessages?: unknown;
+};
+
+type ClearView = {
+    readonly clear?: unknown;
+};
+
+type HandleEventView = {
+    readonly handleEvent?: unknown;
+};
+
 function isObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
 }
-function isSuccessfulCompaction(event: unknown): event is CompactionEvent {
-    return (
-        isObject(event) &&
-        Reflect.get(event, "type") === "compaction_end" &&
-        Reflect.get(event, "aborted") === false &&
-        Reflect.get(event, "result") !== undefined
-    );
+function isHandleEventView(
+    value: unknown,
+): value is HandleEventView & { readonly handleEvent: HandleEvent } {
+    if (!isObject(value)) return false;
+    // SAFETY: HandleEventView exposes only the method validated by this predicate.
+    const view = value as HandleEventView;
+    return typeof view.handleEvent === "function";
+}
+
+function isSuccessfulCompaction(event: CompactionEventView): event is SuccessfulCompactionEvent {
+    return event.type === "compaction_end" && event.aborted === false && event.result !== undefined;
 }
 function isInteractiveModeCompactionTarget(
     value: unknown,
 ): value is InteractiveModeCompactionTarget {
     if (!isObject(value)) return false;
-    const chatContainer: unknown = Reflect.get(value, "chatContainer");
+    // SAFETY: ChatContainerView exposes only the two private members validated below.
+    const view = value as ChatContainerView;
+    const chatContainer: unknown = view.chatContainer;
+    if (!isObject(chatContainer)) return false;
+    // SAFETY: ClearView exposes only the clear method validated below.
+    const clearView = chatContainer as ClearView;
     return (
-        isObject(chatContainer) &&
-        typeof Reflect.get(chatContainer, "clear") === "function" &&
-        typeof Reflect.get(value, "rebuildChatFromMessages") === "function"
+        typeof clearView.clear === "function" && typeof view.rebuildChatFromMessages === "function"
     );
 }
 function warnPreserveCompactionHistoryPatchUnavailable(reason?: string): void {
@@ -67,14 +96,19 @@ function warnPreserveCompactionHistoryPatchUnavailable(reason?: string): void {
 /** Installs or updates the live-compaction transcript-preservation patch. */
 export function installPreserveCompactionHistoryPatch(
     config: PreserveCompactionHistoryConfig,
-    target: unknown = InteractiveMode.prototype,
+    target?: HandleEventView | null,
 ): PreserveCompactionHistoryHandle {
-    if (!isObject(target) || typeof Reflect.get(target, "handleEvent") !== "function") {
+    let candidate = target;
+    if (candidate === undefined && isHandleEventView(InteractiveMode.prototype)) {
+        candidate = InteractiveMode.prototype;
+    }
+    if (!isHandleEventView(candidate)) {
         warnPreserveCompactionHistoryPatchUnavailable("missing handleEvent");
         return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The runtime guard proves handleEvent is callable.
-    const prototype = target as InteractiveModeCompactionTarget;
+    // SAFETY: The callable check proves handleEvent; remaining fields are validated
+    // on each receiver before the patch temporarily replaces them.
+    const prototype = candidate as InteractiveModeCompactionTarget;
     const installed = prototype[PRESERVE_COMPACTION_HISTORY_PATCH];
     if (installed !== undefined) {
         installed.handle.update(config);
@@ -87,7 +121,7 @@ export function installPreserveCompactionHistoryPatch(
         (predecessor) =>
             async function patchedHandleEvent(
                 this: InteractiveModeCompactionTarget,
-                event: unknown,
+                event: CompactionEventView,
             ): Promise<void> {
                 if (
                     !current.preserveCompactionHistory ||

@@ -44,11 +44,33 @@ type TreePatchState = {
 
 type TreePatchSettings = TreePatchState;
 
+type TreeTheme = {
+    fg(role: string, text: string): string;
+    bg(role: string, text: string): string;
+    bold(text: string): string;
+};
+
+type TreeThemeProbe = {
+    readonly fg?: unknown;
+    readonly bg?: unknown;
+    readonly bold?: unknown;
+};
+
 type TreeListPrototype = {
     getEntryDisplayText?: NonNullable<TreeListInstance["getEntryDisplayText"]>;
     getStatusLabels: NonNullable<TreeListInstance["getStatusLabels"]>;
     handleInput: NonNullable<TreeListInstance["handleInput"]>;
     render?: (width: number) => string[];
+};
+
+type TreeSelectorInstance = InstanceType<TreeSelectorModule["TreeSelectorComponent"]>;
+
+// oxlint-disable-next-line antislop/no-unknown-returns -- Pi's private method is untyped; every returned value is validated before use.
+type UntrustedGetTreeList = (this: TreeSelectorInstance) => unknown;
+
+type TreeSelectorPrototype = {
+    addChild?: TreeHeaderPatchTarget["addChild"];
+    getTreeList: UntrustedGetTreeList;
 };
 
 type PatchTreeSelectorOptions = {
@@ -69,46 +91,102 @@ function defaultTreePatchSettings(): TreePatchSettings {
     };
 }
 
-function isObject(value: unknown): value is object {
+function isObjectIdentity(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if (!isObject(value)) return undefined;
-    return Reflect.get(value, key) as unknown;
+function getPropertyDescriptor<Value extends object>(
+    value: Value,
+    key: PropertyKey,
+): PropertyDescriptor | undefined {
+    let owner: object | null = value;
+    while (owner !== null) {
+        const descriptor = Object.getOwnPropertyDescriptor(owner, key);
+        if (descriptor !== undefined) return descriptor;
+        const parent: unknown = Object.getPrototypeOf(owner);
+        if (!isObjectIdentity(parent)) return undefined;
+        owner = parent;
+    }
+    return undefined;
 }
 
-function isTreeListInstance(value: unknown): value is TreeListInstance {
+type CallableProperty<Key extends PropertyKey> = {
+    [Property in Key]: (...args: never[]) => void;
+};
+
+function isCallableProperty<Value extends object, Key extends PropertyKey>(
+    value: Value,
+    key: Key,
+): value is Value & CallableProperty<Key> {
+    return typeof getPropertyDescriptor(value, key)?.value === "function";
+}
+
+function isGetTreeList(value: unknown): value is UntrustedGetTreeList {
+    return typeof value === "function";
+}
+
+function isTreeTheme(value: unknown): value is TreeTheme {
+    if (!isObjectIdentity(value)) return false;
+    // SAFETY: Pi's theme is a Proxy whose methods are intentionally absent from `in` and
+    // own-property checks. Reading only these three unknown properties is the observable seam.
+    const theme = value as TreeThemeProbe;
     return (
-        isObject(value) &&
-        typeof getUnknownProperty(value, "handleInput") === "function" &&
-        typeof getUnknownProperty(value, "getStatusLabels") === "function"
+        typeof theme.fg === "function" &&
+        typeof theme.bg === "function" &&
+        typeof theme.bold === "function"
     );
 }
 
+function isTreeSelectorPrototype(value: unknown): value is TreeSelectorPrototype {
+    if (!isObjectIdentity(value)) return false;
+    return isGetTreeList(getPropertyDescriptor(value, "getTreeList")?.value);
+}
+
+function isTreeHeaderPatchTarget(
+    value: TreeSelectorPrototype,
+): value is TreeSelectorPrototype & TreeHeaderPatchTarget {
+    return isCallableProperty(value, "addChild");
+}
+
 function isTreeListPrototype(value: unknown): value is TreeListPrototype {
-    if (!isObject(value)) return false;
-    const getEntryDisplayText = getUnknownProperty(value, "getEntryDisplayText");
-    const render = getUnknownProperty(value, "render");
+    if (!isObjectIdentity(value)) return false;
+    const getEntryDisplayText = getPropertyDescriptor(value, "getEntryDisplayText");
+    const render = getPropertyDescriptor(value, "render");
     return (
-        typeof getUnknownProperty(value, "handleInput") === "function" &&
-        typeof getUnknownProperty(value, "getStatusLabels") === "function" &&
-        (getEntryDisplayText === undefined || typeof getEntryDisplayText === "function") &&
-        (render === undefined || typeof render === "function")
+        isCallableProperty(value, "handleInput") &&
+        isCallableProperty(value, "getStatusLabels") &&
+        (getEntryDisplayText === undefined || isCallableProperty(value, "getEntryDisplayText")) &&
+        (render === undefined || isCallableProperty(value, "render"))
+    );
+}
+
+function isTreePatchState(value: unknown): value is TreePatchState {
+    if (!isObjectIdentity(value)) return false;
+    return (
+        isCallableProperty(value, "getConfiguredThemeName") &&
+        isCallableProperty(value, "getPersistedMode") &&
+        isCallableProperty(value, "getPersistedPreviewEnabled") &&
+        isCallableProperty(value, "getPersistedMaxVisibleLines") &&
+        isCallableProperty(value, "getPersistedPreviewFullHeight") &&
+        isCallableProperty(value, "persistMode") &&
+        isCallableProperty(value, "persistPreviewEnabled")
     );
 }
 
 function setTreePatchState(settings: TreePatchSettings): TreePatchState {
-    const existing: unknown = Reflect.get(globalThis, TREE_PATCH_STATE) as unknown;
-    if (typeof existing === "object" && existing !== null) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, TREE_PATCH_STATE);
+    if (descriptor !== undefined && isTreePatchState(descriptor.value)) {
+        const existing = descriptor.value;
         Object.assign(existing, settings);
-        // SAFETY: The private global-symbol slot is written only by this function with
-        // the complete settings shape; TypeScript cannot represent that symbol invariant.
-        return existing as TreePatchState;
+        return existing;
     }
 
     const patchState: TreePatchState = { ...settings };
-    Reflect.set(globalThis, TREE_PATCH_STATE, patchState);
+    Object.defineProperty(globalThis, TREE_PATCH_STATE, {
+        configurable: true,
+        value: patchState,
+        writable: true,
+    });
     return patchState;
 }
 
@@ -127,7 +205,7 @@ function getTreeTimestampModeFromState(
     treeList: TreeListInstance,
     patchState: TreePatchState,
 ): TreeTimestampMode {
-    const current: unknown = Reflect.get(treeList, TREE_TIMESTAMP_MODE_KEY) as unknown;
+    const current = treeList[TREE_TIMESTAMP_MODE_KEY];
 
     if (isTreeTimestampMode(current)) {
         treeList.showLabelTimestamps = false;
@@ -143,9 +221,8 @@ function getTreePreviewEnabledFromState(
     treeList: TreeListInstance,
     patchState: TreePatchState,
 ): boolean {
-    const current: unknown = Reflect.get(treeList, TREE_PREVIEW_ENABLED_KEY) as unknown;
-
-    if (typeof current === "boolean") {
+    const current = treeList[TREE_PREVIEW_ENABLED_KEY];
+    if (current !== undefined) {
         return current;
     }
 
@@ -165,8 +242,9 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
     const [{ TreeSelectorComponent }, { initTheme, theme }] = internals;
 
     initTheme(patchState.getConfiguredThemeName(), false);
+    if (!isTreeTheme(theme)) return;
 
-    if (Reflect.get(globalThis, PATCH_KEY) === true) return;
+    if (Object.getOwnPropertyDescriptor(globalThis, PATCH_KEY)?.value === true) return;
 
     const selector = new TreeSelectorComponent(
         [],
@@ -178,31 +256,35 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
         undefined,
         undefined,
     );
-    const selectorPrototype: unknown = Object.getPrototypeOf(selector);
-    if (!isObject(selectorPrototype)) return;
+    const selectorPrototypeValue: unknown = Object.getPrototypeOf(selector);
+    if (!isTreeSelectorPrototype(selectorPrototypeValue)) return;
+    const selectorPrototype = selectorPrototypeValue;
+    const originalGetTreeListDescriptor = getPropertyDescriptor(selectorPrototype, "getTreeList");
+    if (
+        originalGetTreeListDescriptor === undefined ||
+        !isGetTreeList(originalGetTreeListDescriptor.value)
+    ) {
+        return;
+    }
+    const originalGetTreeList = originalGetTreeListDescriptor.value;
 
-    const originalGetTreeList = getUnknownProperty(selectorPrototype, "getTreeList");
-    if (typeof originalGetTreeList !== "function") return;
-    const treeListValue: unknown = Reflect.apply(originalGetTreeList, selector, []);
-    if (!isTreeListInstance(treeListValue)) return;
-    const treeList = treeListValue;
-    const treeListPrototypeValue: unknown = Object.getPrototypeOf(treeList);
+    const treeListValue = originalGetTreeList.call(selector);
+    if (!isObjectIdentity(treeListValue)) return;
+    const treeListPrototypeValue: unknown = Object.getPrototypeOf(treeListValue);
     if (!isTreeListPrototype(treeListPrototypeValue)) return;
     const treeListPrototype = treeListPrototypeValue;
 
-    const addChild = getUnknownProperty(selectorPrototype, "addChild");
-    if (typeof addChild === "function") {
-        // SAFETY: The dynamic selector prototype adapter verifies the addChild method
-        // required by the header patch before passing the smallest patch target onward.
-        patchHeaderText(selectorPrototype as TreeHeaderPatchTarget);
+    if (isTreeHeaderPatchTarget(selectorPrototype)) {
+        patchHeaderText(selectorPrototype);
     }
-    Reflect.set(selectorPrototype, "getTreeList", function patchedGetTreeList(this: unknown) {
-        const treeListInstance: unknown = Reflect.apply(originalGetTreeList, this, []);
-        if (isTreeListInstance(treeListInstance)) {
-            applyConfiguredMaxVisibleLinesFromState(treeListInstance, patchState);
+    selectorPrototype.getTreeList = function patchedGetTreeList(this: TreeSelectorInstance) {
+        const treeListInstance = originalGetTreeList.call(this);
+        const configured = patchState.getPersistedMaxVisibleLines();
+        if (configured !== null && isObjectIdentity(treeListInstance)) {
+            Object.assign(treeListInstance, { maxVisibleLines: configured });
         }
         return treeListInstance;
-    });
+    };
 
     const originalHandleInput = treeListPrototype.handleInput;
     const originalGetStatusLabels = treeListPrototype.getStatusLabels;
@@ -257,11 +339,11 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
             }
         }
 
-        const timeLabelByMode: Record<TreeTimestampMode, string> = {
+        const timeLabelByMode = {
             off: "Off",
             relative: "Relative",
             absolute: "Absolute",
-        };
+        } satisfies Record<TreeTimestampMode, string>;
         let previewLabel = "Off";
         if (getTreePreviewEnabledFromState(this, patchState)) {
             previewLabel = "On";

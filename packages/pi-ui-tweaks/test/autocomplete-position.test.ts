@@ -1,16 +1,40 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
+type SelectedItemForTest = object;
+
 type AutocompletePositionPatchTarget = {
     render(width: number): string[];
     autocompleteState?: unknown;
-    autocompleteList?: { getSelectedItem?(): unknown; render(width: number): string[] };
+    autocompleteList?: { getSelectedItem?(): SelectedItemForTest; render(width: number): string[] };
     autocompletePrefix?: string;
     autocompleteProvider?: unknown;
     handleInput?(data: string): void;
     paddingX?: number;
     tui?: { requestRender(force?: boolean): void };
 };
+type ImportedAutocompletePositionModule = {
+    installAutocompletePositionPatch(
+        config: {
+            readonly autocompleteAboveInput: boolean;
+            readonly restoreContentAfterAutocompleteClose: boolean;
+        },
+        target?: AutocompletePositionPatchTarget,
+    ): object;
+};
+
+type ImportedAutocompletePositionModuleView = {
+    readonly installAutocompletePositionPatch?: unknown;
+};
+
+function isImportedAutocompletePositionModule(
+    value: unknown,
+): value is ImportedAutocompletePositionModule {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
+    // SAFETY: The module view exposes only the installer export validated by this predicate.
+    const view = value as ImportedAutocompletePositionModuleView;
+    return typeof view.installAutocompletePositionPatch === "function";
+}
 
 type AutocompletePositionModule = {
     installAutocompletePositionPatch(prototype?: AutocompletePositionPatchTarget): void;
@@ -18,26 +42,22 @@ type AutocompletePositionModule = {
     updateRestoreContentAfterAutocompleteClose(enabled: boolean): void;
 };
 
-function getExportedFunction(value: unknown, name: string): (...args: unknown[]) => unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        throw new Error(`Expected ${name} export`);
-    }
-    const method: unknown = Reflect.get(value, name) as unknown;
-    if (typeof method !== "function") throw new Error(`Expected ${name} export`);
-    return (...args) => Reflect.apply(method, value, args) as unknown;
-}
-
 async function importAutocompletePositionModule(
     instance: string,
 ): Promise<AutocompletePositionModule> {
     const moduleUrl = new URL(`../src/autocomplete-position.ts?${instance}`, import.meta.url);
     const module: unknown = await import(/* @vite-ignore */ moduleUrl.href);
-    const install = getExportedFunction(module, "installAutocompletePositionPatch");
+    if (!isImportedAutocompletePositionModule(module)) {
+        throw new Error("Expected installAutocompletePositionPatch export");
+    }
     let autocompleteAboveInput = true;
     let restoreContentAfterAutocompleteClose = true;
     let prototype: AutocompletePositionPatchTarget | undefined;
     const apply = (): void => {
-        install({ autocompleteAboveInput, restoreContentAfterAutocompleteClose }, prototype);
+        module.installAutocompletePositionPatch(
+            { autocompleteAboveInput, restoreContentAfterAutocompleteClose },
+            prototype,
+        );
     };
     return {
         installAutocompletePositionPatch(nextPrototype): void {

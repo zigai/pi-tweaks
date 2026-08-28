@@ -24,9 +24,11 @@ function blankSpacerLine(width: number): string {
 }
 
 type AutocompleteListLike = {
-    getSelectedItem?(): unknown;
+    getSelectedItem?(): AutocompleteSelectedItem;
     render(width: number): string[];
 };
+
+type AutocompleteSelectedItem = object;
 
 type AutocompletePositionPatchTarget = {
     render(width: number): string[];
@@ -41,6 +43,14 @@ type AutocompletePositionPatchTarget = {
     [AUTOCOMPLETE_RENDERED_ABOVE]?: true;
     [AUTOCOMPLETE_RESTORE_RENDER_PENDING]?: true;
     [AUTOCOMPLETE_SKIP_RESTORE_ON_CLOSE]?: true;
+};
+
+type PrototypeRenderView = {
+    readonly render?: AutocompletePositionPatchTarget["render"];
+};
+
+type PrototypeHandleInputView = {
+    readonly handleInput?: AutocompletePositionPatchTarget["handleInput"];
 };
 
 type AutocompleteHandleInputTarget = {
@@ -81,14 +91,14 @@ function requestDeferredForceRender(target: AutocompletePositionPatchTarget): vo
     });
 }
 
-function getSelectedAutocompleteItem(target: AutocompletePositionPatchTarget): unknown {
+function getSelectedAutocompleteItem(
+    target: AutocompletePositionPatchTarget,
+): AutocompleteSelectedItem | undefined {
     const autocompleteList = target.autocompleteList;
     if (autocompleteList === undefined) return undefined;
 
-    const getSelectedItem: unknown = Reflect.get(autocompleteList, "getSelectedItem");
-    if (typeof getSelectedItem !== "function") return undefined;
-
-    const selectedItem: unknown = Reflect.apply(getSelectedItem, autocompleteList, []);
+    if (typeof autocompleteList.getSelectedItem !== "function") return undefined;
+    const selectedItem = autocompleteList.getSelectedItem();
     if (selectedItem === undefined || selectedItem === null) return undefined;
     return selectedItem;
 }
@@ -134,24 +144,20 @@ type AutocompletePositionPatchRecord = {
  */
 export function installAutocompletePositionPatch(
     config: AutocompletePositionConfig,
-    target: unknown = Editor.prototype,
+    target: (PrototypeRenderView & PrototypeHandleInputView) | null = Editor.prototype,
 ): AutocompletePositionHandle {
-    const prototypeValue: unknown = target;
-    if (
-        (typeof prototypeValue !== "object" && typeof prototypeValue !== "function") ||
-        prototypeValue === null
-    ) {
+    if (target === null) {
         warnAutocompletePositionPatchUnavailable();
         return { update(): void {}, dispose(): void {} };
     }
-    const originalRenderValue: unknown = Reflect.get(prototypeValue, "render") as unknown;
+    const originalRenderValue = target.render;
     if (typeof originalRenderValue !== "function") {
         warnAutocompletePositionPatchUnavailable("missing render");
         return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The guarded pi-tui Editor adapter verifies the private render seam
-    // before exposing the smallest autocomplete-position patch target.
-    const prototype = prototypeValue as AutocompletePositionPatchTarget;
+    // SAFETY: The callable check above proves the required render method. Remaining
+    // fields are optional private Editor state read only after absence checks.
+    const prototype = target as AutocompletePositionPatchTarget;
     const installed = prototype[AUTOCOMPLETE_POSITION_PATCHED];
     if (installed !== undefined) {
         installed.handle.update(config);
@@ -161,8 +167,8 @@ export function installAutocompletePositionPatch(
     let inputPatch:
         | LinkedMethodPatchHandle<AutocompletePositionPatchTarget, [string], void>
         | undefined;
-    const originalHandleInputValue: unknown = Reflect.get(prototype, "handleInput");
-    if (typeof originalHandleInputValue === "function") {
+    if (typeof prototype.handleInput === "function") {
+        // SAFETY: The callable check proves the optional handleInput method before patching it.
         const inputTarget = prototype as AutocompleteHandleInputTarget;
         inputPatch = installLinkedMethodPatch(
             inputTarget,

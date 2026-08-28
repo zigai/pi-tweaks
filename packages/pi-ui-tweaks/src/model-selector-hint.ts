@@ -30,6 +30,26 @@ type ModelSelectorHintPatchRecord = {
     readonly handle: ModelSelectorHintHandle;
 };
 
+type LinesView = {
+    readonly lines?: unknown;
+};
+
+type ConstructorView = {
+    readonly constructor?: unknown;
+};
+
+type ConstructorNameView = {
+    readonly name?: unknown;
+};
+
+type TextView = {
+    readonly text?: unknown;
+};
+
+type AddChildView = {
+    readonly addChild?: AddChild;
+};
+
 function warnModelSelectorHintPatchUnavailable(reason?: string): void {
     let suffix = "";
     if (reason !== undefined) suffix = `: ${reason}`;
@@ -40,34 +60,40 @@ function warnModelSelectorHintPatchUnavailable(reason?: string): void {
 function isObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
 }
-function getUnknownProperty(value: object, key: PropertyKey): unknown {
-    return Reflect.get(value, key);
-}
 function isSingleLineSpacer(component: ComponentLike): boolean {
-    if (getUnknownProperty(component, "lines") !== 1) return false;
-    const constructorValue = getUnknownProperty(component, "constructor");
-    return isObject(constructorValue) && getUnknownProperty(constructorValue, "name") === "Spacer";
+    // SAFETY: LinesView exposes only the private line-count field compared below.
+    const view = component as LinesView;
+    if (view.lines !== 1) return false;
+    // SAFETY: ConstructorView exposes only the constructor reference validated below.
+    const constructorValue = (component as ConstructorView).constructor;
+    if (!isObject(constructorValue)) return false;
+    // SAFETY: ConstructorNameView exposes only the name field compared below.
+    const name = (constructorValue as ConstructorNameView).name;
+    return name === "Spacer";
 }
-function isModelProviderHintText(component: ComponentLike): boolean {
-    const text = getUnknownProperty(component, "text");
+function isModelProviderHintText(
+    component: ComponentLike,
+): component is ComponentLike & { readonly text: string } {
+    // SAFETY: TextView exposes only the private text field validated before refinement.
+    const text = (component as TextView).text;
     return typeof text === "string" && text.includes(MODEL_PROVIDER_HINT_TEXT);
 }
 
 /** Installs or updates the model-selector hint patch. */
 export function installModelSelectorHintPatch(
     config: ModelSelectorHintConfig,
-    target: unknown = ModelSelectorComponent.prototype,
+    target: AddChildView | null = ModelSelectorComponent.prototype,
 ): ModelSelectorHintHandle {
-    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
+    if (target === null) {
         warnModelSelectorHintPatchUnavailable();
         return { update(): void {}, dispose(): void {} };
     }
-    const addChild: unknown = Reflect.get(target, "addChild");
+    const addChild = target.addChild;
     if (typeof addChild !== "function") {
         warnModelSelectorHintPatchUnavailable("missing addChild");
         return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The runtime guard proves the inherited Container.addChild seam is callable.
+    // SAFETY: The callable check proves the inherited Container.addChild method.
     const prototype = target as ModelSelectorAddChildTarget;
     const installed = prototype[MODEL_SELECTOR_HINT_PATCH];
     if (installed !== undefined) {

@@ -27,7 +27,7 @@ function component(text: string): TestComponent {
 
 test("tree header patch is selector-scoped and reversible", () => {
     restoreTreeHeaderText();
-    const originalTextRender = Reflect.get(Text.prototype, "render");
+    const originalTextRender = Object.getOwnPropertyDescriptor(Text.prototype, "render");
     const added: unknown[] = [];
     const prototype: TreeHeaderPatchTarget = {
         addChild(child): void {
@@ -46,7 +46,10 @@ test("tree header patch is selector-scoped and reversible", () => {
 
         assert.deepEqual(added, [legacyHelp, ordinary]);
         assert.equal(legacyHelp.text?.includes("shift+p: preview"), true);
-        assert.equal(Reflect.get(Text.prototype, "render"), originalTextRender);
+        assert.deepEqual(
+            Object.getOwnPropertyDescriptor(Text.prototype, "render"),
+            originalTextRender,
+        );
 
         restoreTreeHeaderText();
         prototype.addChild(title);

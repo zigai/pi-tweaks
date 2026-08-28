@@ -13,6 +13,21 @@ type InputRenderTarget = {
     [INPUT_PROMPT_PATCH_KEY]?: InputPromptPrefixPatchRecord;
     render(width: number): string[];
 };
+type InputRenderState = {
+    value: string;
+    cursor: number;
+    focused: boolean;
+};
+
+type InputStateView = {
+    readonly value?: unknown;
+    readonly cursor?: unknown;
+    readonly focused?: unknown;
+};
+
+type InputRenderView = {
+    readonly render?: InputRenderTarget["render"];
+};
 
 function normalizeInputPromptPrefix(prefix: string): string {
     if (prefix.length === 0) {
@@ -22,30 +37,6 @@ function normalizeInputPromptPrefix(prefix: string): string {
         return prefix;
     }
     return `${prefix} `;
-}
-
-function readInputString(target: InputRenderTarget, key: string): string | undefined {
-    const value: unknown = Reflect.get(target, key) as unknown;
-    if (typeof value === "string") {
-        return value;
-    }
-    return undefined;
-}
-
-function readInputNumber(target: InputRenderTarget, key: string): number | undefined {
-    const value: unknown = Reflect.get(target, key) as unknown;
-    if (typeof value === "number" && Number.isFinite(value)) {
-        return value;
-    }
-    return undefined;
-}
-
-function readInputBoolean(target: InputRenderTarget, key: string): boolean | undefined {
-    const value: unknown = Reflect.get(target, key) as unknown;
-    if (typeof value === "boolean") {
-        return value;
-    }
-    return undefined;
 }
 
 function warnInputPromptPrefixPatchUnavailable(reason?: string): void {
@@ -62,7 +53,21 @@ function isInputRenderTarget(value: unknown): value is InputRenderTarget {
     if (typeof value !== "object" || value === null) {
         return false;
     }
-    return typeof Reflect.get(value, "render") === "function";
+    // SAFETY: InputRenderView exposes only the render method validated below.
+    const view = value as InputRenderView;
+    return typeof view.render === "function";
+}
+function hasInputRenderState(
+    target: InputRenderTarget,
+): target is InputRenderTarget & InputRenderState {
+    // SAFETY: InputStateView exposes only the three private scalar fields validated below.
+    const view = target as InputStateView;
+    return (
+        typeof view.value === "string" &&
+        typeof view.cursor === "number" &&
+        Number.isFinite(view.cursor) &&
+        typeof view.focused === "boolean"
+    );
 }
 
 export type InputPromptPrefixConfig = { readonly inputPromptPrefix: string };
@@ -79,7 +84,7 @@ type InputPromptPrefixPatchRecord = {
 /** Installs or updates the single-line input prompt patch. */
 export function installInputPromptPrefixPatch(
     config: InputPromptPrefixConfig,
-    target: unknown = Input.prototype,
+    target: InputRenderView = Input.prototype,
 ): InputPromptPrefixHandle {
     if (!isInputRenderTarget(target)) {
         warnInputPromptPrefixPatchUnavailable();
@@ -95,12 +100,8 @@ export function installInputPromptPrefixPatch(
         target,
         (predecessor) =>
             function inputPromptPrefixRender(this: InputRenderTarget, width: number): string[] {
-                const value = readInputString(this, "value");
-                const cursor = readInputNumber(this, "cursor");
-                const focused = readInputBoolean(this, "focused");
-                if (value === undefined || cursor === undefined || focused === undefined) {
-                    return predecessor.call(this, width);
-                }
+                if (!hasInputRenderState(this)) return predecessor.call(this, width);
+                const { value, cursor, focused } = this;
 
                 const prompt = current.inputPromptPrefix;
                 const promptWidth = visibleWidth(prompt);

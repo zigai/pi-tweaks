@@ -13,32 +13,44 @@ function normalizePreviewText(value: string): string {
         .trim();
 }
 
-function isTextContentBlock(value: unknown): value is { type: "text"; text: string } {
-    if (typeof value !== "object" || value === null) return false;
-    const type: unknown = Object.getOwnPropertyDescriptor(value, "type")?.value as unknown;
-    const text: unknown = Object.getOwnPropertyDescriptor(value, "text")?.value as unknown;
-    return type === "text" && typeof text === "string";
+type TextContentBlock = {
+    readonly type: "text";
+    readonly text: string;
+};
+
+type PreviewContent =
+    | { readonly kind: "text"; readonly text: string }
+    | { readonly kind: "blocks"; readonly blocks: readonly TextContentBlock[] }
+    | { readonly kind: "empty" };
+function isString(value: unknown): value is string {
+    return typeof value === "string";
 }
 
-function extractTextContent(content: unknown, maxLength: number): string {
-    if (typeof content === "string") {
-        return content.slice(0, maxLength);
-    }
+function isTextContentBlock(value: unknown): value is TextContentBlock {
+    if (typeof value !== "object" || value === null) return false;
+    return (
+        Object.getOwnPropertyDescriptor(value, "type")?.value === "text" &&
+        isString(Object.getOwnPropertyDescriptor(value, "text")?.value)
+    );
+}
 
-    if (!Array.isArray(content)) {
-        return "";
-    }
+const previewContentParser = {
+    parse(content: unknown): PreviewContent {
+        if (isString(content)) return { kind: "text", text: content };
+        if (!Array.isArray(content)) return { kind: "empty" };
+        return { kind: "blocks", blocks: content.filter(isTextContentBlock) };
+    },
+};
+
+function extractTextContent(content: PreviewContent, maxLength: number): string {
+    if (content.kind === "text") return content.text.slice(0, maxLength);
+    if (content.kind === "empty") return "";
 
     let result = "";
-    for (const block of content) {
-        if (isTextContentBlock(block)) {
-            result += block.text;
-            if (result.length >= maxLength) {
-                return result.slice(0, maxLength);
-            }
-        }
+    for (const block of content.blocks) {
+        result += block.text;
+        if (result.length >= maxLength) return result.slice(0, maxLength);
     }
-
     return result;
 }
 
@@ -55,7 +67,9 @@ export function getPreviewText(node: TreeNode | undefined): string {
     switch (entry.type) {
         case "message": {
             const message = entry.message;
-            const textContent = normalizePreviewText(extractTextContent(message?.content, 4000));
+            const textContent = normalizePreviewText(
+                extractTextContent(previewContentParser.parse(message?.content), 4000),
+            );
             if (textContent.length > 0) {
                 return textContent;
             }
@@ -74,7 +88,9 @@ export function getPreviewText(node: TreeNode | undefined): string {
             return "(no content)";
         }
         case "custom_message":
-            return normalizePreviewText(extractTextContent(entry.content, 4000));
+            return normalizePreviewText(
+                extractTextContent(previewContentParser.parse(entry.content), 4000),
+            );
         case "branch_summary":
             return normalizePreviewText(entry.summary ?? "");
         case "compaction":

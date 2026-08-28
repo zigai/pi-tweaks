@@ -6,14 +6,19 @@ import {
     type BashExecSpacingEditor,
 } from "../src/bash-exec-spacing.ts";
 
+type CursorPosition = {
+    readonly line: number;
+    readonly col: number;
+};
+
 class TestEditor implements BashExecSpacingEditor {
     text: string;
     renderRequests = 0;
     constructor(text = "") {
         this.text = text;
     }
-    getCursor(): { line: number; col: number } {
-        return { line: 0, col: this.text.length };
+    getCursor(): CursorPosition {
+        return { line: 0, col: this.text.length } satisfies CursorPosition;
     }
     getText(): string {
         return this.text;

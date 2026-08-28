@@ -20,10 +20,11 @@ class Spacer implements Component {
     invalidate(): void {}
 }
 function selector() {
+    const addedComponents = new Array<Component>();
     return {
-        addedComponents: [] as Component[],
-        addChild(component: Component): void {
-            this.addedComponents.push(component);
+        addedComponents,
+        addChild: (component: Component): void => {
+            addedComponents.push(component);
         },
     };
 }
@@ -49,13 +50,13 @@ test("compact model selector independently removes spacer rows and updates idemp
         { compactModelSelector: true, hideModelProviderHint: false },
         target,
     );
-    const patched = Reflect.get(target, "addChild");
+    const patched = target.addChild;
     const same = installModelSelectorHintPatch(
         { compactModelSelector: false, hideModelProviderHint: false },
         target,
     );
     assert.equal(same, handle);
-    assert.equal(Reflect.get(target, "addChild"), patched);
+    assert.equal(target.addChild, patched);
     const spacer = new Spacer();
     target.addChild(spacer);
     assert.deepEqual(target.addedComponents, [spacer]);

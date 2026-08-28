@@ -88,22 +88,20 @@ function stripTerminalLineReset(line: string): string {
     return line.replaceAll("\u001b[0m\u001b]8;;\u0007", "");
 }
 
+function isString(value: unknown): value is string {
+    return typeof value === "string";
+}
+
+function isScreenLines(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every(isString);
+}
+
 function getFullscreenScreen(tui: TuiAltScreen): string[] {
-    const previousScreen: unknown = Reflect.get(tui, "previousScreen") as unknown;
-    if (
-        !Array.isArray(previousScreen) ||
-        !previousScreen.every((line) => typeof line === "string")
-    ) {
+    const previousScreen: unknown = Object.getOwnPropertyDescriptor(tui, "previousScreen")?.value;
+    if (!isScreenLines(previousScreen)) {
         throw new Error("Expected fullscreen TUI render internals.");
     }
-    const screen: string[] = [];
-    for (const line of previousScreen) {
-        if (typeof line !== "string") throw new Error("Expected fullscreen screen line.");
-        screen.push(line);
-    }
-    // SAFETY: This integration-test adapter checks the private fullscreen buffer
-    // used to observe the renderer's actual screen output.
-    return screen;
+    return previousScreen;
 }
 
 function createFullscreenLayout(editor: Component): VStack {

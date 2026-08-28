@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
+import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
 import { installModelStatusPatch } from "../src/model-status.ts";
 
 function statusMode() {
-    const renderRequests: Array<boolean | undefined> = [];
+    const renderRequests = new Array<boolean | undefined>();
+    const statuses = new Array<string>();
     return {
         renderRequests,
-        statuses: [] as string[],
-        showStatus(message: string): void {
-            this.statuses.push(message);
+        statuses,
+        showStatus: (message: string): void => {
+            statuses.push(message);
         },
         ui: {
             requestRender(force?: boolean): void {
@@ -19,12 +21,23 @@ function statusMode() {
     };
 }
 
+test("explicit null does not patch Pi's default model status", () => {
+    const original = Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus");
+    const handle = installModelStatusPatch({ hideModelChangeStatus: true }, null);
+
+    assert.deepEqual(
+        Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus"),
+        original,
+    );
+    handle.dispose();
+});
+
 test("model-change status suppression updates without stacking", () => {
     const target = statusMode();
     const handle = installModelStatusPatch({ hideModelChangeStatus: true }, target);
-    const patched = Reflect.get(target, "showStatus");
+    const patched = target.showStatus;
     installModelStatusPatch({ hideModelChangeStatus: false }, target);
-    assert.equal(Reflect.get(target, "showStatus"), patched);
+    assert.equal(target.showStatus, patched);
     target.showStatus("Model: deepseek-v4-flash");
     assert.deepEqual(target.statuses, ["Model: deepseek-v4-flash"]);
 

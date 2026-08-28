@@ -1,4 +1,9 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+    ExtensionAPI,
+    ExtensionContext,
+    SessionShutdownEvent,
+    SessionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 
 import { installAutocompletePositionPatch } from "./autocomplete-position.ts";
 import { installAutocompleteScrollInfoPatch } from "./autocomplete-scroll-info.ts";
@@ -28,8 +33,32 @@ type UiTweaksHandle = {
     dispose(): void;
 };
 let handles: UiTweaksHandle[] = [];
+export type UiTweaksLifecycleContext = Pick<
+    ExtensionContext,
+    "cwd" | "hasUI" | "isProjectTrusted"
+> & {
+    readonly ui: Pick<
+        ExtensionContext["ui"],
+        "getEditorComponent" | "notify" | "setEditorComponent"
+    >;
+};
+export type UiTweaksLifecycleEvent = SessionStartEvent | SessionShutdownEvent;
+export type UiTweaksExtensionApi = {
+    onSessionStart(
+        handler: (
+            event: UiTweaksLifecycleEvent,
+            ctx: UiTweaksLifecycleContext,
+        ) => void | Promise<void>,
+    ): void;
+    onSessionShutdown(
+        handler: (
+            event: UiTweaksLifecycleEvent,
+            ctx: UiTweaksLifecycleContext,
+        ) => void | Promise<void>,
+    ): void;
+};
 
-function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedUiTweaksConfig): void {
+function reportConfigErrors(ctx: UiTweaksLifecycleContext, loaded: LoadedUiTweaksConfig): void {
     for (const error of loaded.errors) {
         if (reportedConfigErrors.has(error)) continue;
         reportedConfigErrors.add(error);
@@ -38,7 +67,7 @@ function reportConfigErrors(ctx: ExtensionContext, loaded: LoadedUiTweaksConfig)
 }
 
 async function installUiTweaks(
-    ctx: ExtensionContext,
+    ctx: UiTweaksLifecycleContext,
     config: UiTweaksConfig,
 ): Promise<UiTweaksHandle[]> {
     const autocompletePosition = installAutocompletePositionPatch(config);
@@ -84,9 +113,8 @@ async function installUiTweaks(
     ];
 }
 
-/** Installs small configurable Pi UI tweaks. */
-export default function uiTweaksExtension(pi: ExtensionAPI): void {
-    pi.on("session_start", async (_event, ctx) => {
+export function registerUiTweaksLifecycle(pi: UiTweaksExtensionApi): void {
+    pi.onSessionStart(async (_event, ctx) => {
         const loaded = loadUiTweaksSettings(ctx.cwd, ctx.isProjectTrusted());
         reportConfigErrors(ctx, loaded);
         if (handles.length === 0) {
@@ -95,8 +123,20 @@ export default function uiTweaksExtension(pi: ExtensionAPI): void {
         }
         for (const handle of handles) handle.update(loaded.config);
     });
-    pi.on("session_shutdown", () => {
+    pi.onSessionShutdown(() => {
         for (let index = handles.length - 1; index >= 0; index -= 1) handles[index]?.dispose();
         handles = [];
+    });
+}
+
+/** Installs small configurable Pi UI tweaks. */
+export default function uiTweaksExtension(pi: ExtensionAPI): void {
+    registerUiTweaksLifecycle({
+        onSessionStart(handler): void {
+            pi.on("session_start", handler);
+        },
+        onSessionShutdown(handler): void {
+            pi.on("session_shutdown", handler);
+        },
     });
 }

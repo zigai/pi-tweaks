@@ -1,4 +1,4 @@
-import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { InteractiveMode, type SourceInfo } from "@earendil-works/pi-coding-agent";
 import {
     installLinkedMethodPatch,
     type LinkedMethodPatchHandle,
@@ -15,7 +15,7 @@ export type SlashCommandSourceHandle = {
 type PrefixAutocompleteDescription = (
     this: SlashCommandSourcePatchTarget,
     description: string | undefined,
-    sourceInfo: unknown,
+    sourceInfo: SourceInfo,
 ) => string | undefined;
 type SlashCommandSourcePatchTarget = {
     prefixAutocompleteDescription: PrefixAutocompleteDescription;
@@ -25,11 +25,23 @@ type SlashCommandSourcePatchRecord = {
     readonly original: PrefixAutocompleteDescription;
     readonly patch: LinkedMethodPatchHandle<
         SlashCommandSourcePatchTarget,
-        [string | undefined, unknown],
+        [string | undefined, SourceInfo],
         string | undefined
     >;
     readonly handle: SlashCommandSourceHandle;
 };
+
+type PrefixView = {
+    readonly prefixAutocompleteDescription?: PrefixAutocompleteDescription;
+};
+function isPrefixView(
+    value: unknown,
+): value is PrefixView & { readonly prefixAutocompleteDescription: PrefixAutocompleteDescription } {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
+    // SAFETY: PrefixView exposes only the method validated by this predicate.
+    const view = value as PrefixView;
+    return typeof view.prefixAutocompleteDescription === "function";
+}
 
 function warnSlashCommandSourcePatchUnavailable(reason?: string): void {
     let suffix = "";
@@ -42,19 +54,18 @@ function warnSlashCommandSourcePatchUnavailable(reason?: string): void {
 /** Installs or updates the slash-command source-tag patch. */
 export function installSlashCommandSourcePatch(
     config: SlashCommandSourceConfig,
-    target: unknown = InteractiveMode.prototype,
+    target?: PrefixView | null,
 ): SlashCommandSourceHandle {
-    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
-        warnSlashCommandSourcePatchUnavailable();
-        return { update(): void {}, dispose(): void {} };
+    let candidate = target;
+    if (candidate === undefined && isPrefixView(InteractiveMode.prototype)) {
+        candidate = InteractiveMode.prototype;
     }
-    const prefix: unknown = Reflect.get(target, "prefixAutocompleteDescription");
-    if (typeof prefix !== "function") {
+    if (!isPrefixView(candidate)) {
         warnSlashCommandSourcePatchUnavailable("missing prefixAutocompleteDescription");
         return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The runtime guard proves the private InteractiveMode method is callable.
-    const prototype = target as SlashCommandSourcePatchTarget;
+    // SAFETY: The callable check proves the private prefixAutocompleteDescription method.
+    const prototype = candidate as SlashCommandSourcePatchTarget;
     const installed = prototype[SLASH_COMMAND_SOURCE_PATCH];
     if (installed !== undefined) {
         installed.handle.update(config);
@@ -68,7 +79,7 @@ export function installSlashCommandSourcePatch(
             function patchedPrefixAutocompleteDescription(
                 this: SlashCommandSourcePatchTarget,
                 description: string | undefined,
-                sourceInfo: unknown,
+                sourceInfo: SourceInfo,
             ): string | undefined {
                 if (current.hideSlashCommandSourceTags) return description;
                 return predecessor.call(this, description, sourceInfo);

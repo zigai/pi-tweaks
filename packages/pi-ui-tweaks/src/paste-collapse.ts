@@ -3,7 +3,7 @@ import {
     type ExtensionContext,
     type KeybindingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { Editor, matchesKey } from "@earendil-works/pi-tui";
+import { Editor, matchesKey, type KeyId } from "@earendil-works/pi-tui";
 import {
     installLinkedMethodPatch,
     registerEditorEnhancer,
@@ -28,7 +28,8 @@ const ESCAPE_CHARACTER = String.fromCharCode(27);
 const CSI_U_CTRL_SEQUENCE_REGEX = new RegExp(`${ESCAPE_CHARACTER}\\[(\\d+);5u`, "g");
 
 function matchesRuntimeKey(data: string, keyId: string): boolean {
-    return Reflect.apply(matchesKey, undefined, [data, keyId]) === true;
+    // SAFETY: keyId originates from validated settings (expand key) or is a literal; pi-tui's KeyId is a string union that accepts these values.
+    return matchesKey(data, keyId as KeyId) === true;
 }
 
 type PasteMarker = {
@@ -94,44 +95,69 @@ export type PasteCollapseEditor = {
 
 type EditorLike = CustomEditor & PasteCollapseEditor;
 
-function asObject(value: unknown): object | undefined {
-    if (typeof value !== "object" || value === null) {
-        return undefined;
-    }
-    return value;
-}
+type PasteCollapsePatchMarkerView = {
+    readonly [PASTE_COLLAPSE_PATCH_MARKER]?: unknown;
+};
 
-function getPasteEditorInternals(editor: unknown): PasteEditorInternals | undefined {
-    const value = asObject(editor);
-    if (value === undefined) {
-        return undefined;
-    }
+type PasteCollapseMarkerHandleView = {
+    readonly handle?: unknown;
+};
 
-    const state: unknown = Reflect.get(value, "state");
-    const stateValue = asObject(state);
-    let lines: unknown;
-    let cursorLine: unknown;
-    let cursorCol: unknown;
-    if (stateValue !== undefined) {
-        lines = Reflect.get(stateValue, "lines");
-        cursorLine = Reflect.get(stateValue, "cursorLine");
-        cursorCol = Reflect.get(stateValue, "cursorCol");
-    }
-    const pastes: unknown = Reflect.get(value, "pastes");
+type PasteHandleUpdateView = {
+    readonly update?: unknown;
+};
 
-    if (!Array.isArray(lines)) {
-        return undefined;
-    }
-    if (!lines.every((line) => typeof line === "string")) {
-        return undefined;
-    }
-    if (typeof cursorLine !== "number" || typeof cursorCol !== "number") {
-        return undefined;
-    }
-    if (!(pastes instanceof Map)) {
-        return undefined;
-    }
+type PasteHandlePasteView = {
+    readonly handlePaste?: unknown;
+};
 
+type PasteEditorRootView = {
+    readonly state?: unknown;
+    readonly pastes?: unknown;
+    readonly cancelAutocomplete?: unknown;
+    readonly exitHistoryBrowsing?: unknown;
+    readonly getText?: unknown;
+    readonly insertTextAtCursorInternal?: unknown;
+    readonly normalizeText?: unknown;
+    readonly pushUndoSnapshot?: unknown;
+    readonly setCursorCol?: unknown;
+};
+
+type PasteEditorStateView = {
+    readonly lines?: unknown;
+    readonly cursorLine?: unknown;
+    readonly cursorCol?: unknown;
+};
+
+type EditorMethodView = {
+    readonly getCursor?: unknown;
+    readonly getText?: unknown;
+    readonly handleInput?: unknown;
+};
+
+type InstalledPastePatch = {
+    readonly handle: PasteCollapseHandle;
+};
+
+function isPasteEditorInternals(editor: unknown): editor is PasteEditorInternals {
+    if (typeof editor !== "object" || editor === null) return false;
+    // SAFETY: The object guard permits reading only the optional private editor members.
+    const value = editor as PasteEditorRootView;
+    const state = value.state;
+    if (typeof state !== "object" || state === null) return false;
+    // SAFETY: The state guard permits reading only the three optional state fields.
+    const stateValue = state as PasteEditorStateView;
+    const lines = stateValue.lines;
+    if (!Array.isArray(lines) || !lines.every((line): line is string => typeof line === "string")) {
+        return false;
+    }
+    if (
+        typeof stateValue.cursorLine !== "number" ||
+        typeof stateValue.cursorCol !== "number" ||
+        !(value.pastes instanceof Map)
+    ) {
+        return false;
+    }
     const requiredMethods = [
         "cancelAutocomplete",
         "exitHistoryBrowsing",
@@ -141,15 +167,29 @@ function getPasteEditorInternals(editor: unknown): PasteEditorInternals | undefi
         "pushUndoSnapshot",
         "setCursorCol",
     ] as const;
-
     for (const method of requiredMethods) {
-        if (typeof Reflect.get(value, method) !== "function") {
-            return undefined;
-        }
+        if (typeof value[method] !== "function") return false;
     }
+    return true;
+}
 
-    // SAFETY: The state, paste store, and private editor methods were verified above.
-    return editor as PasteEditorInternals;
+function isInstalledPastePatch(value: unknown): value is InstalledPastePatch {
+    if (typeof value !== "object" || value === null) return false;
+    // SAFETY: The record guard permits reading only the optional unknown handle.
+    const handle = (value as PasteCollapseMarkerHandleView).handle;
+    if (typeof handle !== "object" || handle === null) return false;
+    // SAFETY: The handle guard permits reading only its two optional unknown methods.
+    const view = handle as PasteHandleUpdateView & { readonly dispose?: unknown };
+    return typeof view.update === "function" && typeof view.dispose === "function";
+}
+
+function hasPasteHandler(value: InstallHost): value is InstallHost & { handlePaste: HandlePaste } {
+    // SAFETY: InstallHost is an object; the view reads only the optional unknown patch target.
+    return typeof (value as PasteHandlePasteView).handlePaste === "function";
+}
+
+function isInstallHost(value: unknown): value is InstallHost {
+    return typeof value === "object" && value !== null;
 }
 
 function decodeTerminalControlSequences(pastedText: string): string {
@@ -300,10 +340,8 @@ function replaceMarkerWithContent(editor: PasteEditorInternals, marker: PasteMar
  * Expands the collapsed paste marker currently under the editor cursor.
  */
 export function expandPasteMarkerAtCursor(editor: PasteCollapseEditor): boolean {
-    const internals = getPasteEditorInternals(editor);
-    if (internals === undefined) {
-        return false;
-    }
+    if (!isPasteEditorInternals(editor)) return false;
+    const internals = editor;
 
     const marker = findPasteMarkerAtCursor(internals);
     if (marker === undefined) {
@@ -317,45 +355,37 @@ export function expandPasteMarkerAtCursor(editor: PasteCollapseEditor): boolean 
     return true;
 }
 
-type HandlePaste = (this: object, pastedText: string) => void;
+type HandlePaste = (this: PasteEditorRootView, pastedText: string) => void;
 type PastePatchRecord = {
     readonly original: HandlePaste;
-    readonly patch: LinkedMethodPatchHandle<object, [string], void>;
+    readonly patch: LinkedMethodPatchHandle<PasteEditorRootView, [string], void>;
     readonly handle: PasteCollapseHandle;
 };
 
+type InstallHost = object & PasteCollapsePatchMarkerView;
+
 function installPasteCollapsePatchOnPrototype(
-    prototype: object,
+    prototype: InstallHost,
     settings: PasteCollapseSettings,
 ): PasteCollapseHandle {
-    const installed: unknown = Reflect.get(prototype, PASTE_COLLAPSE_PATCH_MARKER);
-    if (typeof installed === "object" && installed !== null) {
-        const handle: unknown = Reflect.get(installed, "handle");
-        if (typeof handle === "object" && handle !== null) {
-            const update: unknown = Reflect.get(handle, "update");
-            if (typeof update === "function") {
-                Reflect.apply(update, handle, [settings]);
-                // SAFETY: This module is the sole writer of the marker and stores PasteCollapseHandle.
-                return handle as PasteCollapseHandle;
-            }
-        }
+    const installed = prototype[PASTE_COLLAPSE_PATCH_MARKER];
+    if (isInstalledPastePatch(installed)) {
+        installed.handle.update(settings);
+        return installed.handle;
     }
-    const original: unknown = Reflect.get(prototype, "handlePaste");
-    if (typeof original !== "function") return { update(): void {}, dispose(): void {} };
-    // SAFETY: The runtime guard proves handlePaste is callable with the editor's runtime signature.
-    const target = prototype as object & { handlePaste: HandlePaste };
+    if (!hasPasteHandler(prototype)) return { update(): void {}, dispose(): void {} };
+    const typedTarget = prototype;
     currentPasteCollapseSettings = settings;
     const patch = installLinkedMethodPatch(
-        target,
+        typedTarget,
         "handlePaste",
         (predecessor) =>
-            function handlePasteWithConfig(this: object, pastedText: string): void {
-                const internals = getPasteEditorInternals(this);
-                if (internals === undefined) {
+            function handlePasteWithConfig(this: PasteEditorRootView, pastedText: string): void {
+                if (!isPasteEditorInternals(this)) {
                     predecessor.call(this, pastedText);
                     return;
                 }
-                handlePasteWithUiTweaks(internals, pastedText);
+                handlePasteWithUiTweaks(this, pastedText);
             },
     );
     let disposed = false;
@@ -367,12 +397,8 @@ function installPasteCollapsePatchOnPrototype(
             if (disposed) return;
             disposed = true;
             patch.dispose();
-            const marker: unknown = Reflect.get(prototype, PASTE_COLLAPSE_PATCH_MARKER);
-            if (
-                typeof marker === "object" &&
-                marker !== null &&
-                Reflect.get(marker, "handle") === handle
-            ) {
+            const marker = prototype[PASTE_COLLAPSE_PATCH_MARKER];
+            if (isInstalledPastePatch(marker) && marker.handle === handle) {
                 Reflect.deleteProperty(prototype, PASTE_COLLAPSE_PATCH_MARKER);
             }
         },
@@ -385,14 +411,14 @@ function installPasteCollapsePatchOnPrototype(
 /** Installs or updates paste collapsing on Pi editor prototypes. */
 export function installPasteCollapsePatch(
     settings: PasteCollapseSettings,
-    prototype?: object,
+    prototype?: InstallHost,
 ): PasteCollapseHandle {
     if (prototype !== undefined) {
         return installPasteCollapsePatchOnPrototype(prototype, settings);
     }
     const editor = installPasteCollapsePatchOnPrototype(Editor.prototype, settings);
     const base: unknown = Object.getPrototypeOf(CustomEditor.prototype);
-    if (typeof base !== "object" || base === null || base === Editor.prototype) return editor;
+    if (!isInstallHost(base) || base === Editor.prototype) return editor;
     const custom = installPasteCollapsePatchOnPrototype(base, settings);
     let disposed = false;
     return {
@@ -432,10 +458,13 @@ function shouldTryExpandPasteMarker(data: string, keybindings: KeybindingsManage
 
 function isEditorLike(value: unknown): value is EditorLike {
     if (typeof value !== "object" || value === null) return false;
+    // SAFETY: The object guard permits reading only optional editor methods; the predicate
+    // verifies every method required by EditorLike before exposing that contract.
+    const view = value as EditorMethodView;
     return (
-        typeof Reflect.get(value, "getCursor") === "function" &&
-        typeof Reflect.get(value, "getText") === "function" &&
-        typeof Reflect.get(value, "handleInput") === "function"
+        typeof view.getCursor === "function" &&
+        typeof view.getText === "function" &&
+        typeof view.handleInput === "function"
     );
 }
 
@@ -452,7 +481,7 @@ export function installPasteCollapseEditor(
     ctx: PasteCollapseEditorContext,
     settings: PasteCollapseSettings,
 ): PasteCollapseHandle {
-    const ui = ctx.ui as MarkedPasteUi;
+    const ui: MarkedPasteUi = ctx.ui;
     const installed = ui[PASTE_COLLAPSE_ENHANCER_MARKER];
     if (installed !== undefined) {
         installed.handle.update(settings);

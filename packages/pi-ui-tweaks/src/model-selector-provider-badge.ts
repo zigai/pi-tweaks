@@ -15,8 +15,8 @@ type ModelItemLike = {
 };
 
 type TextLike = {
-    text?: unknown;
-    setText?: (text: string) => void;
+    text: string;
+    setText(text: string): void;
 };
 
 type ContainerLike = {
@@ -35,21 +35,32 @@ type ThemeInstance = {
     fg(color: string, text: string): string;
 };
 
-function getUnknownProperty(value: unknown, key: PropertyKey): unknown {
-    if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-        return undefined;
-    }
-    return Reflect.get(value, key) as unknown;
-}
+type ModelItemView = {
+    readonly id?: unknown;
+    readonly provider?: unknown;
+};
+
+type TextLikeView = {
+    readonly text?: unknown;
+    readonly setText?: unknown;
+};
+
+type ThemeModuleView = {
+    readonly theme?: unknown;
+};
+
+type ThemeFgView = {
+    readonly fg?: unknown;
+};
 
 function isUnknownArray(value: unknown): value is unknown[] {
     return Array.isArray(value);
 }
 
-function warnModelSelectorProviderBadgePatchUnavailable(error?: unknown): void {
+function warnModelSelectorProviderBadgePatchUnavailable(cause?: unknown): void {
     let suffix = "";
-    if (error instanceof Error && error.message.length > 0) {
-        suffix = `: ${error.message}`;
+    if (cause instanceof Error && cause.message.length > 0) {
+        suffix = `: ${cause.message}`;
     }
     console.warn(
         `[pi-ui-tweaks] selected model provider badge patch unavailable; Pi internals may have changed${suffix}`,
@@ -58,24 +69,55 @@ function warnModelSelectorProviderBadgePatchUnavailable(error?: unknown): void {
 
 function isModelItemLike(value: unknown): value is ModelItemLike {
     if (typeof value !== "object" || value === null) return false;
-    return (
-        typeof getUnknownProperty(value, "id") === "string" &&
-        typeof getUnknownProperty(value, "provider") === "string"
-    );
+    // SAFETY: The object guard permits reading only the optional item fields; both are
+    // validated below before the value is exposed as ModelItemLike.
+    const view = value as ModelItemView;
+    return typeof view.id === "string" && typeof view.provider === "string";
 }
 
 function isTextLike(value: unknown): value is TextLike {
     if (typeof value !== "object" || value === null) return false;
-    return (
-        typeof getUnknownProperty(value, "text") === "string" &&
-        typeof getUnknownProperty(value, "setText") === "function"
-    );
+    // SAFETY: The object guard permits reading only the optional text fields; both are
+    // validated below before the value is exposed as TextLike.
+    const view = value as TextLikeView;
+    return typeof view.text === "string" && typeof view.setText === "function";
+}
+
+function hasSelectedIndex(
+    target: ModelSelectorProviderBadgeTarget,
+): target is ModelSelectorProviderBadgeTarget & { readonly selectedIndex: number } {
+    return typeof target.selectedIndex === "number";
+}
+
+function isThemeView(value: unknown): value is ThemeFgView {
+    return (typeof value === "object" || typeof value === "function") && value !== null;
+}
+function isThemeModule(value: unknown): value is ThemeModuleView {
+    return (typeof value === "object" || typeof value === "function") && value !== null;
+}
+
+function hasThemeFg(theme: ThemeFgView): theme is ThemeInstance {
+    return typeof theme.fg === "function";
+}
+
+function hasUpdateList(value: unknown): value is ModelSelectorProviderBadgeTarget & {
+    updateList: UpdateList;
+} {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+        return false;
+    }
+    return "updateList" in value && typeof value.updateList === "function";
+}
+
+function getDefaultModelSelectorTarget(): ModelSelectorProviderBadgeTarget | undefined {
+    const prototype = ModelSelectorComponent.prototype;
+    if (!hasUpdateList(prototype)) return undefined;
+    return prototype;
 }
 
 function getSelectedModelItem(target: ModelSelectorProviderBadgeTarget): ModelItemLike | undefined {
+    if (!hasSelectedIndex(target)) return undefined;
     const selectedIndex = target.selectedIndex;
-    if (typeof selectedIndex !== "number") return undefined;
-
     const filteredModels = target.filteredModels;
     if (!isUnknownArray(filteredModels)) return undefined;
 
@@ -122,7 +164,6 @@ function highlightSelectedProviderBadge(
     for (const child of getListChildren(target)) {
         if (!isTextLike(child)) continue;
         const text = child.text;
-        if (typeof text !== "string") continue;
         if (!text.includes(selectedModelText) || !text.includes(mutedProviderBadge)) continue;
         child.setText?.(text.replace(mutedProviderBadge, accentProviderBadge));
         return;
@@ -133,17 +174,20 @@ async function loadTheme(): Promise<ThemeInstance | undefined> {
     return loadPiInternalModule("modes/interactive/theme/theme.js", {
         scope: "pi-ui-tweaks",
         feature: "selected model provider badge patch",
-        parse(module): ThemeInstance | undefined {
-            const theme = getUnknownProperty(module, "theme");
-            if ((typeof theme !== "object" && typeof theme !== "function") || theme === null)
-                return undefined;
+        parse(module: unknown): ThemeInstance | undefined {
+            if (!isThemeModule(module)) return undefined;
+            const theme = module.theme;
+            if (!isThemeView(theme)) return undefined;
+            if (!hasThemeFg(theme)) {
+                return {
+                    fg(_color, text): string {
+                        return text;
+                    },
+                };
+            }
             return {
                 fg(color, text): string {
-                    const fg = getUnknownProperty(theme, "fg");
-                    if (typeof fg !== "function") return text;
-                    const styled: unknown = Reflect.apply(fg, theme, [color, text]);
-                    if (typeof styled === "string") return styled;
-                    return text;
+                    return theme.fg(color, text);
                 },
             };
         },
@@ -153,20 +197,15 @@ async function loadTheme(): Promise<ThemeInstance | undefined> {
 /** Installs or updates the selected-provider badge patch. */
 export async function installModelSelectorProviderBadgePatch(
     config: ModelSelectorProviderBadgeConfig,
-    target: unknown = ModelSelectorComponent.prototype,
+    target?: ModelSelectorProviderBadgeTarget | null,
     providedTheme?: ThemeInstance,
 ): Promise<ModelSelectorProviderBadgeHandle> {
-    if ((typeof target !== "object" && typeof target !== "function") || target === null) {
-        warnModelSelectorProviderBadgePatchUnavailable();
-        return { update(): void {}, dispose(): void {} };
-    }
-    const updateList: unknown = Reflect.get(target, "updateList");
-    if (typeof updateList !== "function") {
+    let prototype = target;
+    if (prototype === undefined) prototype = getDefaultModelSelectorTarget();
+    if (prototype === undefined || !hasUpdateList(prototype)) {
         warnModelSelectorProviderBadgePatchUnavailable(new Error("missing updateList"));
         return { update(): void {}, dispose(): void {} };
     }
-    // SAFETY: The runtime guard proves updateList is callable.
-    const prototype = target as ModelSelectorProviderBadgeTarget & { updateList: UpdateList };
     const installed = prototype[MODEL_SELECTOR_PROVIDER_BADGE_PATCH_KEY];
     if (installed !== undefined) {
         installed.handle.update(config);

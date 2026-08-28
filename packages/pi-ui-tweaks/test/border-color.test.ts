@@ -4,39 +4,56 @@ import { test } from "vitest";
 
 import { installNeutralBorderColorPatch } from "../src/border-color.ts";
 
-function readThemePrototype(module: unknown): object & { fg(color: string, text: string): string } {
-    if ((typeof module !== "object" && typeof module !== "function") || module === null) {
-        assert.fail("missing Pi theme module");
-    }
-    const theme: unknown = Reflect.get(module, "Theme");
-    const prototype: unknown = Reflect.get(theme ?? {}, "prototype");
-    if (
-        typeof prototype !== "object" ||
-        prototype === null ||
-        typeof Reflect.get(prototype, "fg") !== "function"
-    ) {
-        assert.fail("invalid Pi Theme prototype");
-    }
-    // SAFETY: The runtime checks above prove the private Theme.fg seam used by this test.
-    return prototype as object & { fg(color: string, text: string): string };
+type ThemeFg = (color: string, text: string) => string;
+type ThemePrototype = {
+    readonly fg: ThemeFg;
+};
+
+type ThemeModule = {
+    readonly Theme: {
+        readonly prototype: ThemePrototype;
+    };
+};
+
+type ModuleView = { readonly Theme?: unknown };
+type ThemeView = { readonly prototype?: unknown };
+type PrototypeView = { readonly fg?: unknown };
+
+function isThemePrototype(value: unknown): value is ThemePrototype {
+    if (typeof value !== "object" || value === null) return false;
+    // SAFETY: PrototypeView exposes only the fg field validated by this predicate.
+    const view = value as PrototypeView;
+    return typeof view.fg === "function";
+}
+
+function isThemeModule(value: unknown): value is ThemeModule {
+    if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
+    // SAFETY: ModuleView exposes only the Theme export validated below.
+    const theme = (value as ModuleView).Theme;
+    if ((typeof theme !== "object" && typeof theme !== "function") || theme === null) return false;
+    // SAFETY: ThemeView exposes only the prototype field validated below.
+    return isThemePrototype((theme as ThemeView).prototype);
 }
 
 test("neutral border patch is removable and reuses its handle", async () => {
     const prototype = await loadPiInternalModule("modes/interactive/theme/theme.js", {
         scope: "pi-ui-tweaks-test",
         feature: "Theme prototype",
-        parse: readThemePrototype,
+        parse(module) {
+            if (!isThemeModule(module)) assert.fail("invalid Pi Theme module");
+            return module.Theme.prototype;
+        },
     });
     if (prototype === undefined) assert.fail("missing Pi Theme prototype");
-    const original = Reflect.get(prototype, "fg");
+    const original = prototype.fg;
     const handle = await installNeutralBorderColorPatch({ neutralBorderColor: true });
-    const patched = Reflect.get(prototype, "fg");
+    const patched = prototype.fg;
     assert.notEqual(patched, original);
 
     const same = await installNeutralBorderColorPatch({ neutralBorderColor: false });
     assert.equal(same, handle);
-    assert.equal(Reflect.get(prototype, "fg"), patched);
+    assert.equal(prototype.fg, patched);
 
     handle.dispose();
-    assert.equal(Reflect.get(prototype, "fg"), original);
+    assert.equal(prototype.fg, original);
 });

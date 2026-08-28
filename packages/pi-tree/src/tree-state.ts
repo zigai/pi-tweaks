@@ -17,6 +17,8 @@ export type TreeListInstance = {
     multipleRoots?: boolean;
     selectedIndex?: number;
     showLabelTimestamps?: boolean;
+    [TREE_TIMESTAMP_MODE_KEY]?: TreeTimestampMode;
+    [TREE_PREVIEW_ENABLED_KEY]?: boolean;
     formatLabelTimestamp?: (timestamp: string) => string;
     getStatusLabels?: () => string;
     handleInput?: (keyData: string) => void;
@@ -25,16 +27,12 @@ export type TreeListInstance = {
 };
 
 export function setTreeTimestampMode(treeList: TreeListInstance, mode: TreeTimestampMode): void {
-    (treeList as TreeListInstance & { [TREE_TIMESTAMP_MODE_KEY]?: TreeTimestampMode })[
-        TREE_TIMESTAMP_MODE_KEY
-    ] = mode;
+    treeList[TREE_TIMESTAMP_MODE_KEY] = mode;
     treeList.showLabelTimestamps = false;
 }
 
 export function getTreeTimestampMode(treeList: TreeListInstance): TreeTimestampMode {
-    const current = (treeList as TreeListInstance & { [TREE_TIMESTAMP_MODE_KEY]?: unknown })[
-        TREE_TIMESTAMP_MODE_KEY
-    ];
+    const current = treeList[TREE_TIMESTAMP_MODE_KEY];
 
     if (isTreeTimestampMode(current)) {
         treeList.showLabelTimestamps = false;
@@ -47,9 +45,7 @@ export function getTreeTimestampMode(treeList: TreeListInstance): TreeTimestampM
 }
 
 export function setTreePreviewEnabled(treeList: TreeListInstance, enabled: boolean): void {
-    (treeList as TreeListInstance & { [TREE_PREVIEW_ENABLED_KEY]?: boolean })[
-        TREE_PREVIEW_ENABLED_KEY
-    ] = enabled;
+    treeList[TREE_PREVIEW_ENABLED_KEY] = enabled;
 }
 
 export function applyConfiguredMaxVisibleLines(treeList: TreeListInstance): void {
@@ -61,13 +57,8 @@ export function applyConfiguredMaxVisibleLines(treeList: TreeListInstance): void
 }
 
 export function getTreePreviewEnabled(treeList: TreeListInstance): boolean {
-    const current = (treeList as TreeListInstance & { [TREE_PREVIEW_ENABLED_KEY]?: unknown })[
-        TREE_PREVIEW_ENABLED_KEY
-    ];
-
-    if (typeof current === "boolean") {
-        return current;
-    }
+    const current = treeList[TREE_PREVIEW_ENABLED_KEY];
+    if (current !== undefined) return current;
 
     const initialEnabled = getPersistedPreviewEnabled();
     setTreePreviewEnabled(treeList, initialEnabled);
