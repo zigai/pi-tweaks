@@ -13,6 +13,7 @@ pi install npm:@zigai/pi-mention-skill
 ## Features
 
 - Adds fuzzy skill autocomplete with `$` mentions.
+- Supports custom single- or multi-character triggers.
 - Expands mentions such as `$skill-name` before the model sees the prompt.
 - Keeps `/skill:*` entries out of slash autocomplete by default.
 
@@ -29,7 +30,7 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-skill.j
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `trigger` | string | `"$"` | Single character that starts a skill mention. |
+| `trigger` | string | `"$"` | One or more non-whitespace, non-slash characters that start a skill mention. |
 | `hideSlashSkills` | boolean | `true` | Hide skill commands from slash-command completion. |
 | `completionSuffix` | string | `" "` | Text inserted after a completed skill mention. |
 

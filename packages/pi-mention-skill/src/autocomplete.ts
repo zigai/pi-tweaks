@@ -5,7 +5,7 @@ import {
     fuzzyFilter,
 } from "@earendil-works/pi-tui";
 
-import { escapeRegExp } from "./mention-syntax.ts";
+import { autocompleteTriggerCharacter, escapeRegExp } from "./mention-syntax.ts";
 import { DEFAULT_MENTION_TRIGGER, type MentionSkillSettings } from "./settings.ts";
 import { skillName, type SkillCommand } from "./skill-commands.ts";
 
@@ -110,7 +110,7 @@ export function createSkillMentionProvider(
     };
 
     const provider = {
-        triggerCharacters: [trigger],
+        triggerCharacters: [autocompleteTriggerCharacter(trigger)],
 
         async getSuggestions(
             lines: string[],

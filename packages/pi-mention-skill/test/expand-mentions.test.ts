@@ -95,7 +95,7 @@ test("expandSkillMentions prepends known skills once and removes only known sigi
     }
 });
 
-test("expandSkillMentions combines multiple skills and supports regex-special triggers", async () => {
+test("expandSkillMentions supports multi-character regex-special triggers", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "pi-mention-skill-"));
     try {
         const firstPath = path.join(dir, "one.md");
@@ -104,9 +104,9 @@ test("expandSkillMentions combines multiple skills and supports regex-special tr
         await writeFile(secondPath, "Second body\n", "utf8");
 
         const expanded = await expandSkillMentions(
-            "+one and +two?",
+            "++one and ++two?",
             [skillCommand("one", firstPath), skillCommand("two", secondPath)],
-            "+",
+            "++",
         );
 
         assert.match(expanded, /^<skill name="one, two" location="multiple">/);

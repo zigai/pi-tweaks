@@ -19,10 +19,10 @@ export const extensionSettingsInput = {
         {
             trigger: Type.String({
                 minLength: 1,
-                maxLength: 1,
-                pattern: "^[^/\\s]$",
+                pattern: "^[^/\\s]+$",
                 default: DEFAULT_MENTION_TRIGGER,
-                description: "Single character that starts a skill mention.",
+                description:
+                    "One or more non-whitespace, non-slash characters that start a skill mention.",
             }),
             hideSlashSkills: Type.Boolean({
                 default: true,

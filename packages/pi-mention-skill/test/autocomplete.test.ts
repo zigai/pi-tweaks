@@ -55,6 +55,38 @@ test("createSkillMentionProvider suggests skills after the configured trigger", 
     );
 });
 
+test("createSkillMentionProvider supports multi-character triggers", async () => {
+    const provider = createSkillMentionProvider(
+        fallbackProvider([]),
+        { trigger: "skill:", hideSlashSkills: true, completionSuffix: " " },
+        () => [skillCommand("python", "Python workflows")],
+    );
+
+    assert.deepEqual(provider.triggerCharacters, ["s"]);
+    const suggestions = await provider.getSuggestions(["Use skill:py"], 0, "Use skill:py".length, {
+        signal: new AbortController().signal,
+    });
+
+    assert.equal(suggestions?.prefix, "skill:py");
+    assert.deepEqual(
+        suggestions?.items.map((item) => item.value),
+        ["skill:python"],
+    );
+
+    const result = provider.applyCompletion(
+        ["Use skill:py"],
+        0,
+        "Use skill:py".length,
+        { value: "skill:python", label: "python" },
+        "skill:py",
+    );
+    assert.deepEqual(result, {
+        lines: ["Use skill:python "],
+        cursorLine: 0,
+        cursorCol: "Use skill:python ".length,
+    });
+});
+
 test("createSkillMentionProvider falls back outside mention context and can hide slash skills", async () => {
     const provider = createSkillMentionProvider(
         fallbackProvider([

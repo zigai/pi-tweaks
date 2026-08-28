@@ -44,6 +44,10 @@ function tryTriggerAutocomplete(editor: EditorLike): void {
     if (hasAutocompleteTrigger(editor)) editor.tryTriggerAutocomplete();
 }
 
+function shouldReactToInput(data: string): boolean {
+    return /[^\p{C}\s]$/u.test(data);
+}
+
 function enhanceEditor(
     editor: EditorLike,
     ctx: MentionSkillEditorContext,
@@ -54,7 +58,7 @@ function enhanceEditor(
     editor.handleInput = (data: string) => {
         originalHandleInput(data);
 
-        if (!/^[a-z0-9-]$/i.test(data) && data !== trigger) return;
+        if (!shouldReactToInput(data)) return;
 
         const text = editor.getText();
         const lines = text.split("\n");

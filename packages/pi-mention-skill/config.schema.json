@@ -14,10 +14,9 @@
     "trigger": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 1,
-      "pattern": "^[^/\\s]$",
+      "pattern": "^[^/\\s]+$",
       "default": "$",
-      "description": "Single character that starts a skill mention."
+      "description": "One or more non-whitespace, non-slash characters that start a skill mention."
     },
     "hideSlashSkills": {
       "type": "boolean",
