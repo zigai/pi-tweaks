@@ -5,7 +5,11 @@ import {
     fuzzyFilter,
 } from "@earendil-works/pi-tui";
 
-import { extractProjectMentionPrefix, formatProjectMention } from "./mention-syntax.ts";
+import {
+    autocompleteTriggerCharacter,
+    extractProjectMentionPrefix,
+    formatProjectMention,
+} from "./mention-syntax.ts";
 import type { ProjectDirectory } from "./projects.ts";
 import { DEFAULT_MENTION_TRIGGER, type MentionProjectSettings } from "./settings.ts";
 
@@ -87,7 +91,7 @@ export function createProjectMentionProvider(
     const { trigger, completionSuffix } = settings;
 
     const provider = {
-        triggerCharacters: [trigger],
+        triggerCharacters: [autocompleteTriggerCharacter(trigger)],
 
         async getSuggestions(
             lines: string[],

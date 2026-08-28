@@ -61,6 +61,43 @@ test("createProjectMentionProvider suggests projects after the configured trigge
     );
 });
 
+test("createProjectMentionProvider supports multi-character triggers", async () => {
+    const provider = createProjectMentionProvider(
+        fallbackProvider([]),
+        { ...settings(["/tmp/projects"]), trigger: "project:" },
+        async () => [project("pi-tweaks")],
+    );
+
+    assert.deepEqual(provider.triggerCharacters, ["p"]);
+    const suggestions = await provider.getSuggestions(
+        ["Use project:twe"],
+        0,
+        "Use project:twe".length,
+        {
+            signal: new AbortController().signal,
+        },
+    );
+
+    assert.equal(suggestions?.prefix, "project:twe");
+    assert.deepEqual(
+        suggestions?.items.map((item) => item.value),
+        ["project:pi-tweaks"],
+    );
+
+    const result = provider.applyCompletion(
+        ["Use project:twe"],
+        0,
+        "Use project:twe".length,
+        { value: "project:pi-tweaks", label: "pi-tweaks" },
+        "project:twe",
+    );
+    assert.deepEqual(result, {
+        lines: ["Use project:pi-tweaks "],
+        cursorLine: 0,
+        cursorCol: "Use project:pi-tweaks ".length,
+    });
+});
+
 test("createProjectMentionProvider returns all projects for empty browse", async () => {
     const projects = Array.from({ length: 25 }, (_value, index) => {
         return project(`project-${index.toString().padStart(2, "0")}`);

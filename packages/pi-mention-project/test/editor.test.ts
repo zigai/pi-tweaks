@@ -99,6 +99,30 @@ test("applyMentionProjectEditor replaces its enhancer instead of stacking hooks"
     assert.equal(projectNameSnapshotCalls, 1);
 });
 
+test("project and skill editors trigger autocomplete for multi-character mentions", () => {
+    let editor = new FakeEditor();
+    const baseFactory: EditorFactory = () => {
+        editor = new FakeEditor();
+        return editor;
+    };
+    const { ctx, getFactory } = contextWithFactory(baseFactory);
+
+    applyMentionProjectEditor(ctx, "project:", () => new Set(["gameops"]));
+    applyMentionSkillEditor(ctx, "skill:", () => new Set(["typescript"]));
+
+    const factory = getFactory();
+    assert.ok(factory);
+    const enhanced = createEditor(factory);
+
+    editor.text = "Please inspect project:gameops";
+    enhanced.handleInput(":");
+    assert.equal(editor.autocompleteTriggers, 1);
+
+    editor.text = "Use skill:typescript";
+    enhanced.handleInput("$");
+    assert.equal(editor.autocompleteTriggers, 2);
+});
+
 test("mention editor handles only dispose the current keyed enhancer", () => {
     const baseFactory: EditorFactory = () => new FakeEditor();
     const { ctx, getFactory } = contextWithFactory(baseFactory);

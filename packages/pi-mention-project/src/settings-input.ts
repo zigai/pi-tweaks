@@ -29,8 +29,7 @@ export const legacyMentionProjectSettingsSchema = Type.Object(
 
 export const legacyTriggerSchema = Type.String({
     minLength: 1,
-    maxLength: 1,
-    pattern: "^[^/\\s]$",
+    pattern: "^[^/\\s]+$",
 });
 export const legacyRootsSchema = Type.Union([
     Type.String({ minLength: 1 }),
@@ -57,10 +56,10 @@ export const extensionSettingsInput = {
         {
             trigger: Type.String({
                 minLength: 1,
-                maxLength: 1,
-                pattern: "^[^/\\s]$",
+                pattern: "^[^/\\s]+$",
                 default: DEFAULT_MENTION_TRIGGER,
-                description: "Single character that starts a project mention.",
+                description:
+                    "One or more non-whitespace, non-slash characters that start a project mention.",
             }),
             roots: Type.Union(
                 [

@@ -14,10 +14,9 @@
     "trigger": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 1,
-      "pattern": "^[^/\\s]$",
+      "pattern": "^[^/\\s]+$",
       "default": "#",
-      "description": "Single character that starts a project mention."
+      "description": "One or more non-whitespace, non-slash characters that start a project mention."
     },
     "roots": {
       "anyOf": [

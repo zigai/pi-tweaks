@@ -81,12 +81,12 @@ test("loadMentionProjectSettings uses defaults and scaffolds global config", asy
         });
         assert.match(await readFile(globalSchemaPath, "utf8"), /Pi Mention Project settings/);
 
-        const customConfig = JSON.stringify({ trigger: "@", roots: ["~/Projects"] });
+        const customConfig = JSON.stringify({ trigger: "@@", roots: ["~/Projects"] });
         await writeFile(globalConfigPath, customConfig, "utf8");
         await writeFile(globalSchemaPath, "stale schema", "utf8");
 
         assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
-            trigger: "@",
+            trigger: "@@",
             roots: ["~/Projects"],
             gitReposOnly: true,
             includeDotFolders: false,
@@ -103,14 +103,14 @@ test("loadMentionProjectSettings preserves legacy project mention settings", asy
     const cwd = await mkdtemp(path.join(tmpdir(), "pi-mention-project-settings-cwd-"));
     try {
         await writeJson(legacyGlobalSettingsPath, {
-            mentionProjectTrigger: "@",
+            mentionProjectTrigger: "@@",
             mentionProjectRoots: ["~/Projects"],
             mentionProjectGitReposOnly: false,
             mentionProjectIncludeDotFolders: true,
             mentionProjectCompletionSuffix: "\n",
         });
         await writeJson(path.join(cwd, ".pi", "settings.json"), {
-            mentionProjectTrigger: "%",
+            mentionProjectTrigger: "%%",
             mentionProjectRoots: ["./local-projects"],
             mentionProjectGitReposOnly: true,
             mentionProjectIncludeDotFolders: false,
@@ -118,14 +118,14 @@ test("loadMentionProjectSettings preserves legacy project mention settings", asy
         });
 
         assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
-            trigger: "%",
+            trigger: "%%",
             roots: ["./local-projects"],
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: "",
         });
         assert.deepEqual(loadMentionProjectSettings(context(cwd, false)), {
-            trigger: "@",
+            trigger: "@@",
             roots: ["~/Projects"],
             gitReposOnly: false,
             includeDotFolders: true,

@@ -69,8 +69,12 @@ test("expandProjectMentions replaces known project mentions with absolute paths"
     );
 });
 
-test("expandProjectMentions replaces multiple projects and supports regex-special triggers", () => {
-    const expanded = expandProjectMentions("+one and +two?", [project("one"), project("two")], "+");
+test("expandProjectMentions supports multi-character regex-special triggers", () => {
+    const expanded = expandProjectMentions(
+        "++one and ++two?",
+        [project("one"), project("two")],
+        "++",
+    );
 
     assert.equal(expanded, "/tmp/projects/one and /tmp/projects/two?");
 });

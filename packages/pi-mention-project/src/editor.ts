@@ -48,10 +48,8 @@ function tryTriggerAutocomplete(editor: EditorLike): void {
     if (hasAutocompleteTrigger(editor)) editor.tryTriggerAutocomplete();
 }
 
-function shouldReactToInput(data: string, trigger: string): boolean {
-    if (data === trigger) return true;
-    if (data.length !== 1) return false;
-    return !/\s/.test(data);
+function shouldReactToInput(data: string): boolean {
+    return /[^\p{C}\s]$/u.test(data);
 }
 
 function enhanceEditor(
@@ -64,7 +62,7 @@ function enhanceEditor(
     editor.handleInput = (data: string) => {
         originalHandleInput(data);
 
-        if (!shouldReactToInput(data, trigger)) return;
+        if (!shouldReactToInput(data)) return;
 
         const text = editor.getText();
         const lines = text.split("\n");
