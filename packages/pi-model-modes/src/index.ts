@@ -50,10 +50,6 @@ export default function (pi: ExtensionAPI) {
         });
     }
 
-    pi.registerCommand("mode", {
-        description: "Select prompt mode",
-        handler: (args, ctx) => picker.handleCommand(ctx, args),
-    });
     registerModeSelectorShortcuts(pi, (ctx) => picker.select(ctx));
 
     pi.on("session_start", async (event, ctx) => {

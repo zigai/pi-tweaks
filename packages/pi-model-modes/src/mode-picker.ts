@@ -85,41 +85,6 @@ export class ModePicker {
         }
     }
 
-    async handleCommand(ctx: ExtensionContext, args: string): Promise<void> {
-        const tokens = args
-            .split(/\s+/)
-            .map((value) => value.trim())
-            .filter(Boolean);
-        if (tokens.length === 0) {
-            await this.select(ctx);
-            return;
-        }
-        if (tokens[0] === "store") {
-            await this.controller.ensure(ctx);
-            let target: string | undefined = tokens[1];
-            if (target === undefined || target.length === 0) {
-                if (!ctx.hasUI) return;
-                target = await ctx.ui.select(
-                    "Store current selection into mode",
-                    orderedModeNames(this.controller.modes.modes),
-                );
-                if (target === undefined || target.length === 0) return;
-            }
-            if (target === CUSTOM_MODE_NAME) {
-                if (ctx.hasUI) ctx.ui.notify(`Cannot store into "${CUSTOM_MODE_NAME}"`, "warning");
-                return;
-            }
-            await this.controller.storeSelection(
-                ctx,
-                target,
-                this.controller.getOverlaySelection(),
-            );
-            if (ctx.hasUI) ctx.ui.notify(`Stored current selection into "${target}"`, "info");
-            return;
-        }
-        await this.controller.applyMode(ctx, tokens[0] ?? "");
-    }
-
     private async handleChoice(ctx: ExtensionContext, choice: string): Promise<void> {
         if (this.controller.currentMode === CUSTOM_MODE_NAME && choice !== CUSTOM_MODE_NAME) {
             const action = await ctx.ui.select(`Mode "${choice}"`, ["use", "store"]);
