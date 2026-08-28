@@ -114,4 +114,4 @@ jobs:
             --verify-tag \
             --title "$TAG" \
             --notes-from-tag \
-            --latest=false
+            --latest
