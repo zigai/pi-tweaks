@@ -1,97 +1,33 @@
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import {
     getPiGlobalSettingsPath,
     getPiProjectSettingsPath,
     loadPiExtensionSettings,
 } from "@zigai/pi-extension-settings/pi";
+
 import { existsSync, statSync } from "node:fs";
-import { Type, type Static, type TSchema } from "typebox";
+
+import { Type, type Static } from "typebox";
+
 import { Value } from "typebox/value";
 
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
 import type { AliasConfig, ModelAliasSettings, ProviderAliasConfig } from "./model-aliasing.ts";
+import {
+    EXTENSION_ID,
+    LoadedModelAliasSettings,
+    ModelAliasSettingsLoadState,
+    aliasConfigSchema,
+    extensionSettingsInput,
+    providerAliasConfigSchema,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 
-export const EXTENSION_ID = "pi-model-alias";
-export const CONFIG_FILE = `${EXTENSION_ID}.json`;
+export * from "./settings-input.ts";
 
-export type LoadedModelAliasSettings = {
-    path: string;
-    mtimeMs: number;
-    settings: ModelAliasSettings;
-    diagnostic?: string;
-};
-
-export type ModelAliasSettingsLoadState = {
-    configCache?: LoadedModelAliasSettings;
-    configCwd?: string;
-    projectTrusted?: boolean;
-};
-
-function nonBlankStringSchema(description: string) {
-    return Type.String({ pattern: "\\S", description });
-}
-
-export const aliasConfigSchema = Type.Object(
-    {
-        provider: nonBlankStringSchema("Provider ID that owns the model."),
-        model: nonBlankStringSchema("Original model ID sent to the provider."),
-        alias: nonBlankStringSchema("Short local model ID accepted by Pi."),
-        name: Type.Optional(
-            nonBlankStringSchema(
-                "Optional displayed model name; omit it to keep Pi's native label.",
-            ),
-        ),
-    },
-    { additionalProperties: false },
+export const modelAliasSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
 );
-
-export const providerAliasConfigSchema = Type.Object(
-    {
-        provider: nonBlankStringSchema("Provider ID whose displayed name should change."),
-        name: nonBlankStringSchema("Provider name displayed by Pi."),
-    },
-    { additionalProperties: false },
-);
-
-export const modelAliasSettingsDefinition = defineExtensionSettings({
-    id: EXTENSION_ID,
-    title: "Pi Model Alias",
-    description: "Settings for model and provider display aliases.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-model-alias/config.schema.json",
-    schema: Type.Object(
-        {
-            aliases: Type.Array(aliasConfigSchema, {
-                default: [],
-                description: "Short model IDs with optional display-name overrides.",
-            }),
-            providerAliases: Type.Array(providerAliasConfigSchema, {
-                default: [],
-                description: "Provider display-name overrides; provider IDs remain unchanged.",
-            }),
-            stableProviderColumn: Type.Boolean({
-                default: true,
-                description: "Keep the provider column stable when aliases are displayed.",
-            }),
-        },
-        { additionalProperties: false },
-    ),
-    exampleSettings: {
-        aliases: [
-            {
-                provider: "anthropic",
-                model: "claude-sonnet-4-5",
-                alias: "sonnet",
-                name: "Claude Sonnet 4.5",
-            },
-            {
-                provider: "openai-codex",
-                model: "gpt-5.6-sol",
-                alias: "sol",
-            },
-        ],
-        providerAliases: [{ provider: "openai-codex", name: "Codex" }],
-    },
-});
 
 export default modelAliasSettingsDefinition;
 
@@ -107,6 +43,16 @@ const ModelAliasesConfigSchema = Type.Object(
 
 type ParsedAliasConfig = Static<typeof aliasConfigSchema>;
 type ParsedProviderAliasConfig = Static<typeof providerAliasConfigSchema>;
+export type ModelAliasConfigInput = {
+    readonly $schema?: unknown;
+    readonly aliases?: unknown;
+    readonly providerAliases?: unknown;
+    readonly stableProviderColumn?: unknown;
+};
+
+function isModelAliasConfigInput(value: unknown): value is ModelAliasConfigInput {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function formatSchemaPath(instancePath: string): string {
     if (instancePath.length === 0) return "root";
@@ -117,12 +63,10 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSchema<Schema extends TSchema>(
-    schema: Schema,
-    value: unknown,
-    label: string,
-): Static<Schema> {
-    const errors = [...Value.Errors(schema, value)];
+function parseModelAliasesConfig(
+    value: ModelAliasConfigInput,
+): Static<typeof ModelAliasesConfigSchema> {
+    const errors = [...Value.Errors(ModelAliasesConfigSchema, value)];
     if (errors.length > 0) {
         const messages = errors
             .slice(0, 5)
@@ -131,13 +75,9 @@ function parseSchema<Schema extends TSchema>(
         if (errors.length > messages.length) {
             suffix = `; and ${errors.length - messages.length} more`;
         }
-        throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
+        throw new Error(`pi-model-alias config.json is invalid: ${messages.join("; ")}${suffix}`);
     }
-    const parsed: unknown = Value.Parse(schema, value);
-    // SAFETY: Value.Errors returned no schema violations, so Value.Parse returns
-    // the TypeBox static type represented by the same schema.
-    // oxlint-disable-next-line typescript/no-unsafe-return -- SAFETY: TypeBox exposes parsed schema output through a conditional static type that oxlint treats as any here.
-    return parsed as Static<Schema>;
+    return Value.Parse(ModelAliasesConfigSchema, value);
 }
 
 function normalizeAliasConfig(entry: ParsedAliasConfig): AliasConfig {
@@ -181,8 +121,8 @@ function validateUniqueProviderAliases(providerAliases: readonly ProviderAliasCo
     });
 }
 
-export function decodeModelAliasSettings(config: unknown): ModelAliasSettings {
-    const parsed = parseSchema(ModelAliasesConfigSchema, config, "pi-model-alias config.json");
+export function decodeModelAliasSettings(config: ModelAliasConfigInput): ModelAliasSettings {
+    const parsed = parseModelAliasesConfig(config);
     const aliases = (parsed.aliases ?? []).map(normalizeAliasConfig);
     const providerAliases = (parsed.providerAliases ?? []).map(normalizeProviderAliasConfig);
     validateUniqueAliases(aliases);
@@ -240,10 +180,14 @@ export function loadModelAliasSettings(
         }
         let layer = loadedLayers.globalSettingsLayer;
         if (useProjectConfig) layer = loadedLayers.projectSettingsLayer;
+        const config = layer ?? {};
+        if (!isModelAliasConfigInput(config)) {
+            throw new Error("pi-model-alias config.json is invalid: root must be an object");
+        }
         const loaded: LoadedModelAliasSettings = {
             path: configPath,
             mtimeMs,
-            settings: decodeModelAliasSettings(layer ?? {}),
+            settings: decodeModelAliasSettings(config),
         };
         state.configCache = loaded;
         return loaded;

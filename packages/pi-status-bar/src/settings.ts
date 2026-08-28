@@ -1,135 +1,33 @@
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
+
 import { readFileSync } from "node:fs";
+
 import { homedir } from "node:os";
+
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { Type, type Static, type TSchema } from "typebox";
+
+import { Type, type Static } from "typebox";
+
 import { Value } from "typebox/value";
 
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
+import {
+    DEFAULT_RIGHT_MESSAGE_INTERVAL_MS,
+    DEFAULT_RIGHT_MESSAGE_MIN_GAP,
+    DEFAULT_RIGHT_MESSAGE_MIN_SCROLL_CYCLES,
+    DEFAULT_RIGHT_MESSAGE_SCROLL_COLUMN_INTERVAL_MS,
+    RIGHT_MESSAGES_SETTINGS_KEY,
+    extensionSettingsInput,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 import type { StatusBarConfig } from "./status-bar-api.ts";
 
-const RIGHT_MESSAGES_SETTINGS_KEY = "rightMessages";
-const DEFAULT_RIGHT_MESSAGE_INTERVAL_MS = 10_000;
-const DEFAULT_RIGHT_MESSAGE_MIN_GAP = 4;
-const DEFAULT_RIGHT_MESSAGE_SCROLL_COLUMN_INTERVAL_MS = 120;
-const DEFAULT_RIGHT_MESSAGE_MIN_SCROLL_CYCLES = 1;
+export * from "./settings-input.ts";
 
-const spinnerSettingsSchema = Type.Object(
-    {
-        frames: Type.Optional(
-            Type.Array(Type.String(), {
-                description: "Spinner frames displayed while Pi is active.",
-            }),
-        ),
-    },
-    { additionalProperties: false },
+export const statusBarSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
 );
-
-const timerSettingsSchema = Type.Object(
-    {
-        visible: Type.Boolean({
-            default: true,
-            description: "Show the active-run timer.",
-        }),
-        paused: Type.Boolean({
-            default: false,
-            description: "Display the active-run timer as paused.",
-        }),
-    },
-    { default: {}, additionalProperties: false },
-);
-
-const activeSettingsSchema = Type.Object(
-    {
-        text: Type.Optional(Type.String({ description: "Custom active status text." })),
-        spinner: Type.Optional(spinnerSettingsSchema),
-        timer: timerSettingsSchema,
-    },
-    { default: {}, additionalProperties: false },
-);
-
-const idleSettingsSchema = Type.Object(
-    {
-        text: Type.Optional(Type.String({ description: "Custom idle status text." })),
-        visible: Type.Boolean({
-            default: true,
-            description: "Show the status bar while Pi is idle.",
-        }),
-        showLastRunSummary: Type.Boolean({
-            default: true,
-            description: "Show the previous run summary while idle.",
-        }),
-    },
-    { default: {}, additionalProperties: false },
-);
-
-export const statusBarSettingsDefinition = defineExtensionSettings({
-    id: "pi-status-bar",
-    title: "Pi Status Bar",
-    description: "Settings for active, idle, and rotating status-bar content.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-status-bar/config.schema.json",
-    schema: Type.Object(
-        {
-            statusBar: Type.Object(
-                {
-                    active: activeSettingsSchema,
-                    idle: idleSettingsSchema,
-                },
-                { default: {}, additionalProperties: false },
-            ),
-            rightMessages: Type.Object(
-                {
-                    enabled: Type.Boolean({
-                        default: false,
-                        description: "Enable rotating messages on the right side.",
-                    }),
-                    intervalMs: Type.Integer({
-                        minimum: 1,
-                        default: DEFAULT_RIGHT_MESSAGE_INTERVAL_MS,
-                        description: "Delay between rotating messages in milliseconds.",
-                    }),
-                    minGap: Type.Integer({
-                        minimum: 0,
-                        default: DEFAULT_RIGHT_MESSAGE_MIN_GAP,
-                        description: "Minimum spaces between repeated scrolling messages.",
-                    }),
-                    minScrollCycles: Type.Integer({
-                        minimum: 1,
-                        default: DEFAULT_RIGHT_MESSAGE_MIN_SCROLL_CYCLES,
-                        description: "Minimum completed scroll cycles before advancing.",
-                    }),
-                    scrollColumnIntervalMs: Type.Integer({
-                        minimum: 1,
-                        default: DEFAULT_RIGHT_MESSAGE_SCROLL_COLUMN_INTERVAL_MS,
-                        description: "Delay between horizontal scroll columns in milliseconds.",
-                    }),
-                    dimmed: Type.Boolean({
-                        default: true,
-                        description: "Render rotating messages with dim styling.",
-                    }),
-                    italic: Type.Boolean({
-                        default: true,
-                        description: "Render rotating messages with italic styling.",
-                    }),
-                    messages: Type.Array(Type.String(), {
-                        default: [],
-                        description: "Inline rotating status messages.",
-                    }),
-                    messagesFile: Type.Optional(
-                        Type.String({
-                            minLength: 1,
-                            "x-control": "path",
-                            description: "Path to a newline-delimited messages file.",
-                        }),
-                    ),
-                },
-                { default: {}, additionalProperties: false },
-            ),
-        },
-        { additionalProperties: false },
-    ),
-});
 
 export default statusBarSettingsDefinition;
 
@@ -177,11 +75,18 @@ type RightMessagesSettings = {
     readonly messages?: readonly string[];
     readonly messagesFile?: MessageFileReference;
 };
+type MutableRightMessagesSettings = {
+    -readonly [Key in keyof RightMessagesSettings]: RightMessagesSettings[Key];
+};
 
 type StatusBarSettings = {
     readonly $schema?: string;
     readonly statusBar?: StatusBarConfig;
     readonly rightMessages?: RightMessagesSettings;
+};
+type MergedStatusBarSettings = {
+    statusBar?: StatusBarConfig;
+    rightMessages?: RightMessagesSettings;
 };
 
 type MutableStatusBarConfig = {
@@ -371,12 +276,11 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSchema<Schema extends TSchema>(
-    schema: Schema,
-    value: unknown,
+function parseStatusBarConfigFile(
+    value: StatusBarSettingsSource["settings"],
     label: string,
-): Static<Schema> {
-    const errors = [...Value.Errors(schema, value)];
+): ParsedStatusBarResolvedConfig {
+    const errors = [...Value.Errors(StatusBarConfigFileSchema, value)];
     if (errors.length > 0) {
         const messages = errors
             .slice(0, 10)
@@ -387,244 +291,56 @@ function parseSchema<Schema extends TSchema>(
         }
         throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
     }
-    const parsed: unknown = Value.Parse(schema, value);
-    // SAFETY: Value.Errors returned no schema violations, so Value.Parse returns
-    // the TypeBox static type represented by the same schema.
-    // oxlint-disable-next-line typescript/no-unsafe-return -- SAFETY: TypeBox exposes parsed schema output through a conditional static type that oxlint treats as any here.
-    return parsed as Static<Schema>;
+    return Value.Parse(StatusBarConfigFileSchema, value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readOptionalBoolean(
-    record: Record<string, unknown>,
-    key: keyof RightMessagesSettings,
-    label: string,
-): { value?: boolean; error?: string } {
-    const value = record[key];
-    if (value === undefined) {
-        return {};
-    }
-    if (typeof value === "boolean") {
-        return { value };
-    }
-    return { error: `${label}.${key} must be a boolean.` };
-}
-
-function readOptionalPositiveInteger(
-    record: Record<string, unknown>,
-    key: keyof RightMessagesSettings,
-    label: string,
-): { value?: number; error?: string } {
-    const value = record[key];
-    if (value === undefined) {
-        return {};
-    }
-    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-        return { error: `${label}.${key} must be a positive integer.` };
-    }
-    return { value };
-}
-
-function readOptionalNonNegativeInteger(
-    record: Record<string, unknown>,
-    key: keyof RightMessagesSettings,
-    label: string,
-): { value?: number; error?: string } {
-    const value = record[key];
-    if (value === undefined) {
-        return {};
-    }
-    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-        return { error: `${label}.${key} must be a non-negative integer.` };
-    }
-    return { value };
-}
-
-function isUnknownArray(value: unknown): value is unknown[] {
-    return Array.isArray(value);
-}
-
-function readOptionalMessages(
-    record: Record<string, unknown>,
-    label: string,
-): { value?: readonly string[]; errors: string[] } {
-    const value = record.messages;
-    if (value === undefined) {
-        return { errors: [] };
-    }
-    if (!isUnknownArray(value)) {
-        return { errors: [`${label}.messages must be an array of strings.`] };
-    }
-
-    const messages: string[] = [];
-    const errors: string[] = [];
-    for (let index = 0; index < value.length; index += 1) {
-        const entry = value[index];
-        if (typeof entry !== "string") {
-            errors.push(`${label}.messages[${index}] must be a string.`);
-            continue;
-        }
-
-        const message = entry.trim();
-        if (message.length > 0) {
-            messages.push(message);
-        }
-    }
-
-    return { value: messages, errors };
-}
-
-function readOptionalMessagesFile(
-    record: Record<string, unknown>,
-    label: string,
-    baseDir: string,
-): { value?: MessageFileReference; error?: string } {
-    const value = record.messagesFile;
-    if (value === undefined) {
-        return {};
-    }
-    if (typeof value !== "string" || value.trim().length === 0) {
-        return { error: `${label}.messagesFile must be a non-empty string.` };
-    }
-    return {
-        value: {
-            path: value.trim(),
-            baseDir,
-            label: `${label}.messagesFile`,
-        },
-    };
-}
-
-function parseRightMessagesSettings(
-    settings: unknown,
-    label: string,
-    baseDir: string,
-): { settings: RightMessagesSettings; errors: string[] } {
-    if (settings === undefined) {
-        return { settings: {}, errors: [] };
-    }
-    if (!isRecord(settings)) {
-        return {
-            settings: {},
-            errors: [`${label}.${RIGHT_MESSAGES_SETTINGS_KEY} must be a JSON object.`],
-        };
-    }
-
-    const errors: string[] = [];
-    const parsed: {
-        enabled?: boolean;
-        intervalMs?: number;
-        minGap?: number;
-        minScrollCycles?: number;
-        scrollColumnIntervalMs?: number;
-        dimmed?: boolean;
-        italic?: boolean;
-        messages?: readonly string[];
-        messagesFile?: MessageFileReference;
-    } = {};
-    const rightMessagesLabel = `${label}.${RIGHT_MESSAGES_SETTINGS_KEY}`;
-
-    const enabled = readOptionalBoolean(settings, "enabled", rightMessagesLabel);
-    if (enabled.error !== undefined) {
-        errors.push(enabled.error);
-    } else if (enabled.value !== undefined) {
-        parsed.enabled = enabled.value;
-    }
-
-    const intervalMs = readOptionalPositiveInteger(settings, "intervalMs", rightMessagesLabel);
-    if (intervalMs.error !== undefined) {
-        errors.push(intervalMs.error);
-    } else if (intervalMs.value !== undefined) {
-        parsed.intervalMs = intervalMs.value;
-    }
-
-    const minGap = readOptionalNonNegativeInteger(settings, "minGap", rightMessagesLabel);
-    if (minGap.error !== undefined) {
-        errors.push(minGap.error);
-    } else if (minGap.value !== undefined) {
-        parsed.minGap = minGap.value;
-    }
-
-    const minScrollCycles = readOptionalPositiveInteger(
-        settings,
-        "minScrollCycles",
-        rightMessagesLabel,
-    );
-    if (minScrollCycles.error !== undefined) {
-        errors.push(minScrollCycles.error);
-    } else if (minScrollCycles.value !== undefined) {
-        parsed.minScrollCycles = minScrollCycles.value;
-    }
-
-    const scrollColumnIntervalMs = readOptionalPositiveInteger(
-        settings,
-        "scrollColumnIntervalMs",
-        rightMessagesLabel,
-    );
-    if (scrollColumnIntervalMs.error !== undefined) {
-        errors.push(scrollColumnIntervalMs.error);
-    } else if (scrollColumnIntervalMs.value !== undefined) {
-        parsed.scrollColumnIntervalMs = scrollColumnIntervalMs.value;
-    }
-
-    const dimmed = readOptionalBoolean(settings, "dimmed", rightMessagesLabel);
-    if (dimmed.error !== undefined) {
-        errors.push(dimmed.error);
-    } else if (dimmed.value !== undefined) {
-        parsed.dimmed = dimmed.value;
-    }
-
-    const italic = readOptionalBoolean(settings, "italic", rightMessagesLabel);
-    if (italic.error !== undefined) {
-        errors.push(italic.error);
-    } else if (italic.value !== undefined) {
-        parsed.italic = italic.value;
-    }
-
-    const messages = readOptionalMessages(settings, rightMessagesLabel);
-    errors.push(...messages.errors);
-    if (messages.value !== undefined) {
-        parsed.messages = messages.value;
-    }
-
-    const messagesFile = readOptionalMessagesFile(settings, rightMessagesLabel, baseDir);
-    if (messagesFile.error !== undefined) {
-        errors.push(messagesFile.error);
-    } else if (messagesFile.value !== undefined) {
-        parsed.messagesFile = messagesFile.value;
-    }
-
-    return { settings: parsed, errors };
-}
+type ParsedSettings = {
+    readonly settings: StatusBarSettings;
+    readonly errors: string[];
+};
 
 function parseStatusBarSettings(
-    settings: unknown,
+    settings: StatusBarSettingsSource["settings"],
     label: string,
     baseDir: string,
-): { settings: StatusBarSettings; errors: string[] } {
+): ParsedSettings {
     let parsedConfig: ParsedStatusBarResolvedConfig;
     try {
-        parsedConfig = parseSchema(StatusBarConfigFileSchema, settings, label);
+        parsedConfig = parseStatusBarConfigFile(settings, label);
     } catch (error: unknown) {
-        let message: string;
-        if (error instanceof Error) {
-            message = error.message;
-        } else {
-            message = String(error);
-        }
+        let message = String(error);
+        if (error instanceof Error) message = error.message;
         return { settings: {}, errors: [message] };
     }
 
-    const parsed = parseRightMessagesSettings(parsedConfig.rightMessages, label, baseDir);
+    const rightMessages = parsedConfig.rightMessages;
+    let rightMessagesSettings: RightMessagesSettings | undefined;
+    if (rightMessages !== undefined) {
+        const { messagesFile: configuredMessagesFile, ...configuredRightMessages } = rightMessages;
+        const parsedRightMessages: MutableRightMessagesSettings = {
+            ...configuredRightMessages,
+        };
+        if (rightMessages.messages !== undefined) {
+            parsedRightMessages.messages = rightMessages.messages
+                .map((message) => message.trim())
+                .filter((message) => message.length > 0);
+        }
+        const messagesFilePath = configuredMessagesFile?.trim();
+        if (messagesFilePath !== undefined) {
+            parsedRightMessages.messagesFile = {
+                path: messagesFilePath,
+                baseDir,
+                label: `${label}.${RIGHT_MESSAGES_SETTINGS_KEY}.messagesFile`,
+            };
+        }
+        rightMessagesSettings = parsedRightMessages;
+    }
     return {
         settings: {
             statusBar: parseStatusBarConfigSettings(parsedConfig.statusBar),
-            rightMessages: parsed.settings,
+            rightMessages: rightMessagesSettings,
         },
-        errors: parsed.errors,
+        errors: [],
     };
 }
 
@@ -683,18 +399,19 @@ function parseMessagesFileContent(content: string): string[] {
     return messages;
 }
 
-function readMessagesFile(reference: MessageFileReference): { messages: string[]; error?: string } {
+type LoadedMessagesFile = {
+    readonly messages: string[];
+    readonly error?: string;
+};
+
+function readMessagesFile(reference: MessageFileReference): LoadedMessagesFile {
     const resolvedPath = resolveConfiguredPath(reference.path, reference.baseDir);
     try {
         const content = readFileSync(resolvedPath, "utf8");
         return { messages: parseMessagesFileContent(content) };
     } catch (cause: unknown) {
-        let message: string;
-        if (cause instanceof Error) {
-            message = cause.message;
-        } else {
-            message = String(cause);
-        }
+        let message = String(cause);
+        if (cause instanceof Error) message = cause.message;
         return {
             messages: [],
             error: `Failed to read ${reference.label} (${resolvedPath}): ${message}`,
@@ -775,10 +492,7 @@ function buildStatusBarResolvedConfig(settings: StatusBarSettings): LoadedStatus
 export function resolveStatusBarResolvedConfig(
     settingsSources: readonly StatusBarSettingsSource[],
 ): LoadedStatusBarConfig {
-    let mergedSettings: {
-        statusBar?: StatusBarConfig;
-        rightMessages?: RightMessagesSettings;
-    } = {};
+    const mergedSettings: MergedStatusBarSettings = {};
     const errors: string[] = [];
 
     for (const source of settingsSources) {

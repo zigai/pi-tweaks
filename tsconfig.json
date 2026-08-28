@@ -7,7 +7,15 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": true,
     "types": ["node"]
   },
-  "include": ["packages/**/*.ts", "scripts/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "packages/**/*.ts",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs",
+    "test/**/*.ts"
+  ]
 }

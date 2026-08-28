@@ -1,171 +1,30 @@
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
-import { Type, type Static, type TSchema } from "typebox";
+
+import { Type } from "typebox";
+
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
 import { Value } from "typebox/value";
+import {
+    DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
+    DEFAULT_PASTE_COLLAPSE_ENABLED,
+    DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
+    DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
+    DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+    LoadedUiTweaksConfig,
+    OptionalPasteCollapseExpandKeySchema,
+    UiTweaksConfig,
+    UiTweaksSettings,
+    UiTweaksSettingsSource,
+    extensionSettingsInput,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 
-export const DEFAULT_PASTE_COLLAPSE_ENABLED = true;
-export const DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD = 10;
-export const DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD = 1000;
-export const DEFAULT_PASTE_COLLAPSE_EXPAND_KEY: string | null = null;
-export const DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY = true;
+export * from "./settings-input.ts";
 
-export type UiTweaksConfig = {
-    readonly autocompleteAboveInput: boolean;
-    readonly bashExecPromptSpacing: boolean;
-    readonly anchorInputToBottom: boolean;
-    readonly compactModelSelector: boolean;
-    readonly hideAutocompleteScrollInfo: boolean;
-    readonly hideModelChangeStatus: boolean;
-    readonly hideModelProviderHint: boolean;
-    readonly hideSlashCommandSourceTags: boolean;
-    readonly highlightSelectedModelProvider: boolean;
-    readonly inputPromptPrefix: string;
-    readonly neutralBorderColor: boolean;
-    readonly pasteCollapseCharThreshold: number;
-    readonly pasteCollapseEnabled: boolean;
-    readonly pasteCollapseExpandKey: string | null;
-    readonly pasteCollapseLineThreshold: number;
-    readonly pasteCollapseUseToolExpandKey: boolean;
-    readonly preserveCompactionHistory: boolean;
-    readonly restoreContentAfterAutocompleteClose: boolean;
-    readonly selectedOptionPrefix: string;
-};
-
-export type LoadedUiTweaksConfig = {
-    readonly config: UiTweaksConfig;
-    readonly errors: readonly string[];
-};
-
-export type UiTweaksSettingsSource = {
-    readonly label: string;
-    readonly settings: unknown;
-};
-
-type UiTweaksSettings = {
-    $schema?: string;
-    autocompleteAboveInput?: boolean;
-    bashExecPromptSpacing?: boolean;
-    anchorInputToBottom?: boolean;
-    compactModelSelector?: boolean;
-    enabled?: boolean;
-    hideAutocompleteScrollInfo?: boolean;
-    hideModelChangeStatus?: boolean;
-    hideModelProviderHint?: boolean;
-    hideSlashCommandSourceTags?: boolean;
-    highlightSelectedModelProvider?: boolean;
-    inputPromptPrefix?: string;
-    neutralBorderColor?: boolean;
-    pasteCollapseCharThreshold?: number;
-    pasteCollapseEnabled?: boolean;
-    pasteCollapseExpandKey?: string | null;
-    pasteCollapseLineThreshold?: number;
-    pasteCollapseUseToolExpandKey?: boolean;
-    preserveCompactionHistory?: boolean;
-    restoreContentAfterAutocompleteClose?: boolean;
-    selectedOptionPrefix?: string;
-};
-
-const PASTE_COLLAPSE_EXPAND_KEY_PATTERN =
-    "^(?:(?:ctrl|shift|alt|super)\\+)*(?:[a-z0-9]|escape|esc|enter|return|tab|space|backspace|delete|insert|clear|home|end|pageUp|pageDown|pageup|pagedown|up|down|left|right|f(?:[1-9]|1[0-2])|[`\\-=\\[\\]\\\\;',./!@#$%^&*()_|~{}:<>?])$";
-
-const OptionalPasteCollapseExpandKeySchema = Type.Union([
-    Type.String({ minLength: 1, pattern: PASTE_COLLAPSE_EXPAND_KEY_PATTERN }),
-    Type.Null(),
-]);
-
-export const uiTweaksSettingsDefinition = defineExtensionSettings({
-    id: "pi-ui-tweaks",
-    title: "Pi UI Tweaks",
-    description: "Settings for Pi interactive-interface behavior and presentation tweaks.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-ui-tweaks/config.schema.json",
-    schema: Type.Object(
-        {
-            enabled: Type.Boolean({ default: true, description: "Enable all UI tweaks." }),
-            autocompleteAboveInput: Type.Boolean({
-                default: true,
-                description: "Render autocomplete above the input editor.",
-            }),
-            bashExecPromptSpacing: Type.Boolean({
-                default: true,
-                description: "Add spacing around bash execution prompts.",
-            }),
-            anchorInputToBottom: Type.Boolean({
-                default: false,
-                description: "Anchor the input editor to the terminal bottom.",
-            }),
-            compactModelSelector: Type.Boolean({
-                default: true,
-                description: "Use compact model-selector rows.",
-            }),
-            hideAutocompleteScrollInfo: Type.Boolean({
-                default: true,
-                description: "Hide autocomplete scroll-position text.",
-            }),
-            hideModelChangeStatus: Type.Boolean({
-                default: true,
-                description: "Hide model-change status messages.",
-            }),
-            hideModelProviderHint: Type.Boolean({
-                default: true,
-                description: "Hide provider hints in the model selector.",
-            }),
-            hideSlashCommandSourceTags: Type.Boolean({
-                default: true,
-                description: "Hide source tags in slash-command completion.",
-            }),
-            highlightSelectedModelProvider: Type.Boolean({
-                default: true,
-                description: "Highlight the selected model provider.",
-            }),
-            inputPromptPrefix: Type.String({
-                minLength: 1,
-                default: "> ",
-                description: "Prefix displayed before input text.",
-            }),
-            neutralBorderColor: Type.Boolean({
-                default: true,
-                description: "Use a neutral border color when Pi is idle.",
-            }),
-            pasteCollapseCharThreshold: Type.Integer({
-                minimum: 0,
-                default: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
-                description: "Character threshold that collapses pasted content.",
-            }),
-            pasteCollapseEnabled: Type.Boolean({
-                default: DEFAULT_PASTE_COLLAPSE_ENABLED,
-                description: "Collapse large pasted content.",
-            }),
-            pasteCollapseExpandKey: Type.Union(OptionalPasteCollapseExpandKeySchema.anyOf, {
-                default: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
-                description: "Explicit key used to expand collapsed pasted content.",
-            }),
-            pasteCollapseLineThreshold: Type.Integer({
-                minimum: 0,
-                default: DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
-                description: "Line threshold that collapses pasted content.",
-            }),
-            pasteCollapseUseToolExpandKey: Type.Boolean({
-                default: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
-                description: "Reuse Pi's configured tool-expansion key for pasted content.",
-            }),
-            preserveCompactionHistory: Type.Boolean({
-                default: false,
-                description: "Keep pre-compaction messages visible in transcript history.",
-            }),
-            restoreContentAfterAutocompleteClose: Type.Boolean({
-                default: true,
-                description: "Restore editor content after closing autocomplete.",
-            }),
-            selectedOptionPrefix: Type.String({
-                minLength: 1,
-                default: "→ ",
-                description: "Prefix displayed before selected list options.",
-            }),
-        },
-        { additionalProperties: false },
-    ),
-});
+export const uiTweaksSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
+);
 
 export default uiTweaksSettingsDefinition;
 
@@ -227,46 +86,39 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSchema<Schema extends TSchema>(
-    schema: Schema,
-    value: unknown,
-    label: string,
-): Static<Schema> {
-    const errors = [...Value.Errors(schema, value)];
-    if (errors.length > 0) {
-        const messages = errors
-            .slice(0, 10)
-            .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
-        let suffix = "";
-        if (errors.length > messages.length) {
-            suffix = `; and ${errors.length - messages.length} more`;
-        }
-        throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
-    }
-    const parsed: unknown = Value.Parse(schema, value);
-    // SAFETY: Value.Errors returned no schema violations, so Value.Parse returns
-    // the TypeBox static type represented by the same schema.
-    // oxlint-disable-next-line typescript/no-unsafe-return -- SAFETY: TypeBox exposes parsed schema output through a conditional static type that oxlint treats as any here.
-    return parsed as Static<Schema>;
-}
+type ParsedUiTweaksSettingsResult = {
+    readonly settings: UiTweaksSettings;
+    readonly errors: readonly string[];
+};
 
-function parseUiTweaksSettings(
-    settings: unknown,
-    label: string,
-): { settings: UiTweaksSettings; errors: string[] } {
-    try {
-        const parsed = parseSchema(UiTweaksConfigSchema, settings, label);
-        return { settings: parsed, errors: [] };
-    } catch (error: unknown) {
-        let message: string;
-        if (error instanceof Error) {
-            message = error.message;
-        } else {
-            message = String(error);
+const uiTweaksSettingsParser = {
+    parse(settings: unknown, label: string): ParsedUiTweaksSettingsResult {
+        try {
+            const errors = [...Value.Errors(UiTweaksConfigSchema, settings)];
+            if (errors.length > 0) {
+                const messages = errors
+                    .slice(0, 10)
+                    .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
+                let suffix = "";
+                if (errors.length > messages.length) {
+                    suffix = `; and ${errors.length - messages.length} more`;
+                }
+                throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
+            }
+            const parsed: unknown = Value.Parse(UiTweaksConfigSchema, settings);
+            // SAFETY: Value.Errors validated the same schema and input immediately
+            // above, so TypeBox returns UiTweaksSettings here.
+            return {
+                settings: parsed as UiTweaksSettings,
+                errors: [],
+            } satisfies ParsedUiTweaksSettingsResult;
+        } catch (cause: unknown) {
+            let message = String(cause);
+            if (cause instanceof Error) message = cause.message;
+            return { settings: {}, errors: [message] } satisfies ParsedUiTweaksSettingsResult;
         }
-        return { settings: {}, errors: [message] };
-    }
-}
+    },
+};
 
 function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
     if (settings.enabled === false) {
@@ -352,7 +204,7 @@ export function resolveUiTweaksConfig(
     const errors: string[] = [];
 
     for (const source of settingsSources) {
-        const parsed = parseUiTweaksSettings(source.settings, source.label);
+        const parsed = uiTweaksSettingsParser.parse(source.settings, source.label);
         Object.assign(mergedSettings, parsed.settings);
         errors.push(...parsed.errors);
     }

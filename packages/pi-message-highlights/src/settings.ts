@@ -1,110 +1,25 @@
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
-import type { ThemeColor } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type TSchema } from "typebox";
+
+import { Type, type Static } from "typebox";
+
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
 import { Value } from "typebox/value";
+import {
+    DEFAULT_URL_COLOR_SETTING,
+    THEME_FOREGROUND_COLORS,
+    ThemeForegroundColor,
+    ansiColorSettingSchema,
+    extensionSettingsInput,
+    urlColorSettingSchema,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 
-function defineThemeColors<const Colors extends readonly ThemeColor[]>(
-    colors: Colors & ([ThemeColor] extends [Colors[number]] ? unknown : never),
-): Colors {
-    return colors;
-}
+export * from "./settings-input.ts";
 
-export const THEME_FOREGROUND_COLORS = defineThemeColors([
-    "accent",
-    "border",
-    "borderAccent",
-    "borderMuted",
-    "success",
-    "error",
-    "warning",
-    "muted",
-    "dim",
-    "text",
-    "thinkingText",
-    "userMessageText",
-    "customMessageText",
-    "customMessageLabel",
-    "toolTitle",
-    "toolOutput",
-    "mdHeading",
-    "mdLink",
-    "mdLinkUrl",
-    "mdCode",
-    "mdCodeBlock",
-    "mdCodeBlockBorder",
-    "mdQuote",
-    "mdQuoteBorder",
-    "mdHr",
-    "mdListBullet",
-    "toolDiffAdded",
-    "toolDiffRemoved",
-    "toolDiffContext",
-    "syntaxComment",
-    "syntaxKeyword",
-    "syntaxFunction",
-    "syntaxVariable",
-    "syntaxString",
-    "syntaxNumber",
-    "syntaxType",
-    "syntaxOperator",
-    "syntaxPunctuation",
-    "thinkingOff",
-    "thinkingMinimal",
-    "thinkingLow",
-    "thinkingMedium",
-    "thinkingHigh",
-    "thinkingXhigh",
-    "thinkingMax",
-    "bashMode",
-] as const);
-
-export type ThemeForegroundColor = (typeof THEME_FOREGROUND_COLORS)[number];
-export const DEFAULT_URL_COLOR_SETTING = "#87d7ff";
-
-export const themeForegroundColorSchema = Type.Union(
-    THEME_FOREGROUND_COLORS.map((color) => Type.Literal(color)),
-    {
-        title: "Theme color",
-        "x-control": "select",
-        description: "Pi theme foreground color name.",
-    },
+export const messageHighlightsSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
 );
-export const urlColorSettingSchema = Type.Union([
-    Type.Integer({
-        title: "ANSI 256 color",
-        minimum: 0,
-        maximum: 255,
-        "x-control": "slider",
-        description: "ANSI 256 color index.",
-    }),
-    Type.Literal("", { title: "Disabled", description: "Disable URL highlighting." }),
-    Type.String({
-        title: "Hex color",
-        pattern: "^#[0-9a-fA-F]{6}$",
-        "x-control": "color",
-        description: "Six-digit hexadecimal color.",
-    }),
-    themeForegroundColorSchema,
-]);
-
-export const messageHighlightsSettingsDefinition = defineExtensionSettings({
-    id: "pi-message-highlights",
-    title: "Pi Message Highlights",
-    description: "Settings for highlighting URLs in message output.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-message-highlights/config.schema.json",
-    schema: Type.Object(
-        {
-            urlColor: Type.Union(urlColorSettingSchema.anyOf, {
-                default: DEFAULT_URL_COLOR_SETTING,
-                description:
-                    "URL color as an ANSI-256 index, hex color, theme color name, or empty string to disable highlighting.",
-            }),
-        },
-        { additionalProperties: false },
-    ),
-});
 
 export default messageHighlightsSettingsDefinition;
 
@@ -171,46 +86,37 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSchema<Schema extends TSchema>(
-    schema: Schema,
-    value: unknown,
-    label: string,
-): Static<Schema> {
-    const errors = [...Value.Errors(schema, value)];
-    if (errors.length > 0) {
-        const messages = errors
-            .slice(0, 5)
-            .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
-        let suffix = "";
-        if (errors.length > messages.length) {
-            suffix = `; and ${errors.length - messages.length} more`;
-        }
-        throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
-    }
-    const parsed: unknown = Value.Parse(schema, value);
-    // SAFETY: Value.Errors returned no schema violations, so Value.Parse returns
-    // the TypeBox static type represented by the same schema.
-    // oxlint-disable-next-line typescript/no-unsafe-return -- SAFETY: TypeBox exposes parsed schema output through a conditional static type that oxlint treats as any here.
-    return parsed as Static<Schema>;
+function isMessageHighlightsSettings(value: unknown): value is MessageHighlightsSettings {
+    return Value.Check(MessageHighlightsConfigSchema, value);
 }
 
-function parseMessageHighlightsSettings(
-    settings: unknown,
-    label: string,
-): { settings: MessageHighlightsSettings; errors: string[] } {
-    try {
-        const parsed = parseSchema(MessageHighlightsConfigSchema, settings, label);
-        return { settings: parsed, errors: [] };
-    } catch (cause: unknown) {
-        let message: string;
-        if (cause instanceof Error) {
-            message = cause.message;
-        } else {
-            message = String(cause);
+type ParsedSettingsResult = {
+    settings: MessageHighlightsSettings;
+    errors: string[];
+};
+
+const messageHighlightsSettingsParser = {
+    parse(settings: unknown, label: string): ParsedSettingsResult {
+        const errors = [...Value.Errors(MessageHighlightsConfigSchema, settings)];
+        if (errors.length > 0) {
+            const messages = errors
+                .slice(0, 5)
+                .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
+            let suffix = "";
+            if (errors.length > messages.length) {
+                suffix = `; and ${errors.length - messages.length} more`;
+            }
+            return {
+                settings: {},
+                errors: [`${label} is invalid: ${messages.join("; ")}${suffix}`],
+            };
         }
-        return { settings: {}, errors: [message] };
-    }
-}
+        if (!isMessageHighlightsSettings(settings)) {
+            return { settings: {}, errors: [`${label} is invalid: root failed schema parsing`] };
+        }
+        return { settings, errors: [] };
+    },
+};
 
 function isHexColor(value: string): value is `#${string}` {
     return /^#[0-9a-fA-F]{6}$/.test(value);
@@ -220,8 +126,12 @@ function isThemeForegroundColor(value: string): value is ThemeForegroundColor {
     return THEME_FOREGROUND_COLOR_SET.has(value);
 }
 
+function isAnsiColorSetting(setting: UrlColorSetting): setting is number {
+    return Value.Check(ansiColorSettingSchema, setting);
+}
+
 function parseUrlColorSetting(setting: UrlColorSetting): HighlightColor {
-    if (typeof setting === "number") {
+    if (isAnsiColorSetting(setting)) {
         return { kind: "ansi256", color: setting };
     }
     if (setting === "") {
@@ -252,7 +162,7 @@ export function resolveMessageHighlightsConfig(
     const errors: string[] = [];
 
     for (const source of settingsSources) {
-        const parsed = parseMessageHighlightsSettings(source.settings, source.label);
+        const parsed = messageHighlightsSettingsParser.parse(source.settings, source.label);
         Object.assign(mergedSettings, parsed.settings);
         errors.push(...parsed.errors);
     }

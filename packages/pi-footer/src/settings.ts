@@ -1,106 +1,35 @@
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
-import { Type, type Static, type TSchema } from "typebox";
+
+import { Type, type Static } from "typebox";
+
 import { Value } from "typebox/value";
+
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
 import {
     FOOTER_CUSTOM_SLOT_ID_PATTERN,
     type FooterLayout,
     type FooterSlotId,
 } from "./footer-model.ts";
-const FOOTER_LAYOUT = {
-    left: ["path", "branch", "provider", "model", "thinking"],
-    right: ["context"],
-    hidden: [],
-} as const;
+import {
+    FOOTER_LAYOUT,
+    FooterConfig,
+    FooterLayoutSettings,
+    FooterLayoutSettingsParseResult,
+    FooterSettings,
+    FooterSettingsParseResult,
+    FooterSettingsSource,
+    LoadedFooterConfig,
+    extensionSettingsInput,
+    footerSlotIdSchema,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 
-export type FooterConfig = {
-    readonly separator: string;
-    readonly showGitAheadBehind: boolean;
-    readonly layout: FooterLayout;
-};
+export * from "./settings-input.ts";
 
-export type LoadedFooterConfig = {
-    readonly config: FooterConfig;
-    readonly errors: readonly string[];
-};
-
-export type FooterSettingsSource = {
-    readonly label: string;
-    readonly settings: unknown;
-};
-
-type FooterSettings = {
-    $schema?: string;
-    separator?: string;
-    showGitAheadBehind?: boolean;
-    layout?: FooterLayoutSettings;
-};
-
-type FooterLayoutSettings = {
-    left?: readonly FooterSlotId[];
-    right?: readonly FooterSlotId[];
-    hidden?: readonly FooterSlotId[];
-};
-
-const builtinSlotIdSchema = Type.Union([
-    Type.Literal("path"),
-    Type.Literal("branch"),
-    Type.Literal("provider"),
-    Type.Literal("model"),
-    Type.Literal("thinking"),
-    Type.Literal("mcp"),
-    Type.Literal("context"),
-]);
-export const footerSlotIdSchema = Type.Union(
-    [builtinSlotIdSchema, Type.String({ pattern: FOOTER_CUSTOM_SLOT_ID_PATTERN })],
-    {
-        "x-control": "combobox",
-        examples: ["path", "branch", "provider", "model", "thinking", "mcp", "context"],
-        description: "Built-in or extension-provided footer slot ID.",
-    },
+export const footerSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
 );
-
-export const footerSettingsDefinition = defineExtensionSettings({
-    id: "pi-footer",
-    title: "Pi Footer",
-    description: "Settings for footer content, ordering, and separators.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-footer/config.schema.json",
-    schema: Type.Object(
-        {
-            separator: Type.String({
-                default: "·",
-                description: "Text placed between visible footer slots.",
-            }),
-            showGitAheadBehind: Type.Boolean({
-                default: false,
-                description:
-                    "Show upstream commit counts (↑ahead ↓behind) beside the branch. Hidden when the branch has no upstream.",
-            }),
-            layout: Type.Object(
-                {
-                    left: Type.Array(footerSlotIdSchema, {
-                        uniqueItems: true,
-                        default: [...FOOTER_LAYOUT.left],
-                        description: "Footer slot IDs shown on the left in display order.",
-                    }),
-                    right: Type.Array(footerSlotIdSchema, {
-                        uniqueItems: true,
-                        default: [...FOOTER_LAYOUT.right],
-                        description: "Footer slot IDs shown on the right in display order.",
-                    }),
-                    hidden: Type.Array(footerSlotIdSchema, {
-                        uniqueItems: true,
-                        default: [],
-                        description: "Footer slot IDs hidden from both sides.",
-                    }),
-                },
-                { default: {}, additionalProperties: false },
-            ),
-        },
-        { additionalProperties: false },
-    ),
-});
 
 export default footerSettingsDefinition;
 
@@ -155,27 +84,8 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSchema<Schema extends TSchema>(
-    schema: Schema,
-    value: unknown,
-    label: string,
-): Static<Schema> {
-    const errors = [...Value.Errors(schema, value)];
-    if (errors.length > 0) {
-        const messages = errors
-            .slice(0, 5)
-            .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
-        let suffix = "";
-        if (errors.length > messages.length) {
-            suffix = `; and ${errors.length - messages.length} more`;
-        }
-        throw new Error(`${label} is invalid: ${messages.join("; ")}${suffix}`);
-    }
-    const parsed: unknown = Value.Parse(schema, value);
-    // SAFETY: Value.Errors returned no schema violations, so Value.Parse returns
-    // the TypeBox static type represented by the same schema.
-    // oxlint-disable-next-line typescript/no-unsafe-return -- SAFETY: TypeBox exposes parsed schema output through a conditional static type that oxlint treats as any here.
-    return parsed as Static<Schema>;
+function isParsedFooterConfig(value: unknown): value is ParsedFooterConfig {
+    return Value.Check(FooterConfigSchema, value);
 }
 
 function sanitizeSeparator(value: string): string {
@@ -228,7 +138,7 @@ function findSharedVisibleSlotId(
 function parseFooterLayoutSettings(
     layout: NonNullable<ParsedFooterConfig["layout"]>,
     label: string,
-): { layout?: FooterLayoutSettings; errors: string[] } {
+): FooterLayoutSettingsParseResult {
     const settings: FooterLayoutSettings = {};
 
     if (layout.left !== undefined) {
@@ -245,35 +155,22 @@ function parseFooterLayoutSettings(
     if (sharedSlotId !== undefined) {
         return {
             errors: [`${label}.layout cannot place "${sharedSlotId}" on both left and right.`],
-        };
+        } satisfies FooterLayoutSettingsParseResult;
     }
 
-    return { layout: settings, errors: [] };
+    return { layout: settings, errors: [] } satisfies FooterLayoutSettingsParseResult;
 }
 
-function parseFooterSettings(
-    settings: unknown,
+function buildParsedFooterSettings(
+    parsed: ParsedFooterConfig,
     label: string,
-): { settings: FooterSettings; errors: string[] } {
-    let parsed: ParsedFooterConfig;
-    try {
-        parsed = parseSchema(FooterConfigSchema, settings, label);
-    } catch (error: unknown) {
-        let message: string;
-        if (error instanceof Error) {
-            message = error.message;
-        } else {
-            message = String(error);
-        }
-        return { settings: {}, errors: [message] };
-    }
-
+): FooterSettingsParseResult {
     if (
         parsed.separator === undefined &&
         parsed.showGitAheadBehind === undefined &&
         parsed.layout === undefined
     ) {
-        return { settings: {}, errors: [] };
+        return { settings: {}, errors: [] } satisfies FooterSettingsParseResult;
     }
 
     const nextSettings: FooterSettings = {};
@@ -300,7 +197,7 @@ function parseFooterSettings(
         errors.push(...parsedLayout.errors);
     }
 
-    return { settings: nextSettings, errors };
+    return { settings: nextSettings, errors } satisfies FooterSettingsParseResult;
 }
 
 function buildFooterConfig(settings: FooterSettings): FooterConfig {
@@ -346,9 +243,32 @@ export function resolveFooterConfig(
     const errors: string[] = [];
 
     for (const source of settingsSources) {
-        const parsed = parseFooterSettings(source.settings, source.label);
-        mergedSettings = mergeFooterSettings(mergedSettings, parsed.settings);
-        errors.push(...parsed.errors);
+        try {
+            const settings = source.settings;
+            if (!isParsedFooterConfig(settings)) {
+                const schemaErrors = [...Value.Errors(FooterConfigSchema, settings)];
+                const messages = schemaErrors
+                    .slice(0, 5)
+                    .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
+                let suffix = "";
+                if (schemaErrors.length > messages.length) {
+                    suffix = `; and ${schemaErrors.length - messages.length} more`;
+                }
+                errors.push(`${source.label} is invalid: ${messages.join("; ")}${suffix}`);
+                continue;
+            }
+            const parsed = buildParsedFooterSettings(settings, source.label);
+            mergedSettings = mergeFooterSettings(mergedSettings, parsed.settings);
+            errors.push(...parsed.errors);
+        } catch (error: unknown) {
+            let message: string;
+            if (error instanceof Error) {
+                message = error.message;
+            } else {
+                message = String(error);
+            }
+            errors.push(message);
+        }
     }
 
     const config = buildFooterConfig(mergedSettings);

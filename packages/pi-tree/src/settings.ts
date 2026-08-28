@@ -1,10 +1,11 @@
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
 import { getPiGlobalSettingsPath, loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
+
 import {
-    getAgentDir,
     SettingsManager,
+    getAgentDir,
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+
 import {
     closeSync,
     mkdirSync,
@@ -15,72 +16,36 @@ import {
     unlinkSync,
     writeFileSync,
 } from "node:fs";
+
 import { dirname, join } from "node:path";
-import { Type, type TSchema } from "typebox";
+
 import { Value } from "typebox/value";
 
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
+import {
+    MAX_VISIBLE_LINES_SETTINGS_KEY,
+    MIN_VISIBLE_LINES,
+    PREVIEW_FULL_HEIGHT_SETTINGS_KEY,
+    PREVIEW_SETTINGS_KEY,
+    PiThemeSettings,
+    PiThemeSettingsSchema,
+    SETTINGS_KEY,
+    SETTINGS_LOCK_TIMEOUT_MS,
+    STALE_SETTINGS_LOCK_MS,
+    SettingsObject,
+    SettingsObjectSchema,
+    TreeTimestampModeSchema,
+    extensionSettingsInput,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 import { DEFAULT_MODE, type TreeTimestampMode } from "./timestamps.ts";
 
-const SETTINGS_KEY = "treeTimestampMode";
-const PREVIEW_SETTINGS_KEY = "treeSelectedPreview";
-const MAX_VISIBLE_LINES_SETTINGS_KEY = "treeMaxVisibleLines";
-const PREVIEW_FULL_HEIGHT_SETTINGS_KEY = "treePreviewFullHeight";
-const MIN_VISIBLE_LINES = 5;
-const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
-const STALE_SETTINGS_LOCK_MS = 30_000;
+export * from "./settings-input.ts";
 
-const TreeTimestampModeSchema = Type.Union([
-    Type.Literal("off"),
-    Type.Literal("relative"),
-    Type.Literal("absolute"),
-]);
-const TreePreviewEnabledSchema = Type.Boolean();
-const TreeMaxVisibleLinesSchema = Type.Number({ minimum: MIN_VISIBLE_LINES });
-const TreePreviewFullHeightSchema = Type.Boolean();
-const ThemeNameSchema = Type.String();
-const SettingsObjectSchema = Type.Object(
-    {
-        $schema: Type.Optional(Type.String()),
-        [SETTINGS_KEY]: Type.Optional(TreeTimestampModeSchema),
-        [PREVIEW_SETTINGS_KEY]: Type.Optional(TreePreviewEnabledSchema),
-        [MAX_VISIBLE_LINES_SETTINGS_KEY]: Type.Optional(TreeMaxVisibleLinesSchema),
-        [PREVIEW_FULL_HEIGHT_SETTINGS_KEY]: Type.Optional(TreePreviewFullHeightSchema),
-    },
-    { additionalProperties: false },
+export const treeSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
 );
-export const treeSettingsDefinition = defineExtensionSettings({
-    id: "pi-tree",
-    title: "Pi Tree",
-    description: "Settings for session-tree timestamps and preview layout.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-tree/config.schema.json",
-    schema: Type.Object(
-        {
-            [SETTINGS_KEY]: Type.Union(
-                [Type.Literal("off"), Type.Literal("relative"), Type.Literal("absolute")],
-                {
-                    default: DEFAULT_MODE,
-                    description: "Timestamp style shown in tree entries.",
-                },
-            ),
-            [PREVIEW_SETTINGS_KEY]: Type.Boolean({
-                default: false,
-                description: "Show the selected tree entry preview.",
-            }),
-            [MAX_VISIBLE_LINES_SETTINGS_KEY]: Type.Optional(
-                Type.Number({
-                    minimum: MIN_VISIBLE_LINES,
-                    description: "Maximum visible lines in the tree selector.",
-                }),
-            ),
-            [PREVIEW_FULL_HEIGHT_SETTINGS_KEY]: Type.Boolean({
-                default: true,
-                description: "Allow the preview to use the selector's full available height.",
-            }),
-        },
-        { additionalProperties: false },
-    ),
-});
 
 export default treeSettingsDefinition;
 
@@ -153,45 +118,19 @@ export function loadTreeSettings() {
     );
 }
 
-function getErrorCode(error: unknown): string | undefined {
-    if (!(error instanceof Error)) return undefined;
-    const code = (error as NodeJS.ErrnoException).code;
-    if (typeof code === "string") return code;
-    return undefined;
+function isErrnoException(cause: unknown): cause is NodeJS.ErrnoException {
+    if (!(cause instanceof Error)) return false;
+    return typeof Object.getOwnPropertyDescriptor(cause, "code")?.value === "string";
 }
 
-function throwError(error: unknown): never {
-    if (error instanceof Error) throw error;
-    throw new Error(String(error));
+function throwCause(cause: unknown): never {
+    if (cause instanceof Error) throw cause;
+    throw new Error(String(cause));
 }
 
 function sleepSync(ms: number): void {
     const buffer = new SharedArrayBuffer(4);
     Atomics.wait(new Int32Array(buffer), 0, 0, ms);
-}
-
-function parseOptionalString(schema: TSchema, value: unknown): string | undefined {
-    if (value === undefined) return undefined;
-    if (!Value.Check(schema, value)) return undefined;
-    const parsed: unknown = Value.Parse(schema, value);
-    if (typeof parsed === "string") return parsed;
-    return undefined;
-}
-
-function parseOptionalBoolean(schema: TSchema, value: unknown): boolean | undefined {
-    if (value === undefined) return undefined;
-    if (!Value.Check(schema, value)) return undefined;
-    const parsed: unknown = Value.Parse(schema, value);
-    if (typeof parsed === "boolean") return parsed;
-    return undefined;
-}
-
-function parseOptionalNumber(schema: TSchema, value: unknown): number | undefined {
-    if (value === undefined) return undefined;
-    if (!Value.Check(schema, value)) return undefined;
-    const parsed: unknown = Value.Parse(schema, value);
-    if (typeof parsed === "number") return parsed;
-    return undefined;
 }
 
 function formatSchemaPath(instancePath: string): string {
@@ -203,53 +142,60 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSettingsObject(value: unknown, settingsPath: string): Record<string, unknown> {
-    const errors = [...Value.Errors(SettingsObjectSchema, value)];
-    if (errors.length > 0) {
-        const messages = errors
-            .slice(0, 5)
-            .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
-        let suffix = "";
-        if (errors.length > messages.length) {
-            suffix = `; and ${errors.length - messages.length} more`;
+const settingsObjectParser = {
+    parse(value: unknown, settingsPath: string): SettingsObject {
+        const errors = [...Value.Errors(SettingsObjectSchema, value)];
+        if (errors.length > 0) {
+            const messages = errors
+                .slice(0, 5)
+                .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
+            let suffix = "";
+            if (errors.length > messages.length) {
+                suffix = `; and ${errors.length - messages.length} more`;
+            }
+            throw new Error(
+                `${settingsPath} must contain a JSON object: ${messages.join("; ")}${suffix}`,
+            );
         }
-        throw new Error(
-            `${settingsPath} must contain a JSON object: ${messages.join("; ")}${suffix}`,
-        );
-    }
-    return Object.fromEntries(Object.entries(Value.Parse(SettingsObjectSchema, value)));
-}
+        return Value.Parse(SettingsObjectSchema, value);
+    },
+};
 
 function readSettingsObject(
     settingsPath: string,
     options?: { throwOnInvalid?: boolean },
-): Record<string, unknown> {
+): SettingsObject {
     try {
         const raw = readFileSync(settingsPath, "utf8");
         const parsedJson: unknown = JSON.parse(raw);
-        return parseSettingsObject(parsedJson, settingsPath);
-    } catch (error: unknown) {
-        if (getErrorCode(error) === "ENOENT") return {};
-        if (options?.throwOnInvalid === true) throwError(error);
-        // Ignore malformed config files while reading and fall back to defaults.
+        return settingsObjectParser.parse(parsedJson, settingsPath);
+    } catch (cause: unknown) {
+        if (isErrnoException(cause) && cause.code === "ENOENT") return {};
+        if (options?.throwOnInvalid === true) throwCause(cause);
     }
 
     return {};
 }
 
-function readMergedSettingsObject(): Record<string, unknown> {
-    return Object.fromEntries(Object.entries(loadTreeSettings().settings));
+function readMergedSettingsObject(): SettingsObject {
+    const settings = loadTreeSettings().settings;
+    return {
+        [SETTINGS_KEY]: settings[SETTINGS_KEY],
+        [PREVIEW_SETTINGS_KEY]: settings[PREVIEW_SETTINGS_KEY],
+        [MAX_VISIBLE_LINES_SETTINGS_KEY]: settings[MAX_VISIBLE_LINES_SETTINGS_KEY],
+        [PREVIEW_FULL_HEIGHT_SETTINGS_KEY]: settings[PREVIEW_FULL_HEIGHT_SETTINGS_KEY],
+    };
 }
 
-function readMergedPiSettingsObject(): Record<string, unknown> {
+function readMergedPiSettingsObject(): PiThemeSettings {
     const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
     const manager = SettingsManager.create(context.cwd, getAgentDir(), {
         projectTrusted: context.projectTrusted,
     });
-    return {
-        ...Object.fromEntries(Object.entries(manager.getGlobalSettings())),
-        ...Object.fromEntries(Object.entries(manager.getProjectSettings())),
-    };
+    return Value.Parse(PiThemeSettingsSchema, {
+        ...manager.getGlobalSettings(),
+        ...manager.getProjectSettings(),
+    });
 }
 
 function withSettingsLock<T>(settingsPath: string, fn: () => T): T {
@@ -284,8 +230,8 @@ function withSettingsLock<T>(settingsPath: string, fn: () => T): T {
                     // Ignore cleanup failures.
                 }
             }
-        } catch (error: unknown) {
-            if (getErrorCode(error) !== "EEXIST") throwError(error);
+        } catch (cause: unknown) {
+            if (!isErrnoException(cause) || cause.code !== "EEXIST") throwCause(cause);
 
             try {
                 const stat = statSync(lockPath);
@@ -319,9 +265,8 @@ function atomicWriteUtf8Sync(filePath: string, content: string): void {
 
     try {
         renameSync(tempPath, filePath);
-    } catch (error: unknown) {
-        const code = getErrorCode(error);
-        if (code === "EEXIST" || code === "EPERM") {
+    } catch (cause: unknown) {
+        if (isErrnoException(cause) && (cause.code === "EEXIST" || cause.code === "EPERM")) {
             try {
                 unlinkSync(filePath);
             } catch {
@@ -335,11 +280,11 @@ function atomicWriteUtf8Sync(filePath: string, content: string): void {
         } catch {
             // Ignore cleanup failures.
         }
-        throwError(error);
+        throwCause(cause);
     }
 }
 
-function updateSettingsObject(update: (settings: Record<string, unknown>) => void): void {
+function updateSettingsObject(update: (settings: SettingsObject) => void): void {
     loadTreeSettings();
     const settingsPath = getSettingsPath();
     withSettingsLock(settingsPath, () => {
@@ -353,11 +298,7 @@ export function getPersistedMode(): TreeTimestampMode {
     if (cachedMode !== null) return cachedMode;
 
     const settings = readMergedSettingsObject();
-    const configured = parseOptionalString(TreeTimestampModeSchema, settings[SETTINGS_KEY]);
-    cachedMode = DEFAULT_MODE;
-    if (isTreeTimestampMode(configured)) {
-        cachedMode = configured;
-    }
+    cachedMode = settings[SETTINGS_KEY] ?? DEFAULT_MODE;
     return cachedMode;
 }
 
@@ -365,8 +306,7 @@ export function getPersistedPreviewEnabled(): boolean {
     if (cachedPreviewEnabled !== null) return cachedPreviewEnabled;
 
     const settings = readMergedSettingsObject();
-    cachedPreviewEnabled =
-        parseOptionalBoolean(TreePreviewEnabledSchema, settings[PREVIEW_SETTINGS_KEY]) ?? false;
+    cachedPreviewEnabled = settings[PREVIEW_SETTINGS_KEY] ?? false;
     return cachedPreviewEnabled;
 }
 
@@ -374,10 +314,7 @@ export function getPersistedMaxVisibleLines(): number | null {
     if (cachedMaxVisibleLines !== undefined) return cachedMaxVisibleLines;
 
     const settings = readMergedSettingsObject();
-    const configured = parseOptionalNumber(
-        TreeMaxVisibleLinesSchema,
-        settings[MAX_VISIBLE_LINES_SETTINGS_KEY],
-    );
+    const configured = settings[MAX_VISIBLE_LINES_SETTINGS_KEY];
     cachedMaxVisibleLines = null;
     if (configured !== undefined && Number.isFinite(configured)) {
         cachedMaxVisibleLines = Math.max(MIN_VISIBLE_LINES, Math.floor(configured));
@@ -389,11 +326,7 @@ export function getPersistedPreviewFullHeight(): boolean {
     if (cachedPreviewFullHeight !== undefined) return cachedPreviewFullHeight;
 
     const settings = readMergedSettingsObject();
-    cachedPreviewFullHeight =
-        parseOptionalBoolean(
-            TreePreviewFullHeightSchema,
-            settings[PREVIEW_FULL_HEIGHT_SETTINGS_KEY],
-        ) ?? true;
+    cachedPreviewFullHeight = settings[PREVIEW_FULL_HEIGHT_SETTINGS_KEY] ?? true;
     return cachedPreviewFullHeight;
 }
 
@@ -401,15 +334,15 @@ export function getConfiguredThemeName(): string | undefined {
     if (cachedThemeNameLoaded) return cachedThemeName;
 
     const settings = readMergedPiSettingsObject();
-    cachedThemeName = parseOptionalString(ThemeNameSchema, settings.theme);
+    cachedThemeName = settings.theme;
     cachedThemeNameLoaded = true;
     return cachedThemeName;
 }
 
-function warnSettingsWriteFailed(error: unknown): void {
+function warnSettingsWriteFailed(cause: unknown): void {
     let suffix = "";
-    if (error instanceof Error && error.message.length > 0) {
-        suffix = `: ${error.message}`;
+    if (cause instanceof Error && cause.message.length > 0) {
+        suffix = `: ${cause.message}`;
     }
     console.warn(`[pi-tree] settings update was not saved${suffix}`);
 }
@@ -420,8 +353,8 @@ export function persistPreviewEnabled(enabled: boolean): void {
             settings[PREVIEW_SETTINGS_KEY] = enabled;
         });
         cachedPreviewEnabled = enabled;
-    } catch (error: unknown) {
-        warnSettingsWriteFailed(error);
+    } catch (cause: unknown) {
+        warnSettingsWriteFailed(cause);
     }
 }
 
@@ -431,7 +364,7 @@ export function persistMode(mode: TreeTimestampMode): void {
             settings[SETTINGS_KEY] = mode;
         });
         cachedMode = mode;
-    } catch (error: unknown) {
-        warnSettingsWriteFailed(error);
+    } catch (cause: unknown) {
+        warnSettingsWriteFailed(cause);
     }
 }

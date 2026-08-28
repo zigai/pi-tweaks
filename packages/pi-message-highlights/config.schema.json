@@ -82,6 +82,10 @@
             },
             {
               "type": "string",
+              "const": "searchMatchText"
+            },
+            {
+              "type": "string",
               "const": "userMessageText"
             },
             {

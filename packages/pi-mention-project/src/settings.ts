@@ -3,115 +3,45 @@ import {
     getAgentDir,
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
-import { loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
+
+import {
+    loadPiExtensionSettings,
+    type LoadedPiExtensionSettings,
+} from "@zigai/pi-extension-settings/pi";
+
 import { readFileSync } from "node:fs";
+
 import { join } from "node:path";
-import { Type, type TSchema } from "typebox";
+
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
 import { Value } from "typebox/value";
+import {
+    DEFAULT_COMPLETION_SUFFIX,
+    DEFAULT_MENTION_TRIGGER,
+    LEGACY_SETTINGS_FILE,
+    LegacyMentionProjectSettings,
+    MentionProjectSettings,
+    extensionSettingsInput,
+    legacyBooleanSchema,
+    legacyCompletionSuffixSchema,
+    legacyMentionProjectSettingsSchema,
+    legacyRootsSchema,
+    legacyTriggerSchema,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 
-export type MentionProjectSettings = {
-    trigger: string;
-    roots: string[];
-    gitReposOnly: boolean;
-    includeDotFolders: boolean;
-    completionSuffix: string;
-};
+export * from "./settings-input.ts";
 
-export const DEFAULT_MENTION_TRIGGER = "#";
-export const DEFAULT_COMPLETION_SUFFIX = " ";
-export const INCLUDE_NON_GIT_FLAG = "mention-project-include-non-git";
-export const INCLUDE_DOT_FOLDERS_FLAG = "mention-project-include-dot-folders";
-
-// Keep pre-extension-settings installs working without moving or overwriting user config.
-const LEGACY_SETTINGS_FILE = "settings.json";
-
-const legacyMentionProjectSettingsSchema = Type.Object(
-    {
-        mentionProjectTrigger: Type.Optional(Type.Unknown()),
-        mentionProjectRoots: Type.Optional(Type.Unknown()),
-        mentionProjectGitReposOnly: Type.Optional(Type.Unknown()),
-        mentionProjectIncludeDotFolders: Type.Optional(Type.Unknown()),
-        mentionProjectCompletionSuffix: Type.Optional(Type.Unknown()),
-    },
-    { additionalProperties: true },
+export const mentionProjectSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
 );
 
-const legacyTriggerSchema = Type.String({
-    minLength: 1,
-    maxLength: 1,
-    pattern: "^[^/\\s]$",
-});
-const legacyRootsSchema = Type.Union([
-    Type.String({ minLength: 1 }),
-    Type.Array(Type.String({ minLength: 1 })),
-]);
-const legacyBooleanSchema = Type.Boolean();
-const legacyCompletionSuffixSchema = Type.String();
-
-type LegacyMentionProjectSettings = {
-    readonly mentionProjectTrigger?: unknown;
-    readonly mentionProjectRoots?: unknown;
-    readonly mentionProjectGitReposOnly?: unknown;
-    readonly mentionProjectIncludeDotFolders?: unknown;
-    readonly mentionProjectCompletionSuffix?: unknown;
-};
-
-type SettingsLayer = Readonly<Record<string, unknown>> | undefined;
-
-export const mentionProjectSettingsDefinition = defineExtensionSettings({
-    id: "pi-mention-project",
-    title: "Pi Mention Project",
-    description: "Settings for project mentions and project discovery.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-mention-project/config.schema.json",
-    schema: Type.Object(
-        {
-            trigger: Type.String({
-                minLength: 1,
-                maxLength: 1,
-                pattern: "^[^/\\s]$",
-                default: DEFAULT_MENTION_TRIGGER,
-                description: "Single character that starts a project mention.",
-            }),
-            roots: Type.Union(
-                [
-                    Type.String({
-                        title: "One directory",
-                        minLength: 1,
-                        "x-control": "path",
-                        description: "One project root directory.",
-                    }),
-                    Type.Array(
-                        Type.String({
-                            minLength: 1,
-                            "x-control": "path",
-                            description: "Project root directory.",
-                        }),
-                        { title: "Directory list" },
-                    ),
-                ],
-                {
-                    default: [],
-                    description: "Project root directory or directories searched for projects.",
-                },
-            ),
-            gitReposOnly: Type.Boolean({
-                default: true,
-                description: "Include only directories containing Git repositories.",
-            }),
-            includeDotFolders: Type.Boolean({
-                default: false,
-                description: "Include project directories whose names start with a dot.",
-            }),
-            completionSuffix: Type.String({
-                default: DEFAULT_COMPLETION_SUFFIX,
-                description: "Text inserted after a completed project mention.",
-            }),
-        },
-        { additionalProperties: false },
-    ),
-});
+type LoadedMentionProjectSettings = Pick<
+    LoadedPiExtensionSettings<typeof mentionProjectSettingsDefinition.schema>,
+    "globalSettingsLayer" | "projectSettingsLayer"
+>;
+type SettingsLayer = LoadedMentionProjectSettings["globalSettingsLayer"];
 
 function readLegacySettings(filePath: string): LegacyMentionProjectSettings {
     try {
@@ -148,47 +78,46 @@ function isGeneratedDefaultLayer(layer: SettingsLayer): boolean {
     );
 }
 
-type LoadedMentionProjectSettings = {
+type LoadedMentionProjectSettingsLayers = {
     readonly globalSettingsLayer: SettingsLayer;
     readonly projectSettingsLayer: SettingsLayer;
 };
 
-function hasExplicitExtensionSetting(loaded: LoadedMentionProjectSettings, key: string): boolean {
+function hasExplicitExtensionSetting(
+    loaded: LoadedMentionProjectSettingsLayers,
+    key: string,
+): boolean {
     if (hasSetting(loaded.projectSettingsLayer, key)) return true;
     if (isGeneratedDefaultLayer(loaded.globalSettingsLayer)) return false;
     return hasSetting(loaded.globalSettingsLayer, key);
 }
 
-function parseLegacyString(schema: TSchema, value: unknown): string | undefined {
-    if (!Value.Check(schema, value)) return undefined;
-    const parsed: unknown = Value.Parse(schema, value);
-    if (typeof parsed !== "string") return undefined;
-    return parsed;
+function matchesLegacyTrigger(value: unknown): value is string {
+    return Value.Check(legacyTriggerSchema, value);
 }
 
-function parseLegacyBoolean(value: unknown): boolean | undefined {
-    if (!Value.Check(legacyBooleanSchema, value)) return undefined;
-    const parsed: unknown = Value.Parse(legacyBooleanSchema, value);
-    if (typeof parsed !== "boolean") return undefined;
-    return parsed;
+function matchesLegacyCompletionSuffix(value: unknown): value is string {
+    return Value.Check(legacyCompletionSuffixSchema, value);
 }
 
-function parseLegacyRoots(value: unknown): string[] | undefined {
-    if (!Value.Check(legacyRootsSchema, value)) return undefined;
-    const parsed: unknown = Value.Parse(legacyRootsSchema, value);
-    if (typeof parsed === "string") {
-        const root = parsed.trim();
-        if (root.length === 0) return undefined;
-        return [root];
-    }
-    if (!Array.isArray(parsed)) return undefined;
+function matchesLegacyBoolean(value: unknown): value is boolean {
+    return Value.Check(legacyBooleanSchema, value);
+}
+
+function matchesLegacyRoots(value: unknown): value is string | string[] {
+    return Value.Check(legacyRootsSchema, value);
+}
+
+function normalizeLegacyRoots(value: string | string[]): string[] | undefined {
+    let candidates: string[];
+    if (Array.isArray(value)) candidates = value;
+    else candidates = [value];
     const roots: string[] = [];
-    for (const root of parsed) {
-        if (typeof root !== "string") return undefined;
+    for (const root of candidates) {
         const trimmed = root.trim();
         if (trimmed.length > 0) roots.push(trimmed);
     }
-    if (roots.length === 0 && parsed.length > 0) return undefined;
+    if (roots.length === 0 && candidates.length > 0) return undefined;
     return roots;
 }
 
@@ -208,30 +137,34 @@ function loadLegacySettings(ctx: MentionProjectSettingsContext): LegacyMentionPr
 function applyLegacySettings(
     legacy: LegacyMentionProjectSettings,
     settings: MentionProjectSettings,
-    loaded: LoadedMentionProjectSettings,
+    loaded: LoadedMentionProjectSettingsLayers,
 ): void {
     if (!hasExplicitExtensionSetting(loaded, "trigger")) {
-        const trigger = parseLegacyString(legacyTriggerSchema, legacy.mentionProjectTrigger);
-        if (trigger !== undefined) settings.trigger = trigger;
+        const trigger = legacy.mentionProjectTrigger;
+        if (matchesLegacyTrigger(trigger)) settings.trigger = trigger;
     }
     if (!hasExplicitExtensionSetting(loaded, "roots")) {
-        const roots = parseLegacyRoots(legacy.mentionProjectRoots);
-        if (roots !== undefined) settings.roots = roots;
+        const legacyRoots = legacy.mentionProjectRoots;
+        if (matchesLegacyRoots(legacyRoots)) {
+            const roots = normalizeLegacyRoots(legacyRoots);
+            if (roots !== undefined) settings.roots = roots;
+        }
     }
     if (!hasExplicitExtensionSetting(loaded, "gitReposOnly")) {
-        const gitReposOnly = parseLegacyBoolean(legacy.mentionProjectGitReposOnly);
-        if (gitReposOnly !== undefined) settings.gitReposOnly = gitReposOnly;
+        const gitReposOnly = legacy.mentionProjectGitReposOnly;
+        if (matchesLegacyBoolean(gitReposOnly)) settings.gitReposOnly = gitReposOnly;
     }
     if (!hasExplicitExtensionSetting(loaded, "includeDotFolders")) {
-        const includeDotFolders = parseLegacyBoolean(legacy.mentionProjectIncludeDotFolders);
-        if (includeDotFolders !== undefined) settings.includeDotFolders = includeDotFolders;
+        const includeDotFolders = legacy.mentionProjectIncludeDotFolders;
+        if (matchesLegacyBoolean(includeDotFolders)) {
+            settings.includeDotFolders = includeDotFolders;
+        }
     }
     if (!hasExplicitExtensionSetting(loaded, "completionSuffix")) {
-        const completionSuffix = parseLegacyString(
-            legacyCompletionSuffixSchema,
-            legacy.mentionProjectCompletionSuffix,
-        );
-        if (completionSuffix !== undefined) settings.completionSuffix = completionSuffix;
+        const completionSuffix = legacy.mentionProjectCompletionSuffix;
+        if (matchesLegacyCompletionSuffix(completionSuffix)) {
+            settings.completionSuffix = completionSuffix;
+        }
     }
 }
 

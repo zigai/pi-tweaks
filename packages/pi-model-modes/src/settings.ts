@@ -1,5 +1,7 @@
-import { defineExtensionSettings } from "@zigai/pi-extension-settings";
+import { type ResolvedSettings } from "@zigai/pi-extension-settings";
+
 import { getPiGlobalSettingsPath, loadPiExtensionSettings } from "@zigai/pi-extension-settings/pi";
+
 import {
     closeSync,
     mkdirSync,
@@ -10,161 +12,30 @@ import {
     unlinkSync,
     writeFileSync,
 } from "node:fs";
+
 import { dirname, join } from "node:path";
+
 import { Type, type Static } from "typebox";
+
 import { Value } from "typebox/value";
-import { ALL_THINKING_LEVELS } from "./modes.ts";
 
-const MODE_COLOR_EXAMPLES = [
-    "accent",
-    "border",
-    "borderAccent",
-    "borderMuted",
-    "success",
-    "error",
-    "warning",
-    "muted",
-    "dim",
-    "text",
-    "thinkingText",
-    "userMessageText",
-    "customMessageText",
-    "customMessageLabel",
-    "toolTitle",
-    "toolOutput",
-    "mdHeading",
-    "mdLink",
-    "mdLinkUrl",
-    "mdCode",
-    "mdCodeBlock",
-    "mdCodeBlockBorder",
-    "mdQuote",
-    "mdQuoteBorder",
-    "mdHr",
-    "mdListBullet",
-    "toolDiffAdded",
-    "toolDiffRemoved",
-    "toolDiffContext",
-    "syntaxComment",
-    "syntaxKeyword",
-    "syntaxFunction",
-    "syntaxVariable",
-    "syntaxString",
-    "syntaxNumber",
-    "syntaxType",
-    "syntaxOperator",
-    "syntaxPunctuation",
-    "thinkingOff",
-    "thinkingMinimal",
-    "thinkingLow",
-    "thinkingMedium",
-    "thinkingHigh",
-    "thinkingXhigh",
-    "thinkingMax",
-    "bashMode",
-] as const;
+import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
+import {
+    SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY,
+    USE_THINKING_BORDER_COLORS_SETTINGS_KEY,
+    defaultModelSchema,
+    extensionSettingsInput,
+    modeShortcutsSchema,
+    modeSpecSchema,
+} from "./settings-input.ts";
+import prevalidatedSettings from "./settings.prevalidated.ts";
 
-export const USE_THINKING_BORDER_COLORS_SETTINGS_KEY = "modeUseThinkingBorderColors";
-export const SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY = "modeShowThinkingLevelStatus";
+export * from "./settings-input.ts";
 
-export const modeThinkingLevelSchema = Type.Enum(ALL_THINKING_LEVELS, {
-    "x-control": "select",
-    description: "Pi thinking level for this mode, clamped to the selected model's capabilities.",
-});
-
-export const defaultThinkingLevelSchema = Type.Enum(ALL_THINKING_LEVELS, {
-    "x-control": "select",
-    description: "Pi thinking level for the default model, clamped to that model's capabilities.",
-});
-
-export const modeSpecSchema = Type.Object(
-    {
-        provider: Type.Optional(Type.String()),
-        modelId: Type.Optional(Type.String()),
-        thinkingLevel: Type.Optional(modeThinkingLevelSchema),
-        color: Type.Optional(
-            Type.String({
-                "x-control": "combobox",
-                examples: MODE_COLOR_EXAMPLES,
-                description: "Pi theme foreground color used for this mode.",
-            }),
-        ),
-    },
-    { additionalProperties: false, title: "ModelMode" },
+export const modelModesSettingsDefinition = definePrevalidatedExtensionSettings(
+    extensionSettingsInput,
+    prevalidatedSettings,
 );
-
-export const defaultModelSchema = Type.Object(
-    {
-        provider: Type.String({
-            minLength: 1,
-            description: "Default model provider.",
-        }),
-        modelId: Type.String({ minLength: 1, description: "Default model ID." }),
-        thinkingLevel: Type.Optional(defaultThinkingLevelSchema),
-    },
-    { additionalProperties: false },
-);
-
-export const modeShortcutsSchema = Type.Object(
-    {
-        forward: Type.Optional(
-            Type.String({ minLength: 1, description: "Shortcut for cycling modes forward." }),
-        ),
-        backward: Type.Optional(
-            Type.String({ minLength: 1, description: "Shortcut for cycling modes backward." }),
-        ),
-    },
-    { additionalProperties: false },
-);
-
-export const modelModesSettingsDefinition = defineExtensionSettings({
-    id: "pi-model-modes",
-    title: "Pi Model Modes",
-    description: "Settings and mode definitions for switching model configurations.",
-    schemaId:
-        "https://raw.githubusercontent.com/zigai/pi-tweaks/master/packages/pi-model-modes/config.schema.json",
-    schema: Type.Object(
-        {
-            version: Type.Number({ default: 1, description: "Settings format version." }),
-            currentMode: Type.String({
-                default: "default",
-                description: "Currently selected mode ID.",
-            }),
-            defaultModel: Type.Optional(defaultModelSchema),
-            [USE_THINKING_BORDER_COLORS_SETTINGS_KEY]: Type.Boolean({
-                default: false,
-                description: "Use thinking-level colors instead of mode colors for borders.",
-            }),
-            [SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY]: Type.Boolean({
-                default: false,
-                description: "Show thinking level alongside mode status.",
-            }),
-            shortcuts: Type.Optional(modeShortcutsSchema),
-            modes: Type.Record(Type.String(), modeSpecSchema, {
-                default: {},
-                description: "Named model-mode specifications keyed by mode ID.",
-            }),
-        },
-        { additionalProperties: false },
-    ),
-    exampleSettings: {
-        currentMode: "deep",
-        modes: {
-            fast: {
-                provider: "openai-codex",
-                modelId: "gpt-5.4-mini",
-                thinkingLevel: "low",
-                color: "thinkingLow",
-            },
-            deep: {
-                provider: "openai-codex",
-                modelId: "gpt-5.6-sol",
-                thinkingLevel: "high",
-                color: "thinkingHigh",
-            },
-        },
-    },
-});
 
 export default modelModesSettingsDefinition;
 
@@ -186,6 +57,16 @@ const SettingsObjectSchema = Type.Object(
     },
     { additionalProperties: false },
 );
+type SettingsObject = Static<typeof SettingsObjectSchema>;
+type ModelModesSettings = ResolvedSettings<typeof modelModesSettingsDefinition>;
+type ModeDisplaySettings = {
+    readonly useThinkingBorderColors: ModelModesSettings[typeof USE_THINKING_BORDER_COLORS_SETTINGS_KEY];
+    readonly showThinkingLevelStatus: ModelModesSettings[typeof SHOW_THINKING_LEVEL_STATUS_SETTINGS_KEY];
+};
+
+type NodeErrorWithCode = Error & {
+    readonly code: string;
+};
 export type SettingsReadContext = {
     readonly cwd: string;
     readonly projectTrusted: boolean;
@@ -211,16 +92,20 @@ export function loadModelModesSettings(context: SettingsReadContext) {
     );
 }
 
-function getErrorCode(error: unknown): string | undefined {
-    if (!(error instanceof Error)) return undefined;
-    const code = (error as NodeJS.ErrnoException).code;
-    if (typeof code === "string") return code;
+export type LoadedModelModesSettings = ReturnType<typeof loadModelModesSettings>;
+
+function isNodeErrorWithCode(cause: unknown): cause is NodeErrorWithCode {
+    return cause instanceof Error && "code" in cause && typeof cause.code === "string";
+}
+
+function getErrorCode(cause: unknown): string | undefined {
+    if (isNodeErrorWithCode(cause)) return cause.code;
     return undefined;
 }
 
-function throwError(error: unknown): never {
-    if (error instanceof Error) throw error;
-    throw new Error(String(error));
+function throwError(cause: unknown): never {
+    if (cause instanceof Error) throw cause;
+    throw new Error(String(cause));
 }
 
 function sleepSync(ms: number): void {
@@ -324,31 +209,33 @@ function formatSchemaPath(instancePath: string): string {
         .join(".");
 }
 
-function parseSettingsObject(value: unknown, settingsPath: string): Record<string, unknown> {
-    const errors = [...Value.Errors(SettingsObjectSchema, value)];
-    if (errors.length > 0) {
-        const messages = errors
-            .slice(0, 5)
-            .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
-        let suffix = "";
-        if (errors.length > messages.length) {
-            suffix = `; and ${errors.length - messages.length} more`;
+const settingsObjectDecoder = {
+    parse(value: unknown, settingsPath: string): SettingsObject {
+        const errors = [...Value.Errors(SettingsObjectSchema, value)];
+        if (errors.length > 0) {
+            const messages = errors
+                .slice(0, 5)
+                .map((error) => `${formatSchemaPath(error.instancePath)} ${error.message}`);
+            let suffix = "";
+            if (errors.length > messages.length) {
+                suffix = `; and ${errors.length - messages.length} more`;
+            }
+            throw new Error(
+                `${settingsPath} must contain a JSON object: ${messages.join("; ")}${suffix}`,
+            );
         }
-        throw new Error(
-            `${settingsPath} must contain a JSON object: ${messages.join("; ")}${suffix}`,
-        );
-    }
-    return Object.fromEntries(Object.entries(Value.Parse(SettingsObjectSchema, value)));
-}
+        return Value.Parse(SettingsObjectSchema, value);
+    },
+};
 
 function readSettingsObject(
     settingsPath: string,
     options?: { throwOnInvalid?: boolean },
-): Record<string, unknown> {
+): SettingsObject {
     try {
         const raw = readFileSync(settingsPath, "utf8");
         const parsedJson: unknown = JSON.parse(raw);
-        return parseSettingsObject(parsedJson, settingsPath);
+        return settingsObjectDecoder.parse(parsedJson, settingsPath);
     } catch (error: unknown) {
         if (getErrorCode(error) === "ENOENT") return {};
         if (options?.throwOnInvalid === true) throwError(error);
@@ -360,7 +247,7 @@ function readSettingsObject(
 
 function updateSettingsObject(
     context: SettingsReadContext,
-    update: (settings: Record<string, unknown>) => void,
+    update: (settings: SettingsObject) => void,
 ): void {
     loadModelModesSettings(context);
     const settingsPath = getSettingsPath();
@@ -371,25 +258,18 @@ function updateSettingsObject(
     });
 }
 
-function parseModeShortcuts(value: unknown): ModeShortcuts {
+export function resolveModeShortcuts(value: ModeShortcuts | undefined): ModeShortcuts {
     if (!Value.Check(modeShortcutsSchema, value)) return {};
-    const parsed: unknown = Value.Parse(modeShortcutsSchema, value);
-    // SAFETY: Value.Check succeeded against the same schema, so this parse result has the schema's static type.
-    return parsed as ModeShortcuts;
-}
-
-export function resolveModeShortcuts(value: unknown): ModeShortcuts {
-    return parseModeShortcuts(value);
+    return Value.Parse(modeShortcutsSchema, value);
 }
 
 export function getConfiguredModeShortcuts(context: SettingsReadContext): ModeShortcuts {
-    return resolveModeShortcuts(loadModelModesSettings(context).globalSettingsLayer?.shortcuts);
+    const value = loadModelModesSettings(context).globalSettingsLayer?.shortcuts;
+    if (!Value.Check(modeShortcutsSchema, value)) return {};
+    return resolveModeShortcuts(Value.Parse(modeShortcutsSchema, value));
 }
 
-function readModeSettings(context: SettingsReadContext): {
-    useThinkingBorderColors: boolean;
-    showThinkingLevelStatus: boolean;
-} {
+function readModeSettings(context: SettingsReadContext): ModeDisplaySettings {
     const settings = loadModelModesSettings(context).settings;
     return {
         useThinkingBorderColors: settings[USE_THINKING_BORDER_COLORS_SETTINGS_KEY],
