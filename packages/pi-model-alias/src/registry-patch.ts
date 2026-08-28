@@ -19,6 +19,10 @@ const ORIGINAL_GET_PROVIDER_DISPLAY_NAME_KEY = "__piModelAliasOriginalGetProvide
 
 export type ModelAliasRuntimeState = {
     loadSettings: () => LoadedModelAliasSettings;
+    validatedConfig?: {
+        source: LoadedModelAliasSettings;
+        loaded: LoadedModelAliasSettings;
+    };
     reportedDiagnosticKey?: string;
 };
 
@@ -41,23 +45,32 @@ export type PatchedModelRegistry = BasicModelRegistry & {
 export function loadConfigForRegistry(
     state: ModelAliasRuntimeState,
     registry: PatchedModelRegistry,
+    refreshModels = false,
 ): LoadedModelAliasSettings {
     const loaded = state.loadSettings();
-    if (loaded.diagnostic !== undefined || loaded.settings.aliases.length === 0) return loaded;
+    if (!refreshModels && state.validatedConfig?.source === loaded) {
+        return state.validatedConfig.loaded;
+    }
 
-    const nativeModels = registry[ORIGINAL_GET_ALL_KEY]?.call(registry) ?? [];
-    const collision = getAliasModelIdCollision(loaded.settings, nativeModels);
-    if (collision === undefined) return loaded;
+    let validated = loaded;
+    if (loaded.diagnostic === undefined && loaded.settings.aliases.length > 0) {
+        const nativeModels = registry[ORIGINAL_GET_ALL_KEY]?.call(registry) ?? [];
+        const collision = getAliasModelIdCollision(loaded.settings, nativeModels);
+        if (collision !== undefined) {
+            validated = {
+                ...loaded,
+                settings: {
+                    ...loaded.settings,
+                    aliases: [],
+                    providerAliases: [],
+                },
+                diagnostic: `Failed to load ${loaded.path}: ${collision}`,
+            };
+        }
+    }
 
-    return {
-        ...loaded,
-        settings: {
-            ...loaded.settings,
-            aliases: [],
-            providerAliases: [],
-        },
-        diagnostic: `Failed to load ${loaded.path}: ${collision}`,
-    };
+    state.validatedConfig = { source: loaded, loaded: validated };
+    return validated;
 }
 
 function requireRegistryRuntime(

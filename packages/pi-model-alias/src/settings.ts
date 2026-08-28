@@ -147,18 +147,8 @@ export function loadModelAliasSettings(
 ): LoadedModelAliasSettings {
     const cwd = state.configCwd ?? process.cwd();
     const projectConfigPath = getProjectConfigPath(cwd);
-    const loadedLayers = loadPiExtensionSettings(
-        modelAliasSettingsDefinition,
-        { cwd, isProjectTrusted: () => state.projectTrusted === true },
-        {
-            bundledSchema: {
-                kind: "url",
-                url: new URL("../config.schema.json", import.meta.url),
-            },
-        },
-    );
     const useProjectConfig = state.projectTrusted === true && existsSync(projectConfigPath);
-    let configPath = loadedLayers.globalConfigPath;
+    let configPath = getGlobalConfigPath();
     if (useProjectConfig) configPath = projectConfigPath;
     let mtimeMs = -1;
     try {
@@ -169,6 +159,25 @@ export function loadModelAliasSettings(
 
     if (state.configCache?.path === configPath && state.configCache.mtimeMs === mtimeMs) {
         return state.configCache;
+    }
+
+    const loadedLayers = loadPiExtensionSettings(
+        modelAliasSettingsDefinition,
+        { cwd, isProjectTrusted: () => state.projectTrusted === true },
+        {
+            bundledSchema: {
+                kind: "url",
+                url: new URL("../config.schema.json", import.meta.url),
+            },
+        },
+    );
+    configPath = loadedLayers.globalConfigPath;
+    if (useProjectConfig) configPath = projectConfigPath;
+    mtimeMs = -1;
+    try {
+        mtimeMs = statSync(configPath).mtimeMs;
+    } catch {
+        // A scaffold failure is surfaced through the loader diagnostics below.
     }
 
     try {

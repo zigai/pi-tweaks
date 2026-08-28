@@ -617,6 +617,32 @@ test("registry patch aliases list and lookup methods and updates config at runti
     assert.equal(registry.getProviderDisplayName("openai"), "OpenAI Work");
 });
 
+test("registry reuses collision validation until an explicit model refresh", () => {
+    const loaded = loadedConfig([
+        { provider: "openai", model: "gpt-5", alias: "fast", name: "Fast" },
+    ]);
+    const state: ModelAliasRuntimeState = { loadSettings: () => loaded };
+    let getAllCalls = 0;
+    const registry: PatchedModelRegistry = {
+        getAll() {
+            getAllCalls++;
+            return nativeModels;
+        },
+        getAvailable: () => nativeModels,
+        find: (provider, modelId) =>
+            nativeModels.find((model) => model.provider === provider && model.id === modelId),
+        getProviderDisplayName: (provider) => provider,
+    };
+    installRegistryPatch(registry, state);
+
+    registry.getAvailable();
+    registry.getAvailable();
+    assert.equal(getAllCalls, 1);
+
+    loadConfigForRegistry(state, registry, true);
+    assert.equal(getAllCalls, 2);
+});
+
 test("registry collision disables model and provider aliases and reports a diagnostic", () => {
     const loaded = loadedConfig(
         [{ provider: "openai", model: "gpt-5", alias: "gpt-5" }],

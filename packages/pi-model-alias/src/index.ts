@@ -41,17 +41,17 @@ export default async function modelAliasExtension(pi: ExtensionAPI): Promise<voi
         setConfigContext(state, ctx);
         const registry = ctx.modelRegistry;
         installRegistryPatch(registry, state);
-        reportConfigError(state, ctx, loadConfigForRegistry(state, registry));
+        reportConfigError(state, ctx, loadConfigForRegistry(state, registry, true));
     });
 
     pi.on("turn_start", (_event, ctx) => {
         setConfigContext(state, ctx);
-        reportConfigError(state, ctx, loadConfigForRegistry(state, ctx.modelRegistry));
+        reportConfigError(state, ctx, loadConfigForRegistry(state, ctx.modelRegistry, true));
     });
 
     pi.on("before_provider_request", (event, ctx) => {
         setConfigContext(state, ctx);
-        const loaded = loadConfigForRegistry(state, ctx.modelRegistry);
+        const loaded = loadConfigForRegistry(state, ctx.modelRegistry, true);
         reportConfigError(state, ctx, loaded);
         if (!isProviderPayloadObject(event.payload)) return undefined;
         const alias = aliasForProviderRequest(event.payload, ctx.model, loaded.settings);

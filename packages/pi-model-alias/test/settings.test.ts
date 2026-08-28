@@ -54,7 +54,7 @@ test("loadModelAliasSettings scaffolds defaults for a missing aliases file", asy
     assert.match(await readFile(schemaPath, "utf8"), /Pi Model Alias settings/);
 });
 
-test("loadModelAliasSettings refreshes schema while reusing an unchanged config", async () => {
+test("loadModelAliasSettings reuses an unchanged config without reloading settings artifacts", async () => {
     await writeFile(
         configPath,
         JSON.stringify({
@@ -71,6 +71,10 @@ test("loadModelAliasSettings refreshes schema while reusing an unchanged config"
     const loadedAgain = settings.loadModelAliasSettings(state);
 
     assert.equal(loadedAgain, loaded);
+    assert.equal(await readFile(schemaPath, "utf8"), "stale after scaffold");
+
+    state.configCache = undefined;
+    settings.loadModelAliasSettings(state);
     assert.match(await readFile(schemaPath, "utf8"), /Pi Model Alias settings/);
 });
 
