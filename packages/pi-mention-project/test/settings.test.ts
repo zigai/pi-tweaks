@@ -70,6 +70,7 @@ test("loadMentionProjectSettings uses defaults and scaffolds global config", asy
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
         assert.deepEqual(JSON.parse(await readFile(globalConfigPath, "utf8")), {
             $schema: "./schemas/pi-mention-project.schema.json",
@@ -78,6 +79,7 @@ test("loadMentionProjectSettings uses defaults and scaffolds global config", asy
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
         assert.match(await readFile(globalSchemaPath, "utf8"), /Pi Mention Project settings/);
 
@@ -91,6 +93,7 @@ test("loadMentionProjectSettings uses defaults and scaffolds global config", asy
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
         assert.equal(await readFile(globalConfigPath, "utf8"), customConfig);
         assert.match(await readFile(globalSchemaPath, "utf8"), /Pi Mention Project settings/);
@@ -123,6 +126,7 @@ test("loadMentionProjectSettings preserves legacy project mention settings", asy
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: "",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
         assert.deepEqual(loadMentionProjectSettings(context(cwd, false)), {
             trigger: "@@",
@@ -130,6 +134,7 @@ test("loadMentionProjectSettings preserves legacy project mention settings", asy
             gitReposOnly: false,
             includeDotFolders: true,
             completionSuffix: "\n",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -151,6 +156,7 @@ test("new extension roots override legacy project mention roots", async () => {
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -171,6 +177,7 @@ test("loadMentionProjectSettings falls back when config becomes unreadable", asy
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
 
         await chmod(globalConfigPath, 0);
@@ -181,6 +188,7 @@ test("loadMentionProjectSettings falls back when config becomes unreadable", asy
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
     } finally {
         await chmod(globalConfigPath, 0o600).catch(() => undefined);
@@ -197,6 +205,7 @@ test("loadMentionProjectSettings applies global settings and trusted project ove
             gitReposOnly: false,
             includeDotFolders: true,
             completionSuffix: "\n",
+            initialSuggestions: { strategy: "frequent", pinned: ["pi-tweaks"] },
         });
         await writeJson(path.join(cwd, ".pi", "extension-settings", "pi-mention-project.json"), {
             trigger: "%",
@@ -204,6 +213,7 @@ test("loadMentionProjectSettings applies global settings and trusted project ove
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: "",
+            initialSuggestions: { strategy: "recent" },
         });
 
         assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
@@ -212,6 +222,7 @@ test("loadMentionProjectSettings applies global settings and trusted project ove
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: "",
+            initialSuggestions: { strategy: "recent", pinned: ["pi-tweaks"] },
         });
         assert.deepEqual(loadMentionProjectSettings(context(cwd, false)), {
             trigger: "@",
@@ -219,6 +230,7 @@ test("loadMentionProjectSettings applies global settings and trusted project ove
             gitReposOnly: false,
             includeDotFolders: true,
             completionSuffix: "\n",
+            initialSuggestions: { strategy: "frequent", pinned: ["pi-tweaks"] },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -241,6 +253,7 @@ test("loadMentionProjectSettings allows trusted project roots to clear global ro
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -256,6 +269,7 @@ test("applyMentionProjectCliFlags can relax project filters for one run", () => 
                 gitReposOnly: true,
                 includeDotFolders: false,
                 completionSuffix: " ",
+                initialSuggestions: { strategy: "frecency", pinned: [] },
             },
             { includeNonGit: true, includeDotFolders: true },
         ),
@@ -265,6 +279,7 @@ test("applyMentionProjectCliFlags can relax project filters for one run", () => 
             gitReposOnly: false,
             includeDotFolders: true,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         },
     );
 });
@@ -278,6 +293,7 @@ test("loadMentionProjectSettings ignores invalid custom keys", async () => {
             gitReposOnly: "no",
             includeDotFolders: "yes",
             completionSuffix: false,
+            initialSuggestions: { strategy: "newest" },
         });
 
         assert.deepEqual(loadMentionProjectSettings(context(cwd, true)), {
@@ -286,6 +302,7 @@ test("loadMentionProjectSettings ignores invalid custom keys", async () => {
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -306,6 +323,7 @@ test("loadMentionProjectSettings rejects unknown config keys", async () => {
             gitReposOnly: true,
             includeDotFolders: false,
             completionSuffix: " ",
+            initialSuggestions: { strategy: "frecency", pinned: [] },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });

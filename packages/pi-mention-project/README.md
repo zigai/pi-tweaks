@@ -13,7 +13,8 @@ pi install npm:@zigai/pi-mention-project
 ## Features
 
 - Adds fuzzy project autocomplete with `#` mentions.
-- Supports custom single- or multi-character triggers.
+- Ranks initial suggestions by frecency, recency, frequency, name, or discovery order.
+- Supports custom single- or multi-character triggers and pinned projects.
 - Expands selected mentions to absolute project paths when prompts are submitted.
 - Searches one or more configured folders for projects.
 
@@ -22,6 +23,8 @@ pi install npm:@zigai/pi-mention-project
 Type `#` in the prompt editor to open project suggestions, then select a project.
 
 The selected mention expands to the project's absolute path in both the displayed message and model context.
+
+History-based ordering records autocomplete selections in `~/.pi/agent/state/pi-mention-project-selections.json`. Frecency combines selection count with recency; manually typed mentions do not update this history.
 
 <!-- pi-extension-settings:start -->
 ## Configuration
@@ -35,6 +38,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project
 | `gitReposOnly` | boolean | `true` | Include only directories containing Git repositories. |
 | `includeDotFolders` | boolean | `false` | Include project directories whose names start with a dot. |
 | `completionSuffix` | string | `" "` | Text inserted after a completed project mention. |
+| `initialSuggestions.strategy` | `frecency` \| `recent` \| `frequent` \| `alphabetical` \| `sourceOrder` | `"frecency"` | Ordering used before any project query text is entered. |
+| `initialSuggestions.pinned` | string[] | `[]` | Project names placed first, in this order, before the configured strategy. |
 
 ```json
 {
@@ -43,7 +48,11 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-mention-project
   "roots": [],
   "gitReposOnly": true,
   "includeDotFolders": false,
-  "completionSuffix": " "
+  "completionSuffix": " ",
+  "initialSuggestions": {
+    "strategy": "frecency",
+    "pinned": []
+  }
 }
 ```
 <!-- pi-extension-settings:end -->

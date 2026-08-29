@@ -227,7 +227,10 @@ test("mention project rewrites submitted prompts and expands provider context", 
 
         registerProjectMentionExtension(pi);
 
-        assert.deepEqual([...registeredHandlers.keys()], ["session_start", "input", "context"]);
+        assert.deepEqual(
+            [...registeredHandlers.keys()],
+            ["session_start", "session_shutdown", "input", "context"],
+        );
         const inputResult = await getInputHandler(registeredHandlers)(
             {
                 type: "input",

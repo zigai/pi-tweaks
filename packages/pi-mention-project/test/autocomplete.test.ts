@@ -5,6 +5,7 @@ import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-
 
 import { createProjectMentionProvider } from "../src/autocomplete.ts";
 import type { ProjectDirectory } from "../src/projects.ts";
+import type { SelectionHistory } from "../src/initial-suggestions.ts";
 import type { MentionProjectSettings } from "../src/settings.ts";
 
 function project(name: string, root = "/tmp/projects"): ProjectDirectory {
@@ -22,6 +23,7 @@ function settings(roots: string[]): MentionProjectSettings {
         gitReposOnly: true,
         includeDotFolders: false,
         completionSuffix: " ",
+        initialSuggestions: { strategy: "frecency", pinned: [] },
     };
 }
 
@@ -234,4 +236,46 @@ test("applyCompletion uses the configured completion suffix", () => {
         cursorLine: 1,
         cursorCol: 0,
     });
+});
+
+test("initial project suggestions use configured ranking and record completions", async () => {
+    const recorded: string[] = [];
+    const history: SelectionHistory = {
+        async load() {
+            return new Map([
+                ["work-api", { count: 1, lastSelectedAt: 1 }],
+                ["pi-tweaks", { count: 2, lastSelectedAt: 2 }],
+            ]);
+        },
+        recordSelection(name) {
+            recorded.push(name);
+        },
+        async flush() {},
+    };
+    const provider = createProjectMentionProvider(
+        fallbackProvider([]),
+        {
+            ...settings([]),
+            initialSuggestions: { strategy: "recent", pinned: ["docs"] },
+        },
+        async () => [project("work-api"), project("docs"), project("pi-tweaks")],
+        history,
+    );
+
+    const suggestions = await provider.getSuggestions(["Use #"], 0, "Use #".length, {
+        signal: new AbortController().signal,
+    });
+    assert.deepEqual(
+        suggestions?.items.map((item) => item.label),
+        ["docs", "pi-tweaks", "work-api"],
+    );
+
+    provider.applyCompletion(
+        ["Use #pi"],
+        0,
+        "Use #pi".length,
+        { value: "#pi-tweaks", label: "pi-tweaks" },
+        "#pi",
+    );
+    assert.deepEqual(recorded, ["pi-tweaks"]);
 });

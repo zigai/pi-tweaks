@@ -4,6 +4,7 @@ import type {
     ExtensionHandler,
     InputEvent,
     InputEventResult,
+    SessionShutdownEvent,
     SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 
@@ -27,6 +28,7 @@ import {
     type MentionProjectSettings,
     type MentionProjectSettingsContext,
 } from "./settings.ts";
+import { createLazySelectionHistory, type SelectionHistory } from "./initial-suggestions.ts";
 
 function mentionProjectSettings(
     pi: Pick<ExtensionAPI, "getFlag">,
@@ -59,6 +61,7 @@ type ProjectMentionInputHandler = (
 
 export type ProjectMentionHandlerMap = {
     session_start: ExtensionHandler<SessionStartEvent>;
+    session_shutdown: ExtensionHandler<SessionShutdownEvent>;
     input: ProjectMentionInputHandler;
     context: ProjectMentionContextHandler;
 };
@@ -108,6 +111,8 @@ export function createProjectMentionContextHandler(
 }
 
 export function registerProjectMentionExtension(pi: ProjectMentionExtensionApi): void {
+    let selectionHistory: SelectionHistory | undefined;
+
     pi.registerFlag(INCLUDE_NON_GIT_FLAG, {
         description: "Include non-Git child folders in pi-mention-project suggestions.",
         type: "boolean",
@@ -121,7 +126,12 @@ export function registerProjectMentionExtension(pi: ProjectMentionExtensionApi):
 
     pi.on("session_start", async (_event, ctx) => {
         if (!ctx.hasUI) return;
+        await selectionHistory?.flush();
         const settings = mentionProjectSettings(pi, ctx);
+        const history = createLazySelectionHistory({
+            onError: (message) => ctx.ui.notify(message, "warning"),
+        });
+        selectionHistory = history;
         const projectSource = createProjectDirectorySource(settings, ctx.cwd);
         void projectSource.refresh();
 
@@ -129,12 +139,20 @@ export function registerProjectMentionExtension(pi: ProjectMentionExtensionApi):
             projectSource.getCachedProjectNames(),
         );
         ctx.ui.addAutocompleteProvider((current) =>
-            createProjectMentionProvider(current, settings, (options) =>
-                projectSource.getProjects(options),
+            createProjectMentionProvider(
+                current,
+                settings,
+                (options) => projectSource.getProjects(options),
+                history,
             ),
         );
     });
 
+    pi.on("session_shutdown", async () => {
+        const history = selectionHistory;
+        await history?.flush();
+        if (selectionHistory === history) selectionHistory = undefined;
+    });
     pi.on("input", createProjectMentionInputHandler(pi));
     pi.on("context", createProjectMentionContextHandler(pi));
 }

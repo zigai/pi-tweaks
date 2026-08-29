@@ -11,9 +11,8 @@ import {
     formatProjectMention,
 } from "./mention-syntax.ts";
 import type { ProjectDirectory } from "./projects.ts";
+import { rankWithSelectionHistory, type SelectionHistory } from "./initial-suggestions.ts";
 import { DEFAULT_MENTION_TRIGGER, type MentionProjectSettings } from "./settings.ts";
-
-const MAX_SUGGESTIONS = 20;
 
 type ProjectLoader = (options?: { readonly signal?: AbortSignal }) => Promise<ProjectDirectory[]>;
 type MentionCompletion = ReturnType<AutocompleteProvider["applyCompletion"]>;
@@ -69,24 +68,32 @@ function projectToItem(
     };
 }
 
-function filterProjects(
+async function filterProjects(
     projects: ProjectDirectory[],
     query: string,
-    trigger: string,
-): AutocompleteItem[] {
+    settings: MentionProjectSettings,
+    history: SelectionHistory | undefined,
+): Promise<AutocompleteItem[]> {
     if (query.length === 0) {
-        return projects.map((project) => projectToItem(project, trigger));
+        const ranked = await rankWithSelectionHistory(
+            projects,
+            (project) => project.name,
+            settings.initialSuggestions,
+            history,
+        );
+        return ranked.map((project) => projectToItem(project, settings.trigger));
     }
 
-    return fuzzyFilter(projects, query, (project) => `${project.name} ${project.path}`)
-        .slice(0, MAX_SUGGESTIONS)
-        .map((project) => projectToItem(project, trigger));
+    return fuzzyFilter(projects, query, (project) => `${project.name} ${project.path}`).map(
+        (project) => projectToItem(project, settings.trigger),
+    );
 }
 
 export function createProjectMentionProvider(
     current: AutocompleteProvider,
     settings: MentionProjectSettings,
     loadProjects: ProjectLoader,
+    history?: SelectionHistory,
 ): AutocompleteProvider {
     const { trigger, completionSuffix } = settings;
 
@@ -115,7 +122,10 @@ export function createProjectMentionProvider(
                 return current.getSuggestions(lines, cursorLine, cursorCol, options);
             }
 
-            const items = filterProjects(projects, mention.query, trigger);
+            const items = await filterProjects(projects, mention.query, settings, history);
+            if (options.signal.aborted) {
+                return current.getSuggestions(lines, cursorLine, cursorCol, options);
+            }
             if (items.length === 0) {
                 return current.getSuggestions(lines, cursorLine, cursorCol, options);
             }
@@ -137,6 +147,7 @@ export function createProjectMentionProvider(
             const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
             const afterCursor = currentLine.slice(cursorCol);
             const suffix = completionSuffixFor(afterCursor, completionSuffix);
+            history?.recordSelection(item.label);
             return applyMentionCompletion(
                 lines,
                 cursorLine,

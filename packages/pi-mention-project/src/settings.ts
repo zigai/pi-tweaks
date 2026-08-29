@@ -24,6 +24,7 @@ import {
     extensionSettingsInput,
     legacyBooleanSchema,
     legacyCompletionSuffixSchema,
+    initialSuggestionsSchema,
     legacyMentionProjectSettingsSchema,
     legacyRootsSchema,
     legacyTriggerSchema,
@@ -67,15 +68,31 @@ function hasSetting(layer: SettingsLayer, key: string): boolean {
 
 function isGeneratedDefaultLayer(layer: SettingsLayer): boolean {
     if (layer === undefined) return false;
-    return (
-        Object.keys(layer).length === 5 &&
-        layer.trigger === DEFAULT_MENTION_TRIGGER &&
-        Array.isArray(layer.roots) &&
-        layer.roots.length === 0 &&
-        layer.gitReposOnly === true &&
-        layer.includeDotFolders === false &&
-        layer.completionSuffix === DEFAULT_COMPLETION_SUFFIX
-    );
+    const generatedKeys = new Set([
+        "trigger",
+        "roots",
+        "gitReposOnly",
+        "includeDotFolders",
+        "completionSuffix",
+        "initialSuggestions",
+    ]);
+    if (Object.keys(layer).some((key) => !generatedKeys.has(key))) return false;
+    if (
+        layer.trigger !== DEFAULT_MENTION_TRIGGER ||
+        !Array.isArray(layer.roots) ||
+        layer.roots.length !== 0 ||
+        layer.gitReposOnly !== true ||
+        layer.includeDotFolders !== false ||
+        layer.completionSuffix !== DEFAULT_COMPLETION_SUFFIX
+    ) {
+        return false;
+    }
+
+    const initialSuggestions = layer.initialSuggestions;
+    if (initialSuggestions === undefined) return true;
+    if (!Value.Check(initialSuggestionsSchema, initialSuggestions)) return false;
+    const parsed = Value.Parse(initialSuggestionsSchema, initialSuggestions);
+    return parsed.strategy === "frecency" && parsed.pinned.length === 0;
 }
 
 type LoadedMentionProjectSettingsLayers = {
@@ -202,6 +219,10 @@ export function loadMentionProjectSettings(
         gitReposOnly: loaded.settings.gitReposOnly,
         includeDotFolders: loaded.settings.includeDotFolders,
         completionSuffix: loaded.settings.completionSuffix,
+        initialSuggestions: {
+            strategy: loaded.settings.initialSuggestions.strategy,
+            pinned: [...loaded.settings.initialSuggestions.pinned],
+        },
     };
     applyLegacySettings(loadLegacySettings(ctx), settings, loaded);
     return settings;

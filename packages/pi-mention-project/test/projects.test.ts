@@ -21,6 +21,7 @@ function settings(
         gitReposOnly: true,
         includeDotFolders: false,
         completionSuffix: " ",
+        initialSuggestions: { strategy: "frecency", pinned: [] },
         ...overrides,
     };
 }

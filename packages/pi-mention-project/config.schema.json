@@ -55,6 +55,50 @@
       "type": "string",
       "default": " ",
       "description": "Text inserted after a completed project mention."
+    },
+    "initialSuggestions": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "frecency"
+            },
+            {
+              "type": "string",
+              "const": "recent"
+            },
+            {
+              "type": "string",
+              "const": "frequent"
+            },
+            {
+              "type": "string",
+              "const": "alphabetical"
+            },
+            {
+              "type": "string",
+              "const": "sourceOrder"
+            }
+          ],
+          "default": "frecency",
+          "description": "Ordering used before any project query text is entered."
+        },
+        "pinned": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [],
+          "uniqueItems": true,
+          "description": "Project names placed first, in this order, before the configured strategy."
+        }
+      },
+      "default": {},
+      "additionalProperties": false,
+      "description": "Controls the entries shown immediately after the trigger."
     }
   }
 }
