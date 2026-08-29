@@ -7,6 +7,7 @@ test("package root exposes only supported runtime capabilities", () => {
         "installLinkedMethodPatch",
         "installLinkedRenderPatch",
         "loadPiInternalModule",
+        "loadPiRuntimeModule",
         "registerEditorEnhancer",
         "warnPiInternalPatchUnavailable",
     ]);

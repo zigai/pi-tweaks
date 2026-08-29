@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "vitest";
 
 import {
@@ -9,11 +12,22 @@ type ThemeModuleView = {
     readonly theme: unknown;
 };
 
+type InstallationModuleView = {
+    readonly installation: string;
+};
+
 function hasTheme(value: unknown): value is ThemeModuleView {
     if ((typeof value !== "object" && typeof value !== "function") || value === null) {
         return false;
     }
     return "theme" in value && value.theme !== undefined;
+}
+
+function hasInstallation(value: unknown): value is InstallationModuleView {
+    if (typeof value !== "object" || value === null || !("installation" in value)) {
+        return false;
+    }
+    return typeof value.installation === "string";
 }
 
 async function captureWarnings(run: () => Promise<void> | void): Promise<string[]> {
@@ -60,6 +74,61 @@ test("loads and parses a real Pi internal module through the guarded boundary", 
     });
 
     expect(warnings).toEqual([]);
+});
+
+test("loads internals from the running Pi entrypoint instead of the extension dependency", async ({
+    onTestFinished,
+}) => {
+    const fixtureRoot = await mkdtemp(join(tmpdir(), "pi-internal-host-"));
+    const fixtureDirectory = join(
+        fixtureRoot,
+        "node_modules",
+        "@earendil-works",
+        "pi-coding-agent",
+    );
+    const bundleDirectory = join(fixtureDirectory, "dist", "bundle");
+    const originalEntrypoint = process.argv[1];
+    const originalPiFlag = process.env.PI_CODING_AGENT;
+    const originalPackageDirectory = process.env.PI_PACKAGE_DIR;
+    onTestFinished(async () => {
+        process.argv[1] = originalEntrypoint;
+        if (originalPiFlag === undefined) {
+            delete process.env.PI_CODING_AGENT;
+        } else {
+            process.env.PI_CODING_AGENT = originalPiFlag;
+        }
+        if (originalPackageDirectory === undefined) {
+            delete process.env.PI_PACKAGE_DIR;
+        } else {
+            process.env.PI_PACKAGE_DIR = originalPackageDirectory;
+        }
+        await rm(fixtureRoot, { recursive: true, force: true });
+    });
+
+    await mkdir(bundleDirectory, { recursive: true });
+    await writeFile(
+        join(fixtureDirectory, "package.json"),
+        '{"name":"@earendil-works/pi-coding-agent","type":"module"}\n',
+    );
+    await writeFile(join(bundleDirectory, "cli.js"), "");
+    await writeFile(
+        join(fixtureDirectory, "dist", "host-probe.js"),
+        'export const installation = "running-pi";\n',
+    );
+    process.argv[1] = join(bundleDirectory, "cli.js");
+    process.env.PI_CODING_AGENT = "true";
+    delete process.env.PI_PACKAGE_DIR;
+
+    const loaded = await loadPiInternalModule("host-probe.js", {
+        scope: "pi-example",
+        feature: "host probe",
+        parse(module: unknown): string | undefined {
+            if (!hasInstallation(module)) return undefined;
+            return module.installation;
+        },
+    });
+
+    expect(loaded).toBe("running-pi");
 });
 
 test("reports parser rejection, parser failures, and missing Pi modules", async () => {

@@ -15,5 +15,9 @@ export type {
     LinkedMethod,
     LinkedMethodPatchHandle,
 } from "./linked-method-patch.ts";
-export { loadPiInternalModule, warnPiInternalPatchUnavailable } from "./pi-internal-import.ts";
+export {
+    loadPiInternalModule,
+    loadPiRuntimeModule,
+    warnPiInternalPatchUnavailable,
+} from "./pi-internal-import.ts";
 export type { PiInternalModuleLoadOptions } from "./pi-internal-import.ts";
