@@ -2,6 +2,7 @@ import type {
     ContextEvent,
     ExtensionAPI,
     ExtensionHandler,
+    SessionShutdownEvent,
     SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 
@@ -13,6 +14,7 @@ import {
     expandSkillMentionsInMessages,
     type SkillExpansionLoader,
 } from "./expand-mentions.ts";
+import { createLazySelectionHistory, type SelectionHistory } from "./initial-suggestions.ts";
 import { loadMentionSkillSettings } from "./settings.ts";
 import { createSkillCommandSource, type SkillCommandSource } from "./skill-commands.ts";
 
@@ -27,6 +29,7 @@ type SkillMentionContextHandler = (
 
 export type MentionSkillHandlerMap = {
     session_start: ExtensionHandler<SessionStartEvent>;
+    session_shutdown: ExtensionHandler<SessionShutdownEvent>;
     context: SkillMentionContextHandler;
 };
 
@@ -59,16 +62,32 @@ export function createSkillMentionContextHandler(
 export default function (pi: MentionSkillExtensionApi): void {
     const loadSkillExpansion = createCachedSkillExpansionLoader();
     const skillSource = createSkillCommandSource(pi);
+    let selectionHistory: SelectionHistory | undefined;
 
     pi.on("session_start", async (_event, ctx) => {
         if (!ctx.hasUI) return;
+        await selectionHistory?.flush();
         const settings = loadMentionSkillSettings(ctx);
+        const history = createLazySelectionHistory({
+            onError: (message) => ctx.ui.notify(message, "warning"),
+        });
+        selectionHistory = history;
         skillSource.refresh();
         applyMentionSkillEditor(ctx, settings.trigger, () => skillSource.getCachedSkillNames());
         ctx.ui.addAutocompleteProvider((current) =>
-            createSkillMentionProvider(current, settings, () => skillSource.getSkillCommands()),
+            createSkillMentionProvider(
+                current,
+                settings,
+                () => skillSource.getSkillCommands(),
+                history,
+            ),
         );
     });
 
+    pi.on("session_shutdown", async () => {
+        const history = selectionHistory;
+        await history?.flush();
+        if (selectionHistory === history) selectionHistory = undefined;
+    });
     pi.on("context", createSkillMentionContextHandler(skillSource, loadSkillExpansion));
 }

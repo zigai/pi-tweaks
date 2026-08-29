@@ -6,10 +6,9 @@ import {
 } from "@earendil-works/pi-tui";
 
 import { autocompleteTriggerCharacter, escapeRegExp } from "./mention-syntax.ts";
+import { rankWithSelectionHistory, type SelectionHistory } from "./initial-suggestions.ts";
 import { DEFAULT_MENTION_TRIGGER, type MentionSkillSettings } from "./settings.ts";
 import { skillName, type SkillCommand } from "./skill-commands.ts";
-
-const MAX_SUGGESTIONS = 20;
 const SKILL_COMMAND_PREFIX = "skill:";
 
 type SkillLoader = () => SkillCommand[];
@@ -30,14 +29,35 @@ function extractSkillToken(textBeforeCursor: string, trigger: string): string | 
     return match?.[1];
 }
 
-function filterSkills(skills: SkillCommand[], query: string, trigger: string): AutocompleteItem[] {
+function initialSkillPriority(
+    skill: SkillCommand,
+    settings: MentionSkillSettings["initialSuggestions"],
+): number {
+    if (!settings.projectSkillsFirst) return 0;
+    if (skill.sourceInfo.scope === "project") return 0;
+    return 1;
+}
+
+async function filterSkills(
+    skills: SkillCommand[],
+    query: string,
+    settings: MentionSkillSettings,
+    history: SelectionHistory | undefined,
+): Promise<AutocompleteItem[]> {
     if (query.length === 0) {
-        return skills.slice(0, MAX_SUGGESTIONS).map((skill) => skillToItem(skill, trigger));
+        const ranked = await rankWithSelectionHistory(
+            skills,
+            skillName,
+            settings.initialSuggestions,
+            history,
+            (skill) => initialSkillPriority(skill, settings.initialSuggestions),
+        );
+        return ranked.map((skill) => skillToItem(skill, settings.trigger));
     }
 
-    return fuzzyFilter(skills, query, (skill) => `${skillName(skill)} ${skill.description}`)
-        .slice(0, MAX_SUGGESTIONS)
-        .map((skill) => skillToItem(skill, trigger));
+    return fuzzyFilter(skills, query, (skill) => `${skillName(skill)} ${skill.description}`).map(
+        (skill) => skillToItem(skill, settings.trigger),
+    );
 }
 
 function filterSlashSkillSuggestions(
@@ -97,6 +117,7 @@ export function createSkillMentionProvider(
     current: AutocompleteProvider,
     settings: MentionSkillSettings,
     loadSkills: SkillLoader,
+    history?: SelectionHistory,
 ): AutocompleteProvider {
     const { trigger, hideSlashSkills, completionSuffix } = settings;
     const getFallbackSuggestions = async (
@@ -125,7 +146,10 @@ export function createSkillMentionProvider(
                 return getFallbackSuggestions(lines, cursorLine, cursorCol, options);
             }
 
-            const items = filterSkills(loadSkills(), token, trigger);
+            const items = await filterSkills(loadSkills(), token, settings, history);
+            if (options.signal.aborted) {
+                return getFallbackSuggestions(lines, cursorLine, cursorCol, options);
+            }
             if (items.length === 0) {
                 return getFallbackSuggestions(lines, cursorLine, cursorCol, options);
             }
@@ -147,6 +171,7 @@ export function createSkillMentionProvider(
             const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
             const afterCursor = currentLine.slice(cursorCol);
             const suffix = completionSuffixFor(afterCursor, completionSuffix);
+            history?.recordSelection(item.label);
             return applyMentionCompletion(
                 lines,
                 cursorLine,

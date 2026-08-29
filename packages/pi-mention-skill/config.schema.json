@@ -27,6 +27,55 @@
       "type": "string",
       "default": " ",
       "description": "Text inserted after a completed skill mention."
+    },
+    "initialSuggestions": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "frecency"
+            },
+            {
+              "type": "string",
+              "const": "recent"
+            },
+            {
+              "type": "string",
+              "const": "frequent"
+            },
+            {
+              "type": "string",
+              "const": "alphabetical"
+            },
+            {
+              "type": "string",
+              "const": "sourceOrder"
+            }
+          ],
+          "default": "frecency",
+          "description": "Ordering used before any skill query text is entered."
+        },
+        "pinned": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [],
+          "uniqueItems": true,
+          "description": "Skill names placed first, in this order, before the configured strategy."
+        },
+        "projectSkillsFirst": {
+          "type": "boolean",
+          "default": false,
+          "description": "Place project-local skills before user and temporary skills in initial suggestions."
+        }
+      },
+      "default": {},
+      "additionalProperties": false,
+      "description": "Controls the entries shown immediately after the trigger."
     }
   }
 }

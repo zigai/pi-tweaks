@@ -3,9 +3,29 @@ import { test } from "vitest";
 
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 import { createSkillMentionProvider } from "../src/autocomplete.ts";
+import type { SelectionHistory } from "../src/initial-suggestions.ts";
+import type { MentionSkillSettings } from "../src/settings.ts";
 import type { SkillCommand } from "../src/skill-commands.ts";
 
-function skillCommand(name: string, description = "test skill"): SkillCommand {
+function settings(overrides: Partial<MentionSkillSettings> = {}): MentionSkillSettings {
+    return {
+        trigger: "$",
+        hideSlashSkills: true,
+        completionSuffix: " ",
+        initialSuggestions: {
+            strategy: "frecency",
+            pinned: [],
+            projectSkillsFirst: false,
+        },
+        ...overrides,
+    };
+}
+
+function skillCommand(
+    name: string,
+    description = "test skill",
+    scope: SkillCommand["sourceInfo"]["scope"] = "project",
+): SkillCommand {
     return {
         source: "skill",
         name: `skill:${name}`,
@@ -13,7 +33,7 @@ function skillCommand(name: string, description = "test skill"): SkillCommand {
         sourceInfo: {
             path: `/tmp/${name}.md`,
             source: "skill",
-            scope: "project",
+            scope,
             origin: "top-level",
         },
     };
@@ -34,11 +54,10 @@ function fallbackProvider(items: AutocompleteItem[]): AutocompleteProvider {
 }
 
 test("createSkillMentionProvider suggests skills after the configured trigger", async () => {
-    const provider = createSkillMentionProvider(
-        fallbackProvider([]),
-        { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
-        () => [skillCommand("python", "Python workflows"), skillCommand("review", "Code review")],
-    );
+    const provider = createSkillMentionProvider(fallbackProvider([]), settings(), () => [
+        skillCommand("python", "Python workflows"),
+        skillCommand("review", "Code review"),
+    ]);
 
     const suggestions = await provider.getSuggestions(["Use $py"], 0, "Use $py".length, {
         signal: new AbortController().signal,
@@ -58,7 +77,7 @@ test("createSkillMentionProvider suggests skills after the configured trigger", 
 test("createSkillMentionProvider supports multi-character triggers", async () => {
     const provider = createSkillMentionProvider(
         fallbackProvider([]),
-        { trigger: "skill:", hideSlashSkills: true, completionSuffix: " " },
+        settings({ trigger: "skill:" }),
         () => [skillCommand("python", "Python workflows")],
     );
 
@@ -93,7 +112,7 @@ test("createSkillMentionProvider falls back outside mention context and can hide
             { value: "skill:python", label: "/skill python" },
             { value: "help", label: "/help" },
         ]),
-        { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
+        settings(),
         () => [skillCommand("python")],
     );
 
@@ -107,7 +126,7 @@ test("createSkillMentionProvider falls back outside mention context and can hide
 test("createSkillMentionProvider returns null when hidden slash skills are the only fallback items", async () => {
     const provider = createSkillMentionProvider(
         fallbackProvider([{ value: "skill:python", label: "/skill python" }]),
-        { trigger: "$", hideSlashSkills: true, completionSuffix: " " },
+        settings(),
         () => [skillCommand("python")],
     );
 
@@ -119,15 +138,7 @@ test("createSkillMentionProvider returns null when hidden slash skills are the o
 });
 
 test("applyCompletion replaces the mention prefix and inserts a trailing space when needed", () => {
-    const provider = createSkillMentionProvider(
-        fallbackProvider([]),
-        {
-            trigger: "$",
-            hideSlashSkills: true,
-            completionSuffix: " ",
-        },
-        () => [],
-    );
+    const provider = createSkillMentionProvider(fallbackProvider([]), settings(), () => []);
 
     const result = provider.applyCompletion(
         ["Use $py"],
@@ -147,11 +158,7 @@ test("applyCompletion replaces the mention prefix and inserts a trailing space w
 test("applyCompletion uses the configured completion suffix", () => {
     const provider = createSkillMentionProvider(
         fallbackProvider([]),
-        {
-            trigger: "$",
-            hideSlashSkills: true,
-            completionSuffix: "\n",
-        },
+        settings({ completionSuffix: "\n" }),
         () => [],
     );
 
@@ -168,4 +175,73 @@ test("applyCompletion uses the configured completion suffix", () => {
         cursorLine: 1,
         cursorCol: 0,
     });
+});
+
+test("initial skill suggestions honor pins and project-local priority before recording completions", async () => {
+    const recorded: string[] = [];
+    const history: SelectionHistory = {
+        async load() {
+            return new Map([
+                ["python", { count: 1, lastSelectedAt: 3 }],
+                ["typescript", { count: 2, lastSelectedAt: 2 }],
+            ]);
+        },
+        recordSelection(name) {
+            recorded.push(name);
+        },
+        async flush() {},
+    };
+    const provider = createSkillMentionProvider(
+        fallbackProvider([]),
+        settings({
+            initialSuggestions: {
+                strategy: "recent",
+                pinned: ["review"],
+                projectSkillsFirst: true,
+            },
+        }),
+        () => [
+            skillCommand("python", "Python workflows", "user"),
+            skillCommand("review", "Code review", "user"),
+            skillCommand("typescript", "TypeScript workflows", "project"),
+        ],
+        history,
+    );
+
+    const suggestions = await provider.getSuggestions(["Use $"], 0, "Use $".length, {
+        signal: new AbortController().signal,
+    });
+    assert.deepEqual(
+        suggestions?.items.map((item) => item.label),
+        ["review", "typescript", "python"],
+    );
+
+    provider.applyCompletion(
+        ["Use $type"],
+        0,
+        "Use $type".length,
+        { value: "$typescript", label: "typescript" },
+        "$type",
+    );
+    assert.deepEqual(recorded, ["typescript"]);
+});
+
+test("skill suggestions are not capped by the extension", async () => {
+    const skills = Array.from({ length: 25 }, (_value, index) => skillCommand(`skill-${index}`));
+    const provider = createSkillMentionProvider(
+        fallbackProvider([]),
+        settings({
+            initialSuggestions: {
+                strategy: "sourceOrder",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
+        }),
+        () => skills,
+    );
+
+    const suggestions = await provider.getSuggestions(["Use $"], 0, "Use $".length, {
+        signal: new AbortController().signal,
+    });
+    assert.equal(suggestions?.items.length, 25);
 });

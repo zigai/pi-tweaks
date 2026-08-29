@@ -62,12 +62,22 @@ test("loadMentionSkillSettings uses defaults and scaffolds global config", async
             trigger: "$",
             hideSlashSkills: true,
             completionSuffix: " ",
+            initialSuggestions: {
+                strategy: "frecency",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
         });
         assert.deepEqual(JSON.parse(await readFile(globalConfigPath, "utf8")), {
             $schema: "./schemas/pi-mention-skill.schema.json",
             trigger: "$",
             hideSlashSkills: true,
             completionSuffix: " ",
+            initialSuggestions: {
+                strategy: "frecency",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
         });
         assert.match(await readFile(globalSchemaPath, "utf8"), /Pi Mention Skill settings/);
 
@@ -79,6 +89,11 @@ test("loadMentionSkillSettings uses defaults and scaffolds global config", async
             trigger: "$$",
             hideSlashSkills: false,
             completionSuffix: " ",
+            initialSuggestions: {
+                strategy: "frecency",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
         });
         assert.equal(await readFile(globalConfigPath, "utf8"), customConfig);
         assert.match(await readFile(globalSchemaPath, "utf8"), /Pi Mention Skill settings/);
@@ -99,6 +114,11 @@ test("loadMentionSkillSettings falls back when config becomes unreadable", async
             trigger: "#",
             hideSlashSkills: false,
             completionSuffix: " ",
+            initialSuggestions: {
+                strategy: "frecency",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
         });
 
         await chmod(globalConfigPath, 0);
@@ -107,6 +127,11 @@ test("loadMentionSkillSettings falls back when config becomes unreadable", async
             trigger: "$",
             hideSlashSkills: true,
             completionSuffix: " ",
+            initialSuggestions: {
+                strategy: "frecency",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
         });
     } finally {
         await chmod(globalConfigPath, 0o600).catch(() => undefined);
@@ -121,21 +146,37 @@ test("loadMentionSkillSettings applies global settings and trusted project overr
             trigger: "#",
             hideSlashSkills: false,
             completionSuffix: "\n",
+            initialSuggestions: {
+                strategy: "frequent",
+                pinned: ["typescript"],
+                projectSkillsFirst: true,
+            },
         });
         await writeJson(path.join(cwd, ".pi", "extension-settings", "pi-mention-skill.json"), {
             trigger: "%",
             completionSuffix: "",
+            initialSuggestions: { strategy: "recent" },
         });
 
         assert.deepEqual(loadMentionSkillSettings(context(cwd, true)), {
             trigger: "%",
             hideSlashSkills: false,
             completionSuffix: "",
+            initialSuggestions: {
+                strategy: "recent",
+                pinned: ["typescript"],
+                projectSkillsFirst: true,
+            },
         });
         assert.deepEqual(loadMentionSkillSettings(context(cwd, false)), {
             trigger: "#",
             hideSlashSkills: false,
             completionSuffix: "\n",
+            initialSuggestions: {
+                strategy: "frequent",
+                pinned: ["typescript"],
+                projectSkillsFirst: true,
+            },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -149,12 +190,18 @@ test("loadMentionSkillSettings ignores invalid custom keys", async () => {
             trigger: "/",
             hideSlashSkills: "no",
             completionSuffix: false,
+            initialSuggestions: { strategy: "newest" },
         });
 
         assert.deepEqual(loadMentionSkillSettings(context(cwd, true)), {
             trigger: "$",
             hideSlashSkills: true,
             completionSuffix: " ",
+            initialSuggestions: {
+                strategy: "frecency",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });
@@ -173,6 +220,11 @@ test("loadMentionSkillSettings rejects unknown config keys", async () => {
             trigger: "$",
             hideSlashSkills: true,
             completionSuffix: " ",
+            initialSuggestions: {
+                strategy: "frecency",
+                pinned: [],
+                projectSkillsFirst: false,
+            },
         });
     } finally {
         await rm(cwd, { recursive: true, force: true });

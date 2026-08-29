@@ -91,7 +91,10 @@ test("mention skill skips command enumeration when provider context has no trigg
             },
         };
         mentionSkillExtension(pi);
-        assert.deepEqual([...registeredHandlers.keys()], ["session_start", "context"]);
+        assert.deepEqual(
+            [...registeredHandlers.keys()],
+            ["session_start", "session_shutdown", "context"],
+        );
 
         const messages: ContextEvent["messages"] = [
             {
@@ -127,7 +130,10 @@ test("mention skill expands provider context without registering an input rewrit
             },
         };
         mentionSkillExtension(pi);
-        assert.deepEqual([...registeredHandlers.keys()], ["session_start", "context"]);
+        assert.deepEqual(
+            [...registeredHandlers.keys()],
+            ["session_start", "session_shutdown", "context"],
+        );
 
         const messages: ContextEvent["messages"] = [
             {

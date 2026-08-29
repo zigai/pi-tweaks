@@ -37,5 +37,10 @@ export function loadMentionSkillSettings(ctx: MentionSkillSettingsContext): Ment
         trigger: loaded.settings.trigger,
         hideSlashSkills: loaded.settings.hideSlashSkills,
         completionSuffix: loaded.settings.completionSuffix,
+        initialSuggestions: {
+            strategy: loaded.settings.initialSuggestions.strategy,
+            pinned: [...loaded.settings.initialSuggestions.pinned],
+            projectSkillsFirst: loaded.settings.initialSuggestions.projectSkillsFirst,
+        },
     };
 }
