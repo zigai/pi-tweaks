@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Markdown, type Component } from "@earendil-works/pi-tui";
 import {
     installLinkedRenderPatch,
-    loadPiInternalModule,
+    loadPiRuntimeModule,
     warnPiInternalPatchUnavailable,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
@@ -181,7 +181,7 @@ async function patchMarkdownFences(): Promise<void> {
     };
     state[MARKDOWN_FENCES_PATCH_KEY] = patch;
 
-    const assistantPrototype = await loadPiInternalModule(
+    const assistantPrototype = await loadPiRuntimeModule(
         "modes/interactive/components/assistant-message.js",
         { scope: SCOPE, feature: "assistant message patch", parse: assistantPrototypeParser.parse },
     );
