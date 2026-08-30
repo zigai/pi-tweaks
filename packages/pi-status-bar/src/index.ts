@@ -8,6 +8,7 @@ import {
     type LoadedStatusBarConfig,
 } from "./settings.ts";
 import { setStatusBarBaseConfig, subscribeStatusBarUpdates } from "./status-bar-api.ts";
+import { isProviderOutputEvent, TurnTokenThroughputTracker } from "./token-throughput.ts";
 import {
     clearWorkedForWidget,
     formatDuration,
@@ -38,11 +39,8 @@ function applyStatusBarResolvedConfig(ctx: ExtensionContext): void {
 export default function statusBarExtension(pi: ExtensionAPI): void {
     const deactivateLoaderPatch = installLoaderPatch();
 
-    let agentStartedAt: number | undefined;
-    let messageStart: number | undefined;
-    let streamStart: number | undefined;
-    let totalOutputTokens = 0;
-    let totalStreamMs = 0;
+    let runStartedAt: number | undefined;
+    const throughput = new TurnTokenThroughputTracker();
     let idleWidgetContext: ExtensionContext | undefined;
     let idleWorkedForText: string | undefined;
     let idleTokensPerSecond: number | undefined;
@@ -59,13 +57,15 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
         idleTokensPerSecond = state.tokensPerSecond;
     }
 
-    subscribeStatusBarUpdates(() => {
+    const unsubscribeStatusBarUpdates = subscribeStatusBarUpdates(() => {
         if (agentRunning || idleWidgetContext === undefined) return;
         setWorkedForWidget(idleWidgetContext, idleWorkedForText, idleTokensPerSecond);
     });
 
     pi.on("session_start", async (_event, ctx) => {
         applyStatusBarResolvedConfig(ctx);
+        runStartedAt = undefined;
+        throughput.reset();
         agentRunning = false;
         idleWidgetContext = ctx;
         resetWorkedForWidgetCache();
@@ -81,61 +81,49 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
     });
 
     pi.on("agent_start", async (_event, ctx) => {
-        agentStartedAt = Date.now();
-        messageStart = undefined;
-        streamStart = undefined;
-        totalOutputTokens = 0;
-        totalStreamMs = 0;
+        if (runStartedAt === undefined) {
+            runStartedAt = performance.now();
+            throughput.reset();
+            idleWorkedForText = undefined;
+            idleTokensPerSecond = undefined;
+        }
         agentRunning = true;
         idleWidgetContext = ctx;
-        idleWorkedForText = undefined;
-        idleTokensPerSecond = undefined;
         clearWorkedForWidget(ctx);
     });
 
     pi.on("message_start", async (event) => {
-        if (event.message.role !== "assistant") return;
-        messageStart = Date.now();
-        streamStart = undefined;
+        if (event.message.role === "user") {
+            throughput.reset();
+            return;
+        }
+        if (event.message.role === "assistant") {
+            throughput.startStep();
+        }
     });
 
     pi.on("message_update", async (event) => {
         if (event.message.role !== "assistant") return;
-        const streamEvent = event.assistantMessageEvent;
-        if (
-            streamEvent.type !== "text_delta" &&
-            streamEvent.type !== "thinking_delta" &&
-            streamEvent.type !== "toolcall_delta"
-        ) {
-            return;
-        }
-        streamStart ??= Date.now();
+        if (!isProviderOutputEvent(event.assistantMessageEvent.type)) return;
+        throughput.markOutput(performance.now());
     });
 
     pi.on("message_end", async (event) => {
         if (event.message.role !== "assistant") return;
-        const outputTokens = event.message.usage.output;
-        const timingStart = streamStart ?? messageStart;
-        if (timingStart === undefined || outputTokens <= 0) {
-            messageStart = undefined;
-            streamStart = undefined;
-            return;
-        }
-        totalOutputTokens += outputTokens;
-        totalStreamMs += Math.max(0, Date.now() - timingStart);
-        messageStart = undefined;
-        streamStart = undefined;
+        throughput.finishStep(performance.now(), event.message.usage);
     });
 
-    pi.on("agent_end", async (_event, ctx) => {
-        if (agentStartedAt === undefined) return;
-        const duration = Math.max(0, Date.now() - agentStartedAt);
-        const elapsedSeconds = totalStreamMs / 1000;
+    pi.on("agent_settled", async (_event, ctx) => {
+        if (runStartedAt === undefined || !ctx.isIdle()) return;
+
+        const duration = Math.max(0, performance.now() - runStartedAt);
+        const throughputResult = throughput.result();
         let tokensPerSecond: number | undefined;
-        if (totalOutputTokens > 0 && elapsedSeconds > 0) {
-            tokensPerSecond = Math.round(totalOutputTokens / elapsedSeconds);
+        if (throughputResult.status === "available") {
+            tokensPerSecond = throughputResult.measurement.tokensPerSecond;
         }
-        agentStartedAt = undefined;
+
+        runStartedAt = undefined;
         agentRunning = false;
         idleWidgetContext = ctx;
         idleWorkedForText = formatDuration(duration);
@@ -146,17 +134,15 @@ export default function statusBarExtension(pi: ExtensionAPI): void {
     });
 
     pi.on("session_shutdown", async (_event, ctx) => {
-        agentStartedAt = undefined;
-        messageStart = undefined;
-        streamStart = undefined;
-        totalOutputTokens = 0;
-        totalStreamMs = 0;
+        runStartedAt = undefined;
+        throughput.reset();
         agentRunning = false;
         idleWidgetContext = undefined;
         idleWorkedForText = undefined;
         idleTokensPerSecond = undefined;
         setRightMessagesConfig(DEFAULT_RIGHT_MESSAGES_CONFIG);
         clearWorkedForWidget(ctx);
+        unsubscribeStatusBarUpdates();
         deactivateLoaderPatch();
     });
 }

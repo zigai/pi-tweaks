@@ -16,7 +16,7 @@ type LifecycleEvent = {
     readonly message?: {
         readonly role?: string;
         readonly stopReason?: string;
-        readonly usage?: { readonly output: number };
+        readonly usage?: { readonly output: number; readonly reasoning?: number };
     };
     readonly assistantMessageEvent?: { readonly type: string };
 };
@@ -26,6 +26,7 @@ type WidgetFactory = (
 ) => { render(width: number): string[] };
 type LifecycleContext = {
     readonly hasUI: true;
+    readonly isIdle: () => boolean;
     readonly sessionManager: { getBranch(): readonly SessionEntry[] };
     readonly ui: { setWidget(key: string, nextWidget: WidgetFactory | undefined): void };
 };
@@ -34,7 +35,9 @@ type LifecycleHarness = {
     readonly appendEntries: WorkedForState[];
     readonly context: LifecycleContext;
     readonly currentWidget: () => WidgetFactory | undefined;
+    readonly hasHandler: (event: string) => boolean;
     readonly invoke: (event: string, payload?: LifecycleEvent) => Promise<void>;
+    readonly setIdle: (idle: boolean) => void;
 };
 type LoaderPrototypeOwner = {
     updateDisplay: (this: Loader) => void;
@@ -61,6 +64,7 @@ function createHarness(): LifecycleHarness {
     const appendEntries: WorkedForState[] = [];
     let widget: WidgetFactory | undefined;
     let branch: SessionEntry[] = [];
+    let idle = true;
 
     const api = {
         appendEntry(customType: string, data: WorkedForState): void {
@@ -88,6 +92,7 @@ function createHarness(): LifecycleHarness {
 
     const context: LifecycleContext = {
         hasUI: true,
+        isIdle: () => idle,
         sessionManager: {
             getBranch: () => branch,
         },
@@ -103,10 +108,16 @@ function createHarness(): LifecycleHarness {
         appendEntries,
         context,
         currentWidget: () => widget,
+        hasHandler(event: string): boolean {
+            return handlers.has(event);
+        },
         async invoke(event: string, payload: LifecycleEvent = {}): Promise<void> {
             const handler = handlers.get(event);
             if (handler === undefined) throw new Error(`Missing ${event} handler`);
             await handler(payload, context);
+        },
+        setIdle(nextIdle: boolean): void {
+            idle = nextIdle;
         },
     };
 }
@@ -120,49 +131,101 @@ function renderedWidgetText(widget: WidgetFactory | undefined): string {
 
 test("status extension covers completion, abort, restore, and cleanup lifecycles", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(0);
     resetStatusBarStateForTests();
     resetWorkedForWidgetCache();
     const harness = createHarness();
     const concurrentHarness = createHarness();
 
     await harness.invoke("agent_start");
-    vi.setSystemTime(100);
+    await harness.invoke("message_start", { message: { role: "user" } });
+    vi.advanceTimersByTime(100);
     await harness.invoke("message_start", { message: { role: "assistant" } });
-    vi.setSystemTime(200);
+    vi.advanceTimersByTime(100);
+    await harness.invoke("message_update", {
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "text_start" },
+    });
+    vi.advanceTimersByTime(1_000);
+    await harness.invoke("message_end", {
+        message: {
+            role: "assistant",
+            usage: { output: 120, reasoning: 20 },
+        },
+    });
+
+    vi.advanceTimersByTime(5_000);
+    await harness.invoke("message_start", { message: { role: "assistant" } });
+    await harness.invoke("message_update", {
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "toolcall_start" },
+    });
+    vi.advanceTimersByTime(2_000);
+    await harness.invoke("message_end", {
+        message: { role: "assistant", usage: { output: 200 } },
+    });
+    assert.equal(harness.hasHandler("agent_end"), false);
+
+    assert.deepEqual(harness.appendEntries, []);
+    assert.equal(harness.currentWidget(), undefined);
+
+    await harness.invoke("agent_start");
+    await harness.invoke("message_start", { message: { role: "assistant" } });
+    await harness.invoke("message_update", {
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "thinking_start" },
+    });
+    vi.advanceTimersByTime(1_000);
+    await harness.invoke("message_end", {
+        message: { role: "assistant", usage: { output: 100 } },
+    });
+
+    harness.setIdle(false);
+    await harness.invoke("agent_settled");
+    assert.deepEqual(harness.appendEntries, []);
+
+    harness.setIdle(true);
+    await harness.invoke("agent_settled");
+    assert.deepEqual(harness.appendEntries, [{ durationMs: 9_200, tokensPerSecond: 100 }]);
+    assert.equal(renderedWidgetText(harness.currentWidget()), " Worked for 9s. [100.0 tok/s]");
+
+    await harness.invoke("agent_start");
+    await harness.invoke("message_start", { message: { role: "user" } });
+    await harness.invoke("message_start", { message: { role: "assistant" } });
     await harness.invoke("message_update", {
         message: { role: "assistant" },
         assistantMessageEvent: { type: "text_delta" },
     });
-    vi.setSystemTime(1_200);
+    vi.advanceTimersByTime(1_000);
     await harness.invoke("message_end", {
         message: { role: "assistant", usage: { output: 100 } },
     });
-    vi.setSystemTime(2_200);
-    await harness.invoke("agent_end");
 
-    assert.deepEqual(harness.appendEntries, [{ durationMs: 2_200, tokensPerSecond: 100 }]);
-    assert.equal(renderedWidgetText(harness.currentWidget()), " Worked for 2s. [100 tok/s]");
-
-    await harness.invoke("agent_start");
-    vi.setSystemTime(2_700);
-    await harness.invoke("message_end", {
-        message: { role: "assistant", stopReason: "aborted", usage: { output: 0 } },
+    await harness.invoke("message_start", { message: { role: "user" } });
+    await harness.invoke("message_start", { message: { role: "assistant" } });
+    await harness.invoke("message_update", {
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "text_delta" },
     });
-    await harness.invoke("agent_end");
+    vi.advanceTimersByTime(2_000);
+    await harness.invoke("message_end", {
+        message: { role: "assistant", usage: { output: 50 } },
+    });
+    await harness.invoke("agent_settled");
 
     assert.deepEqual(harness.appendEntries[1], {
-        durationMs: 500,
-        tokensPerSecond: undefined,
+        durationMs: 3_000,
+        tokensPerSecond: 25,
     });
-    assert.equal(renderedWidgetText(harness.currentWidget()), " Worked for 1s.");
+    assert.equal(renderedWidgetText(harness.currentWidget()), " Worked for 3s. [25.0 tok/s]");
 
     await harness.invoke("agent_start");
-    vi.setSystemTime(3_200);
+    await harness.invoke("message_start", { message: { role: "user" } });
+    await harness.invoke("message_start", { message: { role: "assistant" } });
+    vi.advanceTimersByTime(500);
     await harness.invoke("message_end", {
-        message: { role: "assistant", stopReason: "error", usage: { output: 0 } },
+        message: { role: "assistant", stopReason: "error", usage: { output: 100 } },
     });
-    await harness.invoke("agent_end");
+    await harness.invoke("agent_settled");
 
     assert.deepEqual(harness.appendEntries[2], {
         durationMs: 500,

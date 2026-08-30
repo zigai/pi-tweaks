@@ -71,6 +71,11 @@
               "type": "boolean",
               "default": true,
               "description": "Show the previous run summary while idle."
+            },
+            "showTokensPerSecond": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show model token throughput in the previous run summary."
             }
           },
           "default": {},

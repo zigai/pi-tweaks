@@ -29,6 +29,7 @@ test("configureStatusBar controls active and idle status bar state", () => {
         idle: {
             text: " Ready\tnow ",
             showLastRunSummary: false,
+            showTokensPerSecond: false,
         },
     });
 
@@ -44,6 +45,7 @@ test("configureStatusBar controls active and idle status bar state", () => {
         text: "Ready now",
         visible: true,
         showLastRunSummary: false,
+        showTokensPerSecond: false,
     });
 
     handle.pauseTimer();
@@ -59,6 +61,7 @@ test("configureStatusBar controls active and idle status bar state", () => {
     assert.equal(getStatusBarSnapshot().active.text, undefined);
     assert.equal(getStatusBarSnapshot().active.timerVisible, true);
     assert.equal(getStatusBarSnapshot().idle.text, undefined);
+    assert.equal(getStatusBarSnapshot().idle.showTokensPerSecond, true);
 
     unsubscribe();
 });
@@ -66,7 +69,11 @@ test("configureStatusBar controls active and idle status bar state", () => {
 test("status bar base config is overridden by public API and restored on dispose", () => {
     setStatusBarBaseConfig({
         active: { text: "Configured", timer: { visible: false } },
-        idle: { text: "Configured idle", showLastRunSummary: false },
+        idle: {
+            text: "Configured idle",
+            showLastRunSummary: false,
+            showTokensPerSecond: false,
+        },
     });
 
     assert.equal(getStatusBarSnapshot().active.text, "Configured");
@@ -82,12 +89,14 @@ test("status bar base config is overridden by public API and restored on dispose
     assert.equal(getStatusBarSnapshot().active.timerVisible, true);
     assert.equal(getStatusBarSnapshot().idle.text, "API idle");
     assert.equal(getStatusBarSnapshot().idle.showLastRunSummary, false);
+    assert.equal(getStatusBarSnapshot().idle.showTokensPerSecond, false);
 
     handle.dispose();
 
     assert.equal(getStatusBarSnapshot().active.text, "Configured");
     assert.equal(getStatusBarSnapshot().active.timerVisible, false);
     assert.equal(getStatusBarSnapshot().idle.text, "Configured idle");
+    assert.equal(getStatusBarSnapshot().idle.showTokensPerSecond, false);
 });
 
 test("registerStatusBarSegment owns namespaced active and idle segments", () => {

@@ -124,7 +124,7 @@ export function setWorkedForWidget(
             workedForText.length > 0 &&
             snapshot.idle.showLastRunSummary)
     ) {
-        nextSignature = `${snapshot.idle.text ?? ""}\0${idleSegments}\0${workedForText ?? ""}\0${tokensPerSecond ?? ""}\0${snapshot.idle.showLastRunSummary}`;
+        nextSignature = `${snapshot.idle.text ?? ""}\0${idleSegments}\0${workedForText ?? ""}\0${tokensPerSecond ?? ""}\0${snapshot.idle.showLastRunSummary}\0${snapshot.idle.showTokensPerSecond}`;
     }
     if (nextSignature === workedForWidgetSignatures.get(ctx.ui)) {
         return;
@@ -146,8 +146,13 @@ export function setWorkedForWidget(
             }
             if (snapshot.idle.showLastRunSummary && workedForText !== undefined) {
                 let summary = `Worked for ${workedForText}.`;
-                if (tokensPerSecond !== undefined && tokensPerSecond > 0) {
-                    summary = `${summary} [${tokensPerSecond} tok/s]`;
+                if (
+                    snapshot.idle.showTokensPerSecond &&
+                    tokensPerSecond !== undefined &&
+                    Number.isFinite(tokensPerSecond) &&
+                    tokensPerSecond > 0
+                ) {
+                    summary = `${summary} [${tokensPerSecond.toFixed(1)} tok/s]`;
                 }
                 parts.push(summary);
             }

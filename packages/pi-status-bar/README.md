@@ -5,7 +5,7 @@
 Adds a coherent programmable status bar to Pi:
 
 - active working-line status with spinner, text, elapsed time, and optional right-side messages
-- idle post-run status, such as `Worked for 1m 12s. [45 tok/s]`
+- idle post-run status with tool-time-excluding model throughput, such as `Worked for 1m 12s. [45.0 tok/s]`
 - an extension API for changing active text, spinner frames, timer state, idle text, and custom status segments
 
 This package intentionally stays single-line and status-focused. For richer UI above the editor, use Pi's built-in API's.
@@ -30,6 +30,7 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-status-bar.json
 | `statusBar.idle.text` | string | — | Custom idle status text. |
 | `statusBar.idle.visible` | boolean | `true` | Show the status bar while Pi is idle. |
 | `statusBar.idle.showLastRunSummary` | boolean | `true` | Show the previous run summary while idle. |
+| `statusBar.idle.showTokensPerSecond` | boolean | `true` | Show model token throughput in the previous run summary. |
 | `rightMessages.enabled` | boolean | `false` | Enable rotating messages on the right side. |
 | `rightMessages.intervalMs` | integer | `10000` | Delay between rotating messages in milliseconds. |
 | `rightMessages.minGap` | integer | `4` | Minimum spaces between repeated scrolling messages. |
@@ -52,7 +53,8 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-status-bar.json
     },
     "idle": {
       "visible": true,
-      "showLastRunSummary": true
+      "showLastRunSummary": true,
+      "showTokensPerSecond": true
     }
   },
   "rightMessages": {

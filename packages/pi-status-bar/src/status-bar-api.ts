@@ -35,6 +35,8 @@ export type StatusBarIdleConfig = {
     readonly visible?: boolean;
     /** Whether to append the default last-run summary after custom idle text. */
     readonly showLastRunSummary?: boolean;
+    /** Whether to include model token throughput in the last-run summary. */
+    readonly showTokensPerSecond?: boolean;
 };
 
 export type StatusBarConfig = {
@@ -113,6 +115,7 @@ export type StatusBarSnapshot = {
         readonly text?: string;
         readonly visible: boolean;
         readonly showLastRunSummary: boolean;
+        readonly showTokensPerSecond: boolean;
     };
     readonly segments: readonly StatusBarSegmentSnapshot[];
 };
@@ -126,6 +129,7 @@ type MutableStatusBarOverride = {
     idleText?: string;
     idleVisible?: boolean;
     idleShowLastRunSummary?: boolean;
+    idleShowTokensPerSecond?: boolean;
 };
 
 type MutableStatusBarSegment = {
@@ -327,6 +331,16 @@ function applyStatusBarConfig(target: MutableStatusBarOverride, config: StatusBa
             delete target.idleShowLastRunSummary;
         } else {
             target.idleShowLastRunSummary = idleShowLastRunSummary;
+        }
+    }
+
+    const idleShowTokensPerSecond = config.idle?.showTokensPerSecond;
+    if (target.idleShowTokensPerSecond !== idleShowTokensPerSecond) {
+        changed = true;
+        if (idleShowTokensPerSecond === undefined) {
+            delete target.idleShowTokensPerSecond;
+        } else {
+            target.idleShowTokensPerSecond = idleShowTokensPerSecond;
         }
     }
 
@@ -578,6 +592,8 @@ export function getStatusBarSnapshot(): StatusBarSnapshot {
             visible: override?.idleVisible ?? base.idleVisible ?? true,
             showLastRunSummary:
                 override?.idleShowLastRunSummary ?? base.idleShowLastRunSummary ?? true,
+            showTokensPerSecond:
+                override?.idleShowTokensPerSecond ?? base.idleShowTokensPerSecond ?? true,
         },
         segments,
     };

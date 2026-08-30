@@ -104,6 +104,7 @@ type MutableStatusBarConfig = {
         text?: string;
         visible?: boolean;
         showLastRunSummary?: boolean;
+        showTokensPerSecond?: boolean;
     };
 };
 
@@ -136,6 +137,7 @@ const StatusBarIdleConfigSchema = Type.Object(
         text: Type.Optional(Type.String()),
         visible: Type.Optional(Type.Boolean()),
         showLastRunSummary: Type.Optional(Type.Boolean()),
+        showTokensPerSecond: Type.Optional(Type.Boolean()),
     },
     { additionalProperties: false },
 );
@@ -195,6 +197,7 @@ export const DEFAULT_STATUS_BAR_CONFIG: StatusBarConfig = {
     idle: {
         visible: true,
         showLastRunSummary: true,
+        showTokensPerSecond: true,
     },
 };
 
@@ -260,6 +263,9 @@ function parseStatusBarConfigSettings(
         }
         if (parsed.idle.showLastRunSummary !== undefined) {
             idle.showLastRunSummary = parsed.idle.showLastRunSummary;
+        }
+        if (parsed.idle.showTokensPerSecond !== undefined) {
+            idle.showTokensPerSecond = parsed.idle.showTokensPerSecond;
         }
         statusBar.idle = idle;
     }

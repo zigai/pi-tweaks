@@ -35,6 +35,7 @@ test("loadStatusBarSettings scaffolds missing global config and schema", async (
             idle: {
                 visible: true,
                 showLastRunSummary: true,
+                showTokensPerSecond: true,
             },
         });
         assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
@@ -49,6 +50,7 @@ test("loadStatusBarSettings scaffolds missing global config and schema", async (
                 idle: {
                     visible: true,
                     showLastRunSummary: true,
+                    showTokensPerSecond: true,
                 },
             },
             rightMessages: {
@@ -89,6 +91,7 @@ test("status bar right messages default to disabled", () => {
     assert.equal(loaded.config.rightMessages.enabled, false);
     assert.equal(loaded.config.statusBar.active?.timer?.visible, true);
     assert.equal(loaded.config.statusBar.idle?.showLastRunSummary, true);
+    assert.equal(loaded.config.statusBar.idle?.showTokensPerSecond, true);
     assert.equal(loaded.config.rightMessages.dimmed, true);
     assert.equal(loaded.config.rightMessages.italic, true);
     assert.deepEqual(loaded.config.rightMessages.messages, []);
@@ -116,6 +119,7 @@ test("status bar status bar parses active and idle config", () => {
                         text: " Ready\tnow ",
                         visible: true,
                         showLastRunSummary: false,
+                        showTokensPerSecond: false,
                     },
                 },
             },
@@ -138,6 +142,7 @@ test("status bar status bar parses active and idle config", () => {
             text: "Ready now",
             visible: true,
             showLastRunSummary: false,
+            showTokensPerSecond: false,
         },
     });
 });

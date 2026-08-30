@@ -146,7 +146,7 @@ test("setWorkedForWidget tracks separate Pi UI contexts independently", () => {
 
 test("setWorkedForWidget renders duration and token rate within the provided width", () => {
     const { ctx, currentWidget } = widgetContext();
-    setWorkedForWidget(ctx, "1m 05s", 42);
+    setWorkedForWidget(ctx, "1m 05s", 42.25);
 
     const widget = currentWidget();
     if (widget === undefined) throw new Error("Expected widget factory");
@@ -154,7 +154,7 @@ test("setWorkedForWidget renders duration and token rate within the provided wid
     // SAFETY: The widget factory does not read TUI, and this render path only calls Theme.fg.
     const component = widget({} as TUI, theme as Theme);
 
-    assert.deepEqual(component.render(80), ["[dim] Worked for 1m 05s. [42 tok/s]"]);
+    assert.deepEqual(component.render(80), ["[dim] Worked for 1m 05s. [42.3 tok/s]"]);
     const narrowLine = component.render(12)[0] ?? "";
     assert.equal(stripAnsi(narrowLine), "[dim] Worked for ");
     assert.deepEqual(component.render(0), [""]);
@@ -177,7 +177,27 @@ test("setWorkedForWidget renders idle status bar overrides with the last-run sum
     // SAFETY: The widget factory does not read TUI, and this render path only calls Theme.fg.
     const component = widget({} as TUI, theme as Theme);
 
-    assert.deepEqual(component.render(80), ["[dim] Ready · Worked for 9s. [3 tok/s]"]);
+    assert.deepEqual(component.render(80), ["[dim] Ready · Worked for 9s. [3.0 tok/s]"]);
+});
+
+test("setWorkedForWidget can hide token throughput without hiding duration", () => {
+    configureStatusBar({
+        idle: {
+            showLastRunSummary: true,
+            showTokensPerSecond: false,
+        },
+    });
+    const { ctx, currentWidget } = widgetContext();
+
+    setWorkedForWidget(ctx, "9s", 3);
+
+    const widget = currentWidget();
+    if (widget === undefined) throw new Error("Expected widget factory");
+    const theme = { fg: (_role: string, text: string) => `[dim]${text}` };
+    // SAFETY: The widget factory does not read TUI, and this render path only calls Theme.fg.
+    const component = widget({} as TUI, theme as Theme);
+
+    assert.deepEqual(component.render(80), ["[dim] Worked for 9s."]);
 });
 
 test("clearWorkedForWidget removes configured idle status during active runs", () => {

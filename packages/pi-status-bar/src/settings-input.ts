@@ -51,6 +51,10 @@ export const idleSettingsSchema = Type.Object(
             default: true,
             description: "Show the previous run summary while idle.",
         }),
+        showTokensPerSecond: Type.Boolean({
+            default: true,
+            description: "Show model token throughput in the previous run summary.",
+        }),
     },
     { default: {}, additionalProperties: false },
 );
