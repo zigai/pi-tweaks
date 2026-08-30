@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-ui-tweaks",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Pi package for small configurable UI tweaks.",
   "keywords": [
     "pi",
