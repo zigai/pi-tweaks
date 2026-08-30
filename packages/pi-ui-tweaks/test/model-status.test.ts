@@ -3,6 +3,7 @@ import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
 import { installModelStatusPatch } from "../src/model-status.ts";
+import { captureConsoleWarnings } from "./capture-console-warnings.ts";
 
 function statusMode() {
     const renderRequests = new Array<boolean | undefined>();
@@ -21,15 +22,21 @@ function statusMode() {
     };
 }
 
-test("explicit null does not patch Pi's default model status", () => {
-    const original = Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus");
-    const handle = installModelStatusPatch({ hideModelChangeStatus: true }, null);
+test("explicit null does not patch Pi's default model status", async () => {
+    const warnings = await captureConsoleWarnings(() => {
+        const original = Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus");
+        const handle = installModelStatusPatch({ hideModelChangeStatus: true }, null);
 
-    assert.deepEqual(
-        Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus"),
-        original,
-    );
-    handle.dispose();
+        assert.deepEqual(
+            Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus"),
+            original,
+        );
+        handle.dispose();
+    });
+
+    assert.deepEqual(warnings, [
+        "[pi-ui-tweaks] model status patch unavailable; Pi internals may have changed: missing showStatus",
+    ]);
 });
 
 test("model-change status suppression updates without stacking", () => {

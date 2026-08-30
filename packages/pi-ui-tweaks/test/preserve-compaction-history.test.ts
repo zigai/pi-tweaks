@@ -3,6 +3,7 @@ import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
 import { installPreserveCompactionHistoryPatch } from "../src/preserve-compaction-history.ts";
+import { captureConsoleWarnings } from "./capture-console-warnings.ts";
 type CompactionEventFixture = {
     readonly aborted?: boolean;
     readonly result?: object;
@@ -32,15 +33,24 @@ class FakeInteractiveMode {
     }
 }
 
-test("explicit null does not patch Pi's default compaction handler", () => {
-    const original = Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "handleEvent");
-    const handle = installPreserveCompactionHistoryPatch({ preserveCompactionHistory: true }, null);
+test("explicit null does not patch Pi's default compaction handler", async () => {
+    const warnings = await captureConsoleWarnings(() => {
+        const original = Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "handleEvent");
+        const handle = installPreserveCompactionHistoryPatch(
+            { preserveCompactionHistory: true },
+            null,
+        );
 
-    assert.deepEqual(
-        Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "handleEvent"),
-        original,
-    );
-    handle.dispose();
+        assert.deepEqual(
+            Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "handleEvent"),
+            original,
+        );
+        handle.dispose();
+    });
+
+    assert.deepEqual(warnings, [
+        "[pi-ui-tweaks] preserve compaction history patch unavailable; Pi internals may have changed: missing handleEvent",
+    ]);
 });
 
 test("preserve compaction history leaves successful live compaction UI intact", async () => {

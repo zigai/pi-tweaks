@@ -3,6 +3,7 @@ import { SelectList } from "@earendil-works/pi-tui";
 import { test } from "vitest";
 
 import { installSelectedOptionPrefixSelectListPatch } from "../src/selected-option-prefix.ts";
+import { captureConsoleWarnings } from "./capture-console-warnings.ts";
 
 function createList(): SelectList {
     return new SelectList(
@@ -18,15 +19,24 @@ function createList(): SelectList {
     );
 }
 
-test("explicit null does not patch Pi's default select-list prototype", () => {
-    const originalRender = Object.getOwnPropertyDescriptor(SelectList.prototype, "render");
-    const handle = installSelectedOptionPrefixSelectListPatch({ selectedOptionPrefix: "▌" }, null);
+test("explicit null does not patch Pi's default select-list prototype", async () => {
+    const warnings = await captureConsoleWarnings(() => {
+        const originalRender = Object.getOwnPropertyDescriptor(SelectList.prototype, "render");
+        const handle = installSelectedOptionPrefixSelectListPatch(
+            { selectedOptionPrefix: "▌" },
+            null,
+        );
 
-    assert.deepEqual(
-        Object.getOwnPropertyDescriptor(SelectList.prototype, "render"),
-        originalRender,
-    );
-    handle.dispose();
+        assert.deepEqual(
+            Object.getOwnPropertyDescriptor(SelectList.prototype, "render"),
+            originalRender,
+        );
+        handle.dispose();
+    });
+
+    assert.deepEqual(warnings, [
+        "[pi-ui-tweaks] selected option prefix patch unavailable; Pi internals may have changed",
+    ]);
 });
 
 test("selected option prefix updates generic select-list markers", () => {

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import {
+    initTheme,
+    type SessionShutdownEvent,
+    type SessionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 import { SelectList } from "@earendil-works/pi-tui";
-import type { SessionShutdownEvent, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
 import {
@@ -8,6 +12,7 @@ import {
     type UiTweaksExtensionApi,
     type UiTweaksLifecycleContext,
 } from "../src/index.ts";
+import { captureConsoleWarnings } from "./capture-console-warnings.ts";
 type SelectListPrototypeFixture = {
     readonly render?: (width: number) => string[];
 };
@@ -59,26 +64,31 @@ test("composition root registers session lifecycle handlers", () => {
 });
 
 test("session shutdown disposes installed patches and a later start installs once again", async () => {
-    const handlers = registerLifecycleHandlers();
-    const start = handlers.get("session_start");
-    const shutdown = handlers.get("session_shutdown");
-    assert.ok(start);
-    assert.ok(shutdown);
-    const context = headlessContext();
-    const originalRender = selectListPrototype.render;
+    initTheme("dark");
+    const warnings = await captureConsoleWarnings(async () => {
+        const handlers = registerLifecycleHandlers();
+        const start = handlers.get("session_start");
+        const shutdown = handlers.get("session_shutdown");
+        assert.ok(start);
+        assert.ok(shutdown);
+        const context = headlessContext();
+        const originalRender = selectListPrototype.render;
 
-    await start(sessionStart, context);
-    const firstPatchedRender = selectListPrototype.render;
-    assert.notEqual(firstPatchedRender, originalRender);
+        await start(sessionStart, context);
+        const firstPatchedRender = selectListPrototype.render;
+        assert.notEqual(firstPatchedRender, originalRender);
 
-    await start(sessionStart, context);
-    assert.equal(selectListPrototype.render, firstPatchedRender);
+        await start(sessionStart, context);
+        assert.equal(selectListPrototype.render, firstPatchedRender);
 
-    await shutdown(sessionShutdown, context);
-    assert.equal(selectListPrototype.render, originalRender);
+        await shutdown(sessionShutdown, context);
+        assert.equal(selectListPrototype.render, originalRender);
 
-    await start(sessionStart, context);
-    assert.notEqual(selectListPrototype.render, originalRender);
-    await shutdown(sessionShutdown, context);
-    assert.equal(selectListPrototype.render, originalRender);
+        await start(sessionStart, context);
+        assert.notEqual(selectListPrototype.render, originalRender);
+        await shutdown(sessionShutdown, context);
+        assert.equal(selectListPrototype.render, originalRender);
+    });
+
+    assert.deepEqual(warnings, []);
 });
