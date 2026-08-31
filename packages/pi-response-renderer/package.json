@@ -35,7 +35,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@zigai/pi-extension-internals": "0.1.1"
+    "@zigai/pi-extension-internals": "0.1.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
