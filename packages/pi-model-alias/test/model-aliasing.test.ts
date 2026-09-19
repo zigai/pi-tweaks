@@ -278,9 +278,8 @@ test("model selector patch aliases snapshot display and search while preserving 
     assert.deepEqual(textValues(prototype.listContainer.children), [
         `→ Fast${successCheckmark}       OpenAI Work`,
         "  Claude Opus  anthropic",
-        "  Model catalogs refreshed.",
     ]);
-    assert.equal(prototype.listContainer.children.length, 3);
+    assert.equal(prototype.listContainer.children.length, 2);
     assert.equal(prototype.searchInput.render(20)[0], ">              (1/2)");
     prototype.filterModels("gpt-5");
     assert.equal(prototype.filteredModels.length, 1);

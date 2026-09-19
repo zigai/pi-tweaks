@@ -11,7 +11,11 @@ import {
     markFooterComponent,
     type FooterComponentKind,
 } from "./footer-component.ts";
-import { createFooterComponent, type PlainFooterTheme } from "./footer-rendering.ts";
+import {
+    createFooterComponent,
+    type FooterInteractions,
+    type PlainFooterTheme,
+} from "./footer-rendering.ts";
 import type { FooterConfig } from "./settings.ts";
 import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./footer-model.ts";
 
@@ -251,6 +255,7 @@ export function installLiveFooter(
     ctx: LiveFooterContext,
     getThinkingLevel: () => string,
     config: FooterConfig,
+    interactions: FooterInteractions = {},
 ): void {
     ctx.ui.setFooter((tui, theme, footerData) => {
         const component = createFooterComponent(
@@ -260,6 +265,8 @@ export function installLiveFooter(
             () => tui.requestRender(),
             config,
             theme,
+            undefined,
+            interactions,
         );
         return markFooterComponent(component, "live");
     });

@@ -7,6 +7,7 @@ import {
     type GitAheadBehindSource,
 } from "./git-ahead-behind.ts";
 import { DEFAULT_FOOTER_CONFIG, type FooterConfig } from "./settings.ts";
+import type { MouseInputEvent, MouseInputResult } from "./mouse-input.ts";
 import type {
     ContextUsage,
     FooterContext,
@@ -157,6 +158,42 @@ function joinRenderedItems(
     return rendered.join(getSeparator(variant, side, config, theme));
 }
 
+type ItemRange = { start: number; end: number };
+
+type RenderedSideVariant = {
+    text: string;
+    itemRanges: ReadonlyMap<FooterSlotId, ItemRange>;
+};
+
+function renderSideVariant(
+    items: readonly FooterItem[],
+    variant: FooterVariant,
+    side: FooterSide,
+    config: FooterConfig,
+    theme: PlainFooterTheme | undefined,
+): RenderedSideVariant {
+    const separator = getSeparator(variant, side, config, theme);
+    const separatorWidth = visibleWidth(separator);
+    const rendered: string[] = [];
+    const itemRanges = new Map<FooterSlotId, ItemRange>();
+    let offset = 0;
+
+    for (const item of items) {
+        if (rendered.length > 0) offset += separatorWidth;
+
+        const text = renderItem(item, variant, theme);
+        const end = offset + visibleWidth(text);
+        itemRanges.set(item.key, { start: offset, end });
+        rendered.push(text);
+        offset = end;
+    }
+
+    return {
+        text: joinRenderedItems(rendered, variant, side, config, theme),
+        itemRanges,
+    };
+}
+
 function buildSideVariants(
     itemsByKey: ReadonlyMap<FooterSlotId, FooterItem>,
     keys: readonly FooterSlotId[],
@@ -164,47 +201,35 @@ function buildSideVariants(
     side: FooterSide,
     config: FooterConfig,
     theme: PlainFooterTheme | undefined,
-): string[] {
+): RenderedSideVariant[] {
     const items = keys
         .map((key) => itemsByKey.get(key))
         .filter((item): item is FooterItem => item !== undefined);
     if (items.length === 0) {
-        return [""];
+        return [{ text: "", itemRanges: new Map() }];
     }
 
-    const variants: string[] = [];
+    const variants: RenderedSideVariant[] = [];
     const seen = new Set<string>();
 
     if (side === "left") {
         for (let count = items.length; count >= 1; count--) {
-            const rendered = joinRenderedItems(
-                items.slice(0, count).map((item) => renderItem(item, variant, theme)),
-                variant,
-                side,
-                config,
-                theme,
-            );
-            if (!seen.has(rendered)) {
-                seen.add(rendered);
+            const rendered = renderSideVariant(items.slice(0, count), variant, side, config, theme);
+            if (!seen.has(rendered.text)) {
+                seen.add(rendered.text);
                 variants.push(rendered);
             }
         }
     } else {
         for (let start = 0; start < items.length; start++) {
-            const rendered = joinRenderedItems(
-                items.slice(start).map((item) => renderItem(item, variant, theme)),
-                variant,
-                side,
-                config,
-                theme,
-            );
-            if (!seen.has(rendered)) {
-                seen.add(rendered);
+            const rendered = renderSideVariant(items.slice(start), variant, side, config, theme);
+            if (!seen.has(rendered.text)) {
+                seen.add(rendered.text);
                 variants.push(rendered);
             }
         }
 
-        variants.push("");
+        variants.push({ text: "", itemRanges: new Map() });
     }
 
     return variants;
@@ -337,6 +362,16 @@ function resolveFooterLayout(
     return { left, right };
 }
 
+export type FooterClickAnchor = {
+    screenX: number;
+    screenY: number;
+};
+
+export type FooterInteractions = {
+    onModelClick?: (anchor: FooterClickAnchor) => void;
+    onThinkingClick?: (anchor: FooterClickAnchor) => void;
+};
+
 export function createFooterComponent(
     ctx: FooterContext,
     footerData: FooterData,
@@ -345,8 +380,12 @@ export function createFooterComponent(
     config: FooterConfig = DEFAULT_FOOTER_CONFIG,
     theme?: PlainFooterTheme,
     gitAheadBehindSource?: GitAheadBehindSource,
+    interactions: FooterInteractions = {},
 ) {
     let activeGitAheadBehindSource: GitAheadBehindSource | undefined;
+    let modelHitRange: ItemRange | undefined;
+    let thinkingHitRange: ItemRange | undefined;
+
     if (config.showGitAheadBehind) {
         activeGitAheadBehindSource = gitAheadBehindSource;
         activeGitAheadBehindSource ??= createGitAheadBehindTracker(ctx.cwd, requestRender);
@@ -364,8 +403,43 @@ export function createFooterComponent(
             unsubscribeSlotUpdates();
             activeGitAheadBehindSource?.dispose();
         },
+        handleMouse(event: MouseInputEvent): MouseInputResult | undefined {
+            if (event.type !== "click" || event.button !== "left" || event.y !== 0) {
+                return undefined;
+            }
+
+            if (
+                modelHitRange !== undefined &&
+                event.x >= modelHitRange.start &&
+                event.x < modelHitRange.end &&
+                interactions.onModelClick !== undefined
+            ) {
+                interactions.onModelClick({
+                    screenX: event.screenX - (event.x - modelHitRange.start),
+                    screenY: event.screenY,
+                });
+                return { handled: true, render: false };
+            }
+
+            if (thinkingHitRange === undefined || interactions.onThinkingClick === undefined) {
+                return undefined;
+            }
+
+            if (event.x < thinkingHitRange.start || event.x >= thinkingHitRange.end)
+                return undefined;
+
+            interactions.onThinkingClick({
+                screenX: event.screenX - (event.x - thinkingHitRange.start),
+                screenY: event.screenY,
+            });
+
+            return { handled: true, render: false };
+        },
         invalidate() {},
         render(width: number): string[] {
+            modelHitRange = undefined;
+            thinkingHitRange = undefined;
+
             // Keep spare terminal cells unused as a guard against ambiguous-width
             // glyphs (notably Nerd Font icons like the branch icon). A footer line
             // that reaches the exact terminal width can soft-wrap into an apparent
@@ -402,11 +476,11 @@ export function createFooterComponent(
 
             for (const left of leftVariants) {
                 for (const right of rightVariants) {
-                    const rightWidth = visibleWidth(right);
-                    const leftWidth = visibleWidth(left);
+                    const rightWidth = visibleWidth(right.text);
+                    const leftWidth = visibleWidth(left.text);
                     const edgePaddingWidth = 2;
                     let minimumInnerGap = 0;
-                    if (right.length > 0) {
+                    if (right.text.length > 0) {
                         minimumInnerGap = 1;
                     }
 
@@ -422,21 +496,66 @@ export function createFooterComponent(
                         renderWidth - edgePaddingWidth - leftWidth - rightWidth,
                     );
                     const padding = renderPadding(paddingWidth, variant, theme);
-                    if (right.length > 0) {
-                        return [truncateToWidth(` ${left}${padding}${right} `, renderWidth, "")];
+                    const leftModelRange = left.itemRanges.get("model");
+                    if (leftModelRange !== undefined) {
+                        modelHitRange = {
+                            start: 1 + leftModelRange.start,
+                            end: 1 + leftModelRange.end,
+                        };
                     }
 
-                    return [truncateToWidth(` ${left}${padding} `, renderWidth, "")];
+                    const leftThinkingRange = left.itemRanges.get("thinking");
+                    if (leftThinkingRange !== undefined) {
+                        thinkingHitRange = {
+                            start: 1 + leftThinkingRange.start,
+                            end: 1 + leftThinkingRange.end,
+                        };
+                    }
+
+                    if (right.text.length > 0) {
+                        const rightStart = 1 + leftWidth + paddingWidth;
+                        const rightModelRange = right.itemRanges.get("model");
+                        if (rightModelRange !== undefined) {
+                            modelHitRange = {
+                                start: rightStart + rightModelRange.start,
+                                end: rightStart + rightModelRange.end,
+                            };
+                        }
+
+                        const rightThinkingRange = right.itemRanges.get("thinking");
+                        if (rightThinkingRange !== undefined) {
+                            thinkingHitRange = {
+                                start: rightStart + rightThinkingRange.start,
+                                end: rightStart + rightThinkingRange.end,
+                            };
+                        }
+
+                        return [
+                            truncateToWidth(
+                                ` ${left.text}${padding}${right.text} `,
+                                renderWidth,
+                                "",
+                            ),
+                        ];
+                    }
+
+                    return [truncateToWidth(` ${left.text}${padding} `, renderWidth, "")];
                 }
             }
 
-            const fallbackRight = rightVariants.find((value) => value.length > 0) ?? "";
-            if (fallbackRight.length > 0) {
-                return [truncateToWidth(fallbackRight, renderWidth, "")];
+            const fallbackRight = rightVariants.find((value) => value.text.length > 0);
+            if (fallbackRight !== undefined) {
+                modelHitRange = fallbackRight.itemRanges.get("model");
+                thinkingHitRange = fallbackRight.itemRanges.get("thinking");
+                return [truncateToWidth(fallbackRight.text, renderWidth, "")];
             }
 
-            const fallbackLeft = leftVariants.find((value) => value.length > 0) ?? "";
-            return [truncateToWidth(fallbackLeft, renderWidth, "")];
+            const fallbackLeft = leftVariants.find((value) => value.text.length > 0);
+            if (fallbackLeft === undefined) return [""];
+
+            modelHitRange = fallbackLeft.itemRanges.get("model");
+            thinkingHitRange = fallbackLeft.itemRanges.get("thinking");
+            return [truncateToWidth(fallbackLeft.text, renderWidth, "")];
         },
     };
 }

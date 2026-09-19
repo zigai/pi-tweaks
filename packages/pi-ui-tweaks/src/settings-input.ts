@@ -1,16 +1,26 @@
 import { Type } from "typebox";
 
 export const DEFAULT_PASTE_COLLAPSE_ENABLED = true;
-export const DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD = 10;
-export const DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD = 1000;
+export const DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD = 80;
+export const DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD = 5000;
 export const DEFAULT_PASTE_COLLAPSE_EXPAND_KEY: string | null = null;
 export const DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY = true;
+export const DEFAULT_AUTO_EXPAND_PASTE_ON_SUBMIT = true;
+export const DEFAULT_PASTE_CLICK_TO_EXPAND = true;
+export const DEFAULT_PASTE_OFFLOAD_TO_DISK = false;
+export const DEFAULT_PASTE_OFFLOAD_LINE_THRESHOLD = 500;
+export const DEFAULT_EDITOR_MAX_HEIGHT: EditorMaxHeight = "unlimited";
+export const DEFAULT_SHOW_EDITOR_OVERFLOW_INDICATORS = true;
+
+export type EditorMaxHeight = number | "unlimited" | null;
 
 export type UiTweaksConfig = {
-    readonly autocompleteAboveInput: boolean;
-    readonly bashExecPromptSpacing: boolean;
     readonly anchorInputToBottom: boolean;
+    readonly autocompleteAboveInput: boolean;
+    readonly autoExpandPasteOnSubmit: boolean;
+    readonly bashExecPromptSpacing: boolean;
     readonly compactModelSelector: boolean;
+    readonly editorMaxHeight: EditorMaxHeight;
     readonly hideAutocompleteScrollInfo: boolean;
     readonly hideModelChangeStatus: boolean;
     readonly hideModelProviderHint: boolean;
@@ -18,14 +28,18 @@ export type UiTweaksConfig = {
     readonly highlightSelectedModelProvider: boolean;
     readonly inputPromptPrefix: string;
     readonly neutralBorderColor: boolean;
+    readonly pasteClickToExpand: boolean;
     readonly pasteCollapseCharThreshold: number;
     readonly pasteCollapseEnabled: boolean;
     readonly pasteCollapseExpandKey: string | null;
     readonly pasteCollapseLineThreshold: number;
     readonly pasteCollapseUseToolExpandKey: boolean;
+    readonly pasteOffloadLineThreshold: number;
+    readonly pasteOffloadToDisk: boolean;
     readonly preserveCompactionHistory: boolean;
     readonly restoreContentAfterAutocompleteClose: boolean;
     readonly selectedOptionPrefix: string;
+    readonly showEditorOverflowIndicators: boolean;
 };
 
 export type LoadedUiTweaksConfig = {
@@ -40,10 +54,12 @@ export type UiTweaksSettingsSource = {
 
 export type UiTweaksSettings = {
     $schema?: string;
-    autocompleteAboveInput?: boolean;
-    bashExecPromptSpacing?: boolean;
     anchorInputToBottom?: boolean;
+    autocompleteAboveInput?: boolean;
+    autoExpandPasteOnSubmit?: boolean;
+    bashExecPromptSpacing?: boolean;
     compactModelSelector?: boolean;
+    editorMaxHeight?: EditorMaxHeight;
     enabled?: boolean;
     hideAutocompleteScrollInfo?: boolean;
     hideModelChangeStatus?: boolean;
@@ -52,14 +68,18 @@ export type UiTweaksSettings = {
     highlightSelectedModelProvider?: boolean;
     inputPromptPrefix?: string;
     neutralBorderColor?: boolean;
+    pasteClickToExpand?: boolean;
     pasteCollapseCharThreshold?: number;
     pasteCollapseEnabled?: boolean;
     pasteCollapseExpandKey?: string | null;
     pasteCollapseLineThreshold?: number;
     pasteCollapseUseToolExpandKey?: boolean;
+    pasteOffloadLineThreshold?: number;
+    pasteOffloadToDisk?: boolean;
     preserveCompactionHistory?: boolean;
     restoreContentAfterAutocompleteClose?: boolean;
     selectedOptionPrefix?: string;
+    showEditorOverflowIndicators?: boolean;
 };
 
 export const PASTE_COLLAPSE_EXPAND_KEY_PATTERN =
@@ -67,6 +87,12 @@ export const PASTE_COLLAPSE_EXPAND_KEY_PATTERN =
 
 export const OptionalPasteCollapseExpandKeySchema = Type.Union([
     Type.String({ minLength: 1, pattern: PASTE_COLLAPSE_EXPAND_KEY_PATTERN }),
+    Type.Null(),
+]);
+
+export const EditorMaxHeightSchema = Type.Union([
+    Type.Integer({ minimum: 1 }),
+    Type.Literal("unlimited"),
     Type.Null(),
 ]);
 
@@ -83,6 +109,11 @@ export const extensionSettingsInput = {
                 default: true,
                 description: "Render autocomplete above the input editor.",
             }),
+            autoExpandPasteOnSubmit: Type.Boolean({
+                default: DEFAULT_AUTO_EXPAND_PASTE_ON_SUBMIT,
+                description:
+                    "Automatically expand collapsed paste markers when prompt is submitted.",
+            }),
             bashExecPromptSpacing: Type.Boolean({
                 default: true,
                 description: "Add spacing around bash execution prompts.",
@@ -94,6 +125,10 @@ export const extensionSettingsInput = {
             compactModelSelector: Type.Boolean({
                 default: true,
                 description: "Use compact model-selector rows.",
+            }),
+            editorMaxHeight: Type.Union(EditorMaxHeightSchema.anyOf, {
+                default: DEFAULT_EDITOR_MAX_HEIGHT,
+                description: "Maximum visible height of the prompt editor box, or 'unlimited'.",
             }),
             hideAutocompleteScrollInfo: Type.Boolean({
                 default: true,
@@ -124,6 +159,10 @@ export const extensionSettingsInput = {
                 default: true,
                 description: "Use a neutral border color when Pi is idle.",
             }),
+            pasteClickToExpand: Type.Boolean({
+                default: DEFAULT_PASTE_CLICK_TO_EXPAND,
+                description: "Expand collapsed paste markers when clicked with the mouse.",
+            }),
             pasteCollapseCharThreshold: Type.Integer({
                 minimum: 0,
                 default: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
@@ -146,6 +185,15 @@ export const extensionSettingsInput = {
                 default: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
                 description: "Reuse Pi's configured tool-expansion key for pasted content.",
             }),
+            pasteOffloadLineThreshold: Type.Integer({
+                minimum: 0,
+                default: DEFAULT_PASTE_OFFLOAD_LINE_THRESHOLD,
+                description: "Line threshold above which pastes are offloaded to disk files.",
+            }),
+            pasteOffloadToDisk: Type.Boolean({
+                default: DEFAULT_PASTE_OFFLOAD_TO_DISK,
+                description: "Save massive pastes exceeding offload threshold to temporary files.",
+            }),
             preserveCompactionHistory: Type.Boolean({
                 default: false,
                 description: "Keep pre-compaction messages visible in transcript history.",
@@ -158,6 +206,11 @@ export const extensionSettingsInput = {
                 minLength: 1,
                 default: "→ ",
                 description: "Prefix displayed before selected list options.",
+            }),
+            showEditorOverflowIndicators: Type.Boolean({
+                default: DEFAULT_SHOW_EDITOR_OVERFLOW_INDICATORS,
+                description:
+                    "Show top and bottom line overflow indicators (e.g. ▲/▼) when text overflows visible viewport.",
             }),
         },
         { additionalProperties: false },

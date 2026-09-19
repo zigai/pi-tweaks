@@ -65,11 +65,15 @@ type TestEditor = EditorComponent & {
 type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
 
 const defaultSettings: PasteCollapseSettings = {
-    pasteCollapseCharThreshold: 1000,
+    autoExpandPasteOnSubmit: true,
+    pasteClickToExpand: true,
+    pasteCollapseCharThreshold: 5000,
     pasteCollapseEnabled: true,
     pasteCollapseExpandKey: null,
-    pasteCollapseLineThreshold: 10,
+    pasteCollapseLineThreshold: 80,
     pasteCollapseUseToolExpandKey: true,
+    pasteOffloadLineThreshold: 500,
+    pasteOffloadToDisk: false,
 };
 
 const identityStyle = (text: string): string => text;
@@ -139,10 +143,23 @@ function paste(text: string): string {
     return `\x1b[200~${text}\x1b[201~`;
 }
 
+test("pastes under 80 lines remain raw multi-line text by default", () => {
+    withSettings({}, () => {
+        const editor = createPasteCollapseEditor();
+        const pastedText = Array.from({ length: 50 }, (_value, index) => `line ${index}`).join(
+            "\n",
+        );
+
+        editor.handleInput(paste(pastedText));
+        assert.equal(editor.getText(), pastedText);
+        assert.equal(editor.getExpandedText(), pastedText);
+    });
+});
+
 test("large paste collapse can be disabled", () => {
     withSettings({ pasteCollapseEnabled: false }, () => {
         const editor = createPasteCollapseEditor();
-        const pastedText = Array.from({ length: 20 }, (_value, index) => `line ${index}`).join(
+        const pastedText = Array.from({ length: 120 }, (_value, index) => `line ${index}`).join(
             "\n",
         );
 
@@ -187,6 +204,24 @@ test("custom expand key expands the paste marker under the cursor", () => {
     );
 });
 
+test("mouse click expands collapsed paste marker", () => {
+    withSettings(
+        {
+            pasteClickToExpand: true,
+            pasteCollapseLineThreshold: 1,
+        },
+        () => {
+            const editor = createPasteCollapseEditor();
+            editor.handleInput(paste("one\ntwo"));
+            assert.equal(editor.getText(), "[paste #1 +2 lines]");
+
+            // SGR mouse left click press
+            editor.handleInput("\x1b[<0;5;1M");
+            assert.equal(editor.getText(), "one\ntwo");
+        },
+    );
+});
+
 test("tool expand key expands only the marker under the cursor", () => {
     withSettings({ pasteCollapseLineThreshold: 1 }, () => {
         const editor = createPasteCollapseEditor();
@@ -197,6 +232,31 @@ test("tool expand key expands only the marker under the cursor", () => {
         assert.equal(editor.getText(), "[paste #1 +2 lines] three\nfour");
         assert.equal(editor.getExpandedText(), "one\ntwo three\nfour");
     });
+});
+
+test("autoExpandPasteOnSubmit controls expanded text output", () => {
+    withSettings({ pasteCollapseLineThreshold: 1, autoExpandPasteOnSubmit: false }, () => {
+        const editor = createPasteCollapseEditor();
+        editor.handleInput(paste("one\ntwo"));
+        assert.equal(editor.getText(), "[paste #1 +2 lines]");
+        assert.equal(editor.getExpandedText(), "[paste #1 +2 lines]");
+    });
+});
+
+test("paste offload to disk creates temp file for massive pastes", () => {
+    withSettings(
+        {
+            pasteCollapseLineThreshold: 1,
+            pasteOffloadToDisk: true,
+            pasteOffloadLineThreshold: 2,
+        },
+        () => {
+            const editor = createPasteCollapseEditor();
+            editor.handleInput(paste("line 1\nline 2\nline 3"));
+            assert.equal(editor.getText(), "[paste #1 +3 lines]");
+            assert.equal(editor.getExpandedText(), "line 1\nline 2\nline 3");
+        },
+    );
 });
 
 test("tool expand key falls through when no paste marker is under the cursor", () => {

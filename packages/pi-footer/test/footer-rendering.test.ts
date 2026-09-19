@@ -82,6 +82,82 @@ test("createFooterComponent renders key session status without exceeding width",
     assert.match(plain, /MCP: 2 servers/);
 });
 
+test("thinking footer item handles only left mouse clicks within its rendered cells", () => {
+    const anchors: Array<{ screenX: number; screenY: number }> = [];
+    const component = createFooterComponent(
+        footerContext(),
+        footerData("main", new Map()),
+        () => "medium",
+        () => undefined,
+        DEFAULT_FOOTER_CONFIG,
+        undefined,
+        undefined,
+        {
+            onThinkingClick: (anchor) => {
+                anchors.push(anchor);
+            },
+        },
+    );
+
+    const line = component.render(120)[0] ?? "";
+    const thinkingColumn = line.indexOf("medium");
+    const mouseEvent = {
+        type: "click" as const,
+        button: "left" as const,
+        x: thinkingColumn + 2,
+        y: 0,
+        screenX: 42,
+        screenY: 20,
+        width: 120,
+        height: 1,
+        shift: false,
+        alt: false,
+        ctrl: false,
+    };
+
+    assert.deepEqual(component.handleMouse({ ...mouseEvent, x: thinkingColumn - 1 }), undefined);
+    assert.deepEqual(component.handleMouse(mouseEvent), { handled: true, render: false });
+    assert.deepEqual(anchors, [{ screenX: 40, screenY: 20 }]);
+});
+
+test("model footer item handles left mouse clicks within its rendered cells", () => {
+    const anchors: Array<{ screenX: number; screenY: number }> = [];
+    const component = createFooterComponent(
+        footerContext(),
+        footerData("main", new Map()),
+        () => "medium",
+        () => undefined,
+        DEFAULT_FOOTER_CONFIG,
+        undefined,
+        undefined,
+        {
+            onModelClick: (anchor) => {
+                anchors.push(anchor);
+            },
+        },
+    );
+
+    const line = component.render(120)[0] ?? "";
+    const modelColumn = line.indexOf("gpt-5");
+    const mouseEvent = {
+        type: "click" as const,
+        button: "left" as const,
+        x: modelColumn + 3,
+        y: 0,
+        screenX: 53,
+        screenY: 20,
+        width: 120,
+        height: 1,
+        shift: false,
+        alt: false,
+        ctrl: false,
+    };
+
+    assert.deepEqual(component.handleMouse({ ...mouseEvent, x: modelColumn - 1 }), undefined);
+    assert.deepEqual(component.handleMouse(mouseEvent), { handled: true, render: false });
+    assert.deepEqual(anchors, [{ screenX: 50, screenY: 20 }]);
+});
+
 test("createFooterComponent leaves plain footer background transparent", () => {
     const theme = {
         fg(role: "muted" | "dim", text: string): string {

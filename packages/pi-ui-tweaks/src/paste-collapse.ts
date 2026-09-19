@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
     CustomEditor,
     type ExtensionContext,
@@ -11,17 +14,22 @@ import {
 } from "@zigai/pi-extension-internals";
 import { matchesRuntimeKey } from "./runtime-key-matching.ts";
 import {
+    DEFAULT_AUTO_EXPAND_PASTE_ON_SUBMIT,
+    DEFAULT_PASTE_CLICK_TO_EXPAND,
     DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
     DEFAULT_PASTE_COLLAPSE_ENABLED,
     DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
     DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
     DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+    DEFAULT_PASTE_OFFLOAD_LINE_THRESHOLD,
+    DEFAULT_PASTE_OFFLOAD_TO_DISK,
 } from "./settings.ts";
 
 const PASTE_COLLAPSE_PATCH_MARKER = Symbol.for("zigai.pi-ui-tweaks.paste-collapse-patch");
 const PASTE_COLLAPSE_ENHANCER_MARKER = Symbol.for("zigai.pi-ui-tweaks.paste-collapse-enhancer");
 const PASTE_COLLAPSE_ENHANCER_KEY = Symbol.for("zigai.pi-ui-tweaks.paste-collapse");
 const PASTE_MARKER_REGEX = /\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]/g;
+const SGR_MOUSE_CLICK_REGEX = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/;
 
 const PASTE_MARKER_FOR_ID = (pasteId: number): RegExp =>
     new RegExp(`\\[paste #${pasteId}( (\\+\\d+ lines|\\d+ chars))?\\]`);
@@ -42,11 +50,15 @@ export type PasteCollapseEditorContext = Pick<ExtensionContext, "hasUI"> & {
 };
 
 export type PasteCollapseSettings = {
+    readonly autoExpandPasteOnSubmit: boolean;
+    readonly pasteClickToExpand: boolean;
     readonly pasteCollapseCharThreshold: number;
     readonly pasteCollapseEnabled: boolean;
     readonly pasteCollapseExpandKey: string | null;
     readonly pasteCollapseLineThreshold: number;
     readonly pasteCollapseUseToolExpandKey: boolean;
+    readonly pasteOffloadLineThreshold: number;
+    readonly pasteOffloadToDisk: boolean;
 };
 
 export type PasteCollapseHandle = {
@@ -55,11 +67,15 @@ export type PasteCollapseHandle = {
 };
 
 let currentPasteCollapseSettings: PasteCollapseSettings = {
+    autoExpandPasteOnSubmit: DEFAULT_AUTO_EXPAND_PASTE_ON_SUBMIT,
+    pasteClickToExpand: DEFAULT_PASTE_CLICK_TO_EXPAND,
     pasteCollapseCharThreshold: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
     pasteCollapseEnabled: DEFAULT_PASTE_COLLAPSE_ENABLED,
     pasteCollapseExpandKey: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
     pasteCollapseLineThreshold: DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
     pasteCollapseUseToolExpandKey: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+    pasteOffloadLineThreshold: DEFAULT_PASTE_OFFLOAD_LINE_THRESHOLD,
+    pasteOffloadToDisk: DEFAULT_PASTE_OFFLOAD_TO_DISK,
 };
 
 type EditorState = {
@@ -76,6 +92,7 @@ type PasteEditorInternals = {
     cancelAutocomplete(): void;
     exitHistoryBrowsing(): void;
     getText(): string;
+    getExpandedText?(): string;
     insertTextAtCursorInternal(text: string): void;
     normalizeText(text: string): string;
     pushUndoSnapshot(): void;
@@ -87,6 +104,7 @@ type PasteEditorInternals = {
 export type PasteCollapseEditor = {
     getCursor(): { line: number; col: number };
     getText(): string;
+    getExpandedText?(): string;
     handleInput(data: string): void;
     onExtensionShortcut?: (data: string) => boolean;
     requestRenderNow?: () => void;
@@ -244,9 +262,26 @@ function shouldCollapsePaste(filteredText: string): boolean {
     );
 }
 
+function offloadPasteToDisk(pasteId: number, filteredText: string): string | undefined {
+    try {
+        const tempDir = os.tmpdir();
+        const filePath = path.join(tempDir, `pi-paste-${Date.now()}-${pasteId}.txt`);
+        fs.writeFileSync(filePath, filteredText, "utf-8");
+        return filePath;
+    } catch {
+        return undefined;
+    }
+}
+
 function pasteMarkerForContent(pasteId: number, filteredText: string): string {
     const lineCount = filteredText.split("\n").length;
-    if (lineCount > currentPasteCollapseSettings.pasteCollapseLineThreshold) {
+    const settings = currentPasteCollapseSettings;
+
+    if (settings.pasteOffloadToDisk && lineCount > settings.pasteOffloadLineThreshold) {
+        offloadPasteToDisk(pasteId, filteredText);
+    }
+
+    if (lineCount > settings.pasteCollapseLineThreshold) {
         return `[paste #${pasteId} +${lineCount} lines]`;
     }
 
@@ -479,6 +514,13 @@ function shouldTryExpandPasteMarker(data: string, keybindings: KeybindingsManage
     );
 }
 
+function isSgrMouseClick(data: string): boolean {
+    const match = SGR_MOUSE_CLICK_REGEX.exec(data);
+    if (match === null) return false;
+
+    return match[1] === "0";
+}
+
 function isEditorLike(value: unknown): value is EditorLike {
     if (typeof value !== "object" || value === null) return false;
 
@@ -499,6 +541,10 @@ type PasteEnhancerRecord = {
 
 type MarkedPasteUi = PasteCollapseEditorContext["ui"] & {
     [PASTE_COLLAPSE_ENHANCER_MARKER]?: PasteEnhancerRecord;
+};
+
+type GetExpandedTextHolder = {
+    getExpandedText?: () => string;
 };
 
 /** Installs or updates the paste-marker expansion editor enhancer. */
@@ -528,6 +574,14 @@ export function installPasteCollapseEditor(
             const predecessor = editor.handleInput.bind(editor);
 
             editor.handleInput = (data: string): void => {
+                if (
+                    currentPasteCollapseSettings.pasteClickToExpand &&
+                    isSgrMouseClick(data) &&
+                    expandPasteMarkerAtCursor(editor)
+                ) {
+                    return;
+                }
+
                 if (shouldTryExpandPasteMarker(data, keybindings)) {
                     if (editor.onExtensionShortcut?.(data) === true) return;
                     if (expandPasteMarkerAtCursor(editor)) return;
@@ -535,6 +589,19 @@ export function installPasteCollapseEditor(
 
                 predecessor(data);
             };
+
+            const holder: GetExpandedTextHolder = editor;
+            const originalGetExpandedText = holder.getExpandedText;
+            if (typeof originalGetExpandedText === "function") {
+                const boundGetExpandedText = originalGetExpandedText.bind(editor);
+                holder.getExpandedText = (): string => {
+                    if (!currentPasteCollapseSettings.autoExpandPasteOnSubmit) {
+                        return editor.getText();
+                    }
+
+                    return boundGetExpandedText();
+                };
+            }
 
             return editor;
         },

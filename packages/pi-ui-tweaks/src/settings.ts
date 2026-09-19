@@ -5,11 +5,18 @@ import { Type } from "typebox";
 import { definePrevalidatedExtensionSettings } from "@zigai/pi-extension-settings/runtime";
 import { Value } from "typebox/value";
 import {
+    DEFAULT_AUTO_EXPAND_PASTE_ON_SUBMIT,
+    DEFAULT_EDITOR_MAX_HEIGHT,
+    DEFAULT_PASTE_CLICK_TO_EXPAND,
     DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
     DEFAULT_PASTE_COLLAPSE_ENABLED,
     DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
     DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
     DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+    DEFAULT_PASTE_OFFLOAD_LINE_THRESHOLD,
+    DEFAULT_PASTE_OFFLOAD_TO_DISK,
+    DEFAULT_SHOW_EDITOR_OVERFLOW_INDICATORS,
+    EditorMaxHeightSchema,
     LoadedUiTweaksConfig,
     OptionalPasteCollapseExpandKeySchema,
     UiTweaksConfig,
@@ -31,10 +38,12 @@ export default uiTweaksSettingsDefinition;
 const UiTweaksConfigSchema = Type.Object(
     {
         $schema: Type.Optional(Type.String()),
-        autocompleteAboveInput: Type.Optional(Type.Boolean()),
-        bashExecPromptSpacing: Type.Optional(Type.Boolean()),
         anchorInputToBottom: Type.Optional(Type.Boolean()),
+        autocompleteAboveInput: Type.Optional(Type.Boolean()),
+        autoExpandPasteOnSubmit: Type.Optional(Type.Boolean()),
+        bashExecPromptSpacing: Type.Optional(Type.Boolean()),
         compactModelSelector: Type.Optional(Type.Boolean()),
+        editorMaxHeight: Type.Optional(EditorMaxHeightSchema),
         enabled: Type.Optional(Type.Boolean()),
         hideAutocompleteScrollInfo: Type.Optional(Type.Boolean()),
         hideModelChangeStatus: Type.Optional(Type.Boolean()),
@@ -43,23 +52,29 @@ const UiTweaksConfigSchema = Type.Object(
         highlightSelectedModelProvider: Type.Optional(Type.Boolean()),
         inputPromptPrefix: Type.Optional(Type.String({ minLength: 1 })),
         neutralBorderColor: Type.Optional(Type.Boolean()),
+        pasteClickToExpand: Type.Optional(Type.Boolean()),
         pasteCollapseCharThreshold: Type.Optional(Type.Integer({ minimum: 0 })),
         pasteCollapseEnabled: Type.Optional(Type.Boolean()),
         pasteCollapseExpandKey: Type.Optional(OptionalPasteCollapseExpandKeySchema),
         pasteCollapseLineThreshold: Type.Optional(Type.Integer({ minimum: 0 })),
         pasteCollapseUseToolExpandKey: Type.Optional(Type.Boolean()),
+        pasteOffloadLineThreshold: Type.Optional(Type.Integer({ minimum: 0 })),
+        pasteOffloadToDisk: Type.Optional(Type.Boolean()),
         preserveCompactionHistory: Type.Optional(Type.Boolean()),
         restoreContentAfterAutocompleteClose: Type.Optional(Type.Boolean()),
         selectedOptionPrefix: Type.Optional(Type.String({ minLength: 1 })),
+        showEditorOverflowIndicators: Type.Optional(Type.Boolean()),
     },
     { additionalProperties: false },
 );
 
 const DEFAULT_UI_TWEAKS_CONFIG: UiTweaksConfig = {
-    autocompleteAboveInput: true,
-    bashExecPromptSpacing: true,
     anchorInputToBottom: false,
+    autocompleteAboveInput: true,
+    autoExpandPasteOnSubmit: DEFAULT_AUTO_EXPAND_PASTE_ON_SUBMIT,
+    bashExecPromptSpacing: true,
     compactModelSelector: true,
+    editorMaxHeight: DEFAULT_EDITOR_MAX_HEIGHT,
     hideAutocompleteScrollInfo: true,
     hideModelChangeStatus: true,
     hideModelProviderHint: true,
@@ -67,14 +82,18 @@ const DEFAULT_UI_TWEAKS_CONFIG: UiTweaksConfig = {
     highlightSelectedModelProvider: true,
     inputPromptPrefix: "> ",
     neutralBorderColor: true,
+    pasteClickToExpand: DEFAULT_PASTE_CLICK_TO_EXPAND,
     pasteCollapseCharThreshold: DEFAULT_PASTE_COLLAPSE_CHAR_THRESHOLD,
     pasteCollapseEnabled: DEFAULT_PASTE_COLLAPSE_ENABLED,
     pasteCollapseExpandKey: DEFAULT_PASTE_COLLAPSE_EXPAND_KEY,
     pasteCollapseLineThreshold: DEFAULT_PASTE_COLLAPSE_LINE_THRESHOLD,
     pasteCollapseUseToolExpandKey: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
+    pasteOffloadLineThreshold: DEFAULT_PASTE_OFFLOAD_LINE_THRESHOLD,
+    pasteOffloadToDisk: DEFAULT_PASTE_OFFLOAD_TO_DISK,
     preserveCompactionHistory: false,
     restoreContentAfterAutocompleteClose: true,
     selectedOptionPrefix: "→ ",
+    showEditorOverflowIndicators: DEFAULT_SHOW_EDITOR_OVERFLOW_INDICATORS,
 };
 
 function formatSchemaPath(instancePath: string): string {
@@ -124,10 +143,12 @@ const uiTweaksSettingsParser = {
 function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
     if (settings.enabled === false) {
         return {
-            autocompleteAboveInput: false,
-            bashExecPromptSpacing: false,
             anchorInputToBottom: false,
+            autocompleteAboveInput: false,
+            autoExpandPasteOnSubmit: false,
+            bashExecPromptSpacing: false,
             compactModelSelector: false,
+            editorMaxHeight: DEFAULT_UI_TWEAKS_CONFIG.editorMaxHeight,
             hideAutocompleteScrollInfo: false,
             hideModelChangeStatus: false,
             hideModelProviderHint: false,
@@ -135,26 +156,33 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
             highlightSelectedModelProvider: false,
             inputPromptPrefix: DEFAULT_UI_TWEAKS_CONFIG.inputPromptPrefix,
             neutralBorderColor: false,
+            pasteClickToExpand: false,
             pasteCollapseCharThreshold: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseCharThreshold,
             pasteCollapseEnabled: false,
             pasteCollapseExpandKey: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseExpandKey,
             pasteCollapseLineThreshold: DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseLineThreshold,
             pasteCollapseUseToolExpandKey: false,
+            pasteOffloadLineThreshold: DEFAULT_UI_TWEAKS_CONFIG.pasteOffloadLineThreshold,
+            pasteOffloadToDisk: false,
             preserveCompactionHistory: false,
             restoreContentAfterAutocompleteClose: false,
             selectedOptionPrefix: DEFAULT_UI_TWEAKS_CONFIG.selectedOptionPrefix,
+            showEditorOverflowIndicators: false,
         };
     }
 
     return {
-        autocompleteAboveInput:
-            settings.autocompleteAboveInput ?? DEFAULT_UI_TWEAKS_CONFIG.autocompleteAboveInput,
-        bashExecPromptSpacing:
-            settings.bashExecPromptSpacing ?? DEFAULT_UI_TWEAKS_CONFIG.bashExecPromptSpacing,
         anchorInputToBottom:
             settings.anchorInputToBottom ?? DEFAULT_UI_TWEAKS_CONFIG.anchorInputToBottom,
+        autocompleteAboveInput:
+            settings.autocompleteAboveInput ?? DEFAULT_UI_TWEAKS_CONFIG.autocompleteAboveInput,
+        autoExpandPasteOnSubmit:
+            settings.autoExpandPasteOnSubmit ?? DEFAULT_UI_TWEAKS_CONFIG.autoExpandPasteOnSubmit,
+        bashExecPromptSpacing:
+            settings.bashExecPromptSpacing ?? DEFAULT_UI_TWEAKS_CONFIG.bashExecPromptSpacing,
         compactModelSelector:
             settings.compactModelSelector ?? DEFAULT_UI_TWEAKS_CONFIG.compactModelSelector,
+        editorMaxHeight: settings.editorMaxHeight ?? DEFAULT_UI_TWEAKS_CONFIG.editorMaxHeight,
         hideAutocompleteScrollInfo:
             settings.hideAutocompleteScrollInfo ??
             DEFAULT_UI_TWEAKS_CONFIG.hideAutocompleteScrollInfo,
@@ -171,6 +199,8 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
         inputPromptPrefix: settings.inputPromptPrefix ?? DEFAULT_UI_TWEAKS_CONFIG.inputPromptPrefix,
         neutralBorderColor:
             settings.neutralBorderColor ?? DEFAULT_UI_TWEAKS_CONFIG.neutralBorderColor,
+        pasteClickToExpand:
+            settings.pasteClickToExpand ?? DEFAULT_UI_TWEAKS_CONFIG.pasteClickToExpand,
         pasteCollapseCharThreshold:
             settings.pasteCollapseCharThreshold ??
             DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseCharThreshold,
@@ -184,6 +214,11 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
         pasteCollapseUseToolExpandKey:
             settings.pasteCollapseUseToolExpandKey ??
             DEFAULT_UI_TWEAKS_CONFIG.pasteCollapseUseToolExpandKey,
+        pasteOffloadLineThreshold:
+            settings.pasteOffloadLineThreshold ??
+            DEFAULT_UI_TWEAKS_CONFIG.pasteOffloadLineThreshold,
+        pasteOffloadToDisk:
+            settings.pasteOffloadToDisk ?? DEFAULT_UI_TWEAKS_CONFIG.pasteOffloadToDisk,
         preserveCompactionHistory:
             settings.preserveCompactionHistory ??
             DEFAULT_UI_TWEAKS_CONFIG.preserveCompactionHistory,
@@ -192,6 +227,9 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
             DEFAULT_UI_TWEAKS_CONFIG.restoreContentAfterAutocompleteClose,
         selectedOptionPrefix:
             settings.selectedOptionPrefix ?? DEFAULT_UI_TWEAKS_CONFIG.selectedOptionPrefix,
+        showEditorOverflowIndicators:
+            settings.showEditorOverflowIndicators ??
+            DEFAULT_UI_TWEAKS_CONFIG.showEditorOverflowIndicators,
     };
 }
 

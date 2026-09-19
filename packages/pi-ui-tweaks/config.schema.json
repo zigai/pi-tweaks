@@ -21,6 +21,11 @@
       "default": true,
       "description": "Render autocomplete above the input editor."
     },
+    "autoExpandPasteOnSubmit": {
+      "type": "boolean",
+      "default": true,
+      "description": "Automatically expand collapsed paste markers when prompt is submitted."
+    },
     "bashExecPromptSpacing": {
       "type": "boolean",
       "default": true,
@@ -35,6 +40,23 @@
       "type": "boolean",
       "default": true,
       "description": "Use compact model-selector rows."
+    },
+    "editorMaxHeight": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "string",
+          "const": "unlimited"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": "unlimited",
+      "description": "Maximum visible height of the prompt editor box, or 'unlimited'."
     },
     "hideAutocompleteScrollInfo": {
       "type": "boolean",
@@ -72,10 +94,15 @@
       "default": true,
       "description": "Use a neutral border color when Pi is idle."
     },
+    "pasteClickToExpand": {
+      "type": "boolean",
+      "default": true,
+      "description": "Expand collapsed paste markers when clicked with the mouse."
+    },
     "pasteCollapseCharThreshold": {
       "type": "integer",
       "minimum": 0,
-      "default": 1000,
+      "default": 5000,
       "description": "Character threshold that collapses pasted content."
     },
     "pasteCollapseEnabled": {
@@ -100,13 +127,24 @@
     "pasteCollapseLineThreshold": {
       "type": "integer",
       "minimum": 0,
-      "default": 10,
+      "default": 80,
       "description": "Line threshold that collapses pasted content."
     },
     "pasteCollapseUseToolExpandKey": {
       "type": "boolean",
       "default": true,
       "description": "Reuse Pi's configured tool-expansion key for pasted content."
+    },
+    "pasteOffloadLineThreshold": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 500,
+      "description": "Line threshold above which pastes are offloaded to disk files."
+    },
+    "pasteOffloadToDisk": {
+      "type": "boolean",
+      "default": false,
+      "description": "Save massive pastes exceeding offload threshold to temporary files."
     },
     "preserveCompactionHistory": {
       "type": "boolean",
@@ -123,6 +161,11 @@
       "minLength": 1,
       "default": "→ ",
       "description": "Prefix displayed before selected list options."
+    },
+    "showEditorOverflowIndicators": {
+      "type": "boolean",
+      "default": true,
+      "description": "Show top and bottom line overflow indicators (e.g. ▲/▼) when text overflows visible viewport."
     }
   }
 }

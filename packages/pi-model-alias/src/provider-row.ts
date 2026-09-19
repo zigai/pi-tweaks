@@ -128,14 +128,20 @@ function removeModelNameDetail(container: ListContainer): void {
     }
 }
 
-function removeModelCatalogStatusSpacer(container: ListContainer): void {
+function tidyModelCatalogStatus(container: ListContainer): void {
     const statusIndex = container.children.findIndex(
         (child) => textComponentValue(child)?.toLowerCase().includes("model catalog") === true,
     );
-    if (statusIndex <= 0) return;
-    if (textComponentValue(container.children[statusIndex - 1]) !== undefined) return;
+    if (statusIndex === -1) return;
 
-    container.children.splice(statusIndex - 1, 1);
+    const statusText = textComponentValue(container.children[statusIndex]);
+    if (statusText?.replace(ANSI_PATTERN, "").trim() === "Model catalogs refreshed.") {
+        container.children.splice(statusIndex, 1);
+    }
+
+    if (statusIndex > 0 && textComponentValue(container.children[statusIndex - 1]) === undefined) {
+        container.children.splice(statusIndex - 1, 1);
+    }
 }
 
 function takeScrollCounter(container: ListContainer): string | undefined {
@@ -201,7 +207,7 @@ export function formatProviderRows(
         const counter = takeScrollCounter(container);
 
         removeModelNameDetail(container);
-        removeModelCatalogStatusSpacer(container);
+        tidyModelCatalogStatus(container);
 
         return counter;
     }
@@ -240,7 +246,7 @@ export function formatProviderRows(
     const counter = takeScrollCounter(container);
 
     removeModelNameDetail(container);
-    removeModelCatalogStatusSpacer(container);
+    tidyModelCatalogStatus(container);
 
     return counter;
 }

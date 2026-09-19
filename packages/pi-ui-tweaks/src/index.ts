@@ -10,6 +10,7 @@ import { installAutocompleteScrollInfoPatch } from "./autocomplete-scroll-info.t
 import { installAnchorInputToBottomPatch } from "./anchor-input-to-bottom.ts";
 import { installBashExecSpacingEditor } from "./bash-exec-spacing.ts";
 import { installNeutralBorderColorPatch } from "./border-color.ts";
+import { installEditorHeightPatch } from "./editor-height.ts";
 import { installInputPromptPrefixPatch } from "./input-prompt-prefix.ts";
 import { installModelSelectorHintPatch } from "./model-selector-hint.ts";
 import { installModelSelectorProviderBadgePatch } from "./model-selector-provider-badge.ts";
@@ -80,6 +81,7 @@ async function installUiTweaks(
     const autocompleteScroll = installAutocompleteScrollInfoPatch(config);
     const anchor = installAnchorInputToBottomPatch(config);
     const bash = installBashExecSpacingEditor(ctx, config);
+    const editorHeight = installEditorHeightPatch(config);
     const inputPrefix = installInputPromptPrefixPatch(config);
     const modelHint = installModelSelectorHintPatch(config);
     const modelStatus = installModelStatusPatch(config);
@@ -105,6 +107,7 @@ async function installUiTweaks(
         },
         { update: (next) => anchor.update(next), dispose: () => anchor.dispose() },
         { update: (next) => bash.update(next), dispose: () => bash.dispose() },
+        { update: (next) => editorHeight.update(next), dispose: () => editorHeight.dispose() },
         { update: (next) => inputPrefix.update(next), dispose: () => inputPrefix.dispose() },
         { update: (next) => modelHint.update(next), dispose: () => modelHint.dispose() },
         { update: (next) => modelStatus.update(next), dispose: () => modelStatus.dispose() },
@@ -122,7 +125,6 @@ async function installUiTweaks(
 export function registerUiTweaksLifecycle(pi: UiTweaksExtensionApi): void {
     pi.onSessionStart(async (_event, ctx) => {
         const loaded = loadUiTweaksSettings(ctx.cwd, ctx.isProjectTrusted());
-        reportConfigErrors(ctx, loaded);
 
         if (handles.length === 0) {
             handles = await installUiTweaks(ctx, loaded.config);

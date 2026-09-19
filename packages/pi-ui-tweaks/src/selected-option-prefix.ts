@@ -304,7 +304,7 @@ export async function installSelectedOptionPrefixThemePatch(
                 if (color === "accent" && text === DEFAULT_SELECTED_OPTION_PREFIX) {
                     return predecessor.call(
                         this,
-                        color,
+                        "borderAccent",
                         currentSelectedOptionConfig.selectedOptionPrefix,
                     );
                 }

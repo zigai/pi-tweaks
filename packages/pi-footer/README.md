@@ -15,6 +15,8 @@ Footer contents:
 - MCP status
 - context usage
 
+With Pi 0.85.1 or newer in fullscreen mode, click the thinking level to choose another supported level, or click the model to search and select models from the current provider.
+
 ## Install
 
 ```sh
