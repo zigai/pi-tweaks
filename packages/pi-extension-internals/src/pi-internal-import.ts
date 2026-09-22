@@ -8,14 +8,14 @@ export type PiInternalModuleLoadOptions<T> = {
     readonly parse: (module: unknown) => T | undefined;
 };
 
-function isCodingAgentPackageDirectory(directory: string, dependencyDirectory: string): boolean {
+function isCodingAgentPackageDirectory(directory: string): boolean {
     return (
-        basename(directory) === basename(dependencyDirectory) &&
-        basename(dirname(directory)) === basename(dirname(dependencyDirectory))
+        basename(directory) === "pi-coding-agent" &&
+        basename(dirname(directory)) === "@earendil-works"
     );
 }
 
-function findEntrypointPackageDirectory(dependencyDirectory: string): string | undefined {
+function findEntrypointPackageDirectory(): string | undefined {
     if (process.env.PI_CODING_AGENT !== "true") return undefined;
 
     const entrypoint = process.argv.at(1);
@@ -24,7 +24,7 @@ function findEntrypointPackageDirectory(dependencyDirectory: string): string | u
     let directory = dirname(realpathSync(entrypoint));
     for (;;) {
         if (
-            isCodingAgentPackageDirectory(directory, dependencyDirectory) &&
+            isCodingAgentPackageDirectory(directory) &&
             existsSync(join(directory, "package.json"))
         ) {
             return directory;
@@ -38,13 +38,18 @@ function findEntrypointPackageDirectory(dependencyDirectory: string): string | u
 }
 
 async function resolveRunningPiPackageDirectory(): Promise<string> {
-    // Shared protocols must load without a Pi peer in their own node_modules.
-    // Resolve Pi only when an internal loader is actually used.
-    const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
-    const packageDirectory = getPackageDir();
-    if (process.env.PI_PACKAGE_DIR !== undefined) return packageDirectory;
+    // A managed extension can have no Pi peer beside it. Prefer the explicit host
+    // path or the running CLI before trying package resolution from this library.
+    const configuredDirectory = process.env.PI_PACKAGE_DIR;
+    if (configuredDirectory !== undefined && configuredDirectory.length > 0) {
+        return resolve(configuredDirectory);
+    }
 
-    return findEntrypointPackageDirectory(packageDirectory) ?? packageDirectory;
+    const runningDirectory = findEntrypointPackageDirectory();
+    if (runningDirectory !== undefined) return runningDirectory;
+
+    const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+    return getPackageDir();
 }
 
 const ENTRYPOINT_IMPORT_PATTERN = /(?:\bfrom\s*|(?:^|;)\s*import\s*)["'](\.\/[^"']+\.js)["']/g;

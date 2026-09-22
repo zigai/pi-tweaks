@@ -95,17 +95,43 @@ try {
         "shared internals must not require raw TypeScript at runtime",
     );
 
+    const piPackageDirectory = path.join(
+        packageRoot,
+        "node_modules",
+        "@earendil-works",
+        "pi-coding-agent",
+    );
+    const piCli = path.join(piPackageDirectory, "dist", "bundle", "cli.js");
+
     execFileSync(
         process.execPath,
         [
             "--input-type=module",
             "--eval",
-            `import { installLinkedMethodPatch, registerEditorEnhancer } from "@zigai/pi-extension-internals";
+            `import { installLinkedMethodPatch, registerEditorEnhancer, loadPiInternalModule } from "@zigai/pi-extension-internals";
 if (typeof installLinkedMethodPatch !== "function" || typeof registerEditorEnhancer !== "function") {
     throw new Error("shared internals could not be imported natively without Pi host peers");
+}
+const options = {
+    scope: "pi-tweaks-package-check",
+    feature: "theme module",
+    parse: (module) => "theme" in module ? "loaded" : undefined,
+};
+if (await loadPiInternalModule("modes/interactive/theme/theme.js", options) !== "loaded") {
+    throw new Error("shared internals could not resolve the explicit Pi package directory");
+}
+delete process.env.PI_PACKAGE_DIR;
+process.env.PI_CODING_AGENT = "true";
+process.argv[1] = ${JSON.stringify(piCli)};
+if (await loadPiInternalModule("modes/interactive/theme/theme.js", options) !== "loaded") {
+    throw new Error("shared internals could not resolve the running Pi CLI");
 }`,
         ],
-        { cwd: installRoot, encoding: "utf8" },
+        {
+            cwd: installRoot,
+            encoding: "utf8",
+            env: { ...process.env, PI_PACKAGE_DIR: piPackageDirectory },
+        },
     );
 
     const extensionEntries = workspaces.extensions.map(({ workspace, entry }) => {
@@ -144,13 +170,6 @@ if (typeof installLinkedMethodPatch !== "function" || typeof registerEditorEnhan
         )}\n`,
     );
 
-    const piPackageDirectory = path.join(
-        packageRoot,
-        "node_modules",
-        "@earendil-works",
-        "pi-coding-agent",
-    );
-    const piCli = path.join(piPackageDirectory, "dist", "bundle", "cli.js");
     const bundleUrl = pathToFileURL(path.join(piPackageDirectory, "dist/bundle/index.js")).href;
     const identityProbe = path.join(projectDirectory, "pi-public-identity-probe.ts");
 
