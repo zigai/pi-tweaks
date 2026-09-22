@@ -1,5 +1,5 @@
 import type { SessionTreeNode } from "@earendil-works/pi-coding-agent";
-import { loadPiRuntimeModule } from "@zigai/pi-extension-internals";
+import { loadPiRuntimeModule } from "./pi-runtime-import.ts";
 
 export type TreeSelectorModule = {
     TreeSelectorComponent: new (
