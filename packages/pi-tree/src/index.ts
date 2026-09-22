@@ -18,8 +18,12 @@ export default function treeTimestampsExtension(pi: Pick<ExtensionAPI, "on">): v
                 ctx.ui.notify(diagnostic.message, diagnostic.severity);
             }
         }
+
+        if (!ctx.hasUI) return;
+
         getPersistedMode();
-        await patchTreeSelector();
+
+        await patchTreeSelector({ theme: () => ctx.ui.theme });
     });
 
     pi.on("session_shutdown", async () => {

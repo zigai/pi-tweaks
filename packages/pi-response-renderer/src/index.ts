@@ -2,7 +2,6 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Markdown, type Component } from "@earendil-works/pi-tui";
 import {
     installLinkedRenderPatch,
-    loadPiRuntimeModule,
     warnPiInternalPatchUnavailable,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
@@ -158,11 +157,14 @@ async function patchMarkdownFences(): Promise<void> {
     };
     state[MARKDOWN_FENCES_PATCH_KEY] = patch;
 
-    const assistantComponent = await loadPiRuntimeModule(
-        "modes/interactive/components/assistant-message.js",
-        { scope: SCOPE, feature: "assistant message patch", parse: assistantMessageRuntime.parse },
+    // The public export resolves to Pi's active bundle in a running TUI.
+    const assistantComponent = assistantMessageRuntime.parse(
+        await import("@earendil-works/pi-coding-agent"),
     );
-    if (assistantComponent === undefined) return;
+    if (assistantComponent === undefined) {
+        warnPiInternalPatchUnavailable(SCOPE, "assistant message patch");
+        return;
+    }
 
     const assistantPrototype = assistantComponent.prototype;
 

@@ -3,7 +3,10 @@ import { Theme } from "@earendil-works/pi-coding-agent";
 import { SelectList } from "@earendil-works/pi-tui";
 import { test } from "vitest";
 
-import { installSelectedOptionPrefixSelectListPatch } from "../src/selected-option-prefix.ts";
+import {
+    installSelectedOptionPrefixSelectListPatch,
+    installSelectedOptionPrefixThemePatch,
+} from "../src/selected-option-prefix.ts";
 import { captureConsoleWarnings } from "./capture-console-warnings.ts";
 
 function createList(): SelectList {
@@ -53,29 +56,16 @@ test("selected option prefix updates generic select-list markers", () => {
     handle.dispose();
 });
 
-test("theme runtime decoder rejects missing and incompatible patch surfaces", async () => {
-    const { selectedOptionThemeRuntime } = await import("../src/selected-option-prefix.ts");
-    for (const module of [
-        null,
-        undefined,
-        1,
-        {},
-        { Theme: null },
-        { Theme: {} },
-        { Theme: { prototype: { fg: 1 } } },
-    ]) {
-        assert.equal(selectedOptionThemeRuntime.parse(module), undefined);
-    }
-});
-
-test("theme runtime decoder preserves the installed Pi prototype identity", async () => {
-    const { selectedOptionThemeRuntime } = await import("../src/selected-option-prefix.ts");
-    const { loadPiInternalModule } = await import("@zigai/pi-extension-internals");
-    const prototype = await loadPiInternalModule("modes/interactive/theme/theme.js", {
-        scope: "pi-ui-tweaks-test",
-        feature: "theme contract",
-        parse: selectedOptionThemeRuntime.parse,
-    });
-    assert.ok(prototype);
-    assert.equal(prototype, Theme.prototype);
+test("selected option prefix patches the public live Theme prototype and restores it", async () => {
+    const original = Theme.prototype.fg;
+    const handle = await installSelectedOptionPrefixThemePatch({ selectedOptionPrefix: "▌" });
+    const patched = Theme.prototype.fg;
+    assert.notEqual(patched, original);
+    assert.equal(
+        await installSelectedOptionPrefixThemePatch({ selectedOptionPrefix: "→ " }),
+        handle,
+    );
+    assert.equal(Theme.prototype.fg, patched);
+    handle.dispose();
+    assert.equal(Theme.prototype.fg, original);
 });

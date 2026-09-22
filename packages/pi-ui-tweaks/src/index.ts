@@ -43,7 +43,9 @@ export type UiTweaksLifecycleContext = Pick<
     readonly ui: Pick<
         ExtensionContext["ui"],
         "getEditorComponent" | "notify" | "setEditorComponent"
-    >;
+    > & {
+        readonly theme?: ExtensionContext["ui"]["theme"];
+    };
 };
 
 export type UiTweaksLifecycleEvent = SessionStartEvent | SessionShutdownEvent;
@@ -90,7 +92,7 @@ async function installUiTweaks(
     const slashSource = installSlashCommandSourcePatch(config);
     const [border, providerBadge, selectedTheme] = await Promise.all([
         installNeutralBorderColorPatch(config),
-        installModelSelectorProviderBadgePatch(config),
+        installModelSelectorProviderBadgePatch(config, undefined, () => ctx.ui.theme),
         installSelectedOptionPrefixThemePatch(config),
     ]);
 

@@ -1,7 +1,8 @@
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
-import { installLinkedMethodPatch } from "@zigai/pi-extension-internals";
-
-import { warnProviderDisplayPatchUnavailable } from "./internal-imports.ts";
+import {
+    installLinkedMethodPatch,
+    warnPiInternalPatchUnavailable,
+} from "@zigai/pi-extension-internals";
 import { getAliasForModel, type ModelAliasSettings, type ModelLike } from "./model-aliasing.ts";
 import { applyProviderDisplayNames, getProviderAlias } from "./provider-aliasing.ts";
 import {
@@ -13,7 +14,6 @@ import {
     type SearchInput,
 } from "./provider-row.ts";
 import type { AliasPolicy } from "./alias-policy.ts";
-import { installScopedModelsProviderPatchFromPi } from "./scoped-model-selector-patch.ts";
 
 type SelectorPolicy = Pick<AliasPolicy, "forModels">;
 
@@ -226,7 +226,7 @@ export function installModelSelectorProviderPatch(
     }
 
     if (!isModelSelectorPatchSurface(target)) {
-        warnProviderDisplayPatchUnavailable("model picker provider alias patch");
+        warnPiInternalPatchUnavailable("pi-model-alias", "model picker provider alias patch");
         return;
     }
 
@@ -288,20 +288,4 @@ export function installModelSelectorProviderPatch(
     });
 
     target[MODEL_SELECTOR_PROVIDER_PATCH_KEY] = true;
-}
-
-export type ProviderAliasUiPatchOptions = {
-    readonly modelSelectorPrototype?: ModelSelectorPatchTarget;
-    readonly installScopedModelsProviderPatchFromPi?: (state: SelectorPolicy) => Promise<void>;
-};
-
-export async function installProviderAliasUiPatches(
-    state: SelectorPolicy,
-    options: ProviderAliasUiPatchOptions = {},
-): Promise<void> {
-    installModelSelectorProviderPatch(state, options.modelSelectorPrototype);
-
-    const installScopedPatch =
-        options.installScopedModelsProviderPatchFromPi ?? installScopedModelsProviderPatchFromPi;
-    await installScopedPatch(state);
 }

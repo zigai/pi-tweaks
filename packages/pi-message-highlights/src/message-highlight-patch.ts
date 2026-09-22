@@ -1,7 +1,6 @@
 import { Editor } from "@earendil-works/pi-tui";
 import {
     installLinkedRenderPatch,
-    loadPiInternalModule,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
 
@@ -11,7 +10,6 @@ import { buildHighlightStyles, type HighlightTheme } from "./highlight-styles.ts
 import type { MessageHighlightsConfig } from "./settings.ts";
 
 const MESSAGE_HIGHLIGHTS_PATCH_KEY = Symbol.for("zigai.pi-message-highlights.patched");
-const SCOPE = "pi-message-highlights";
 
 type HighlightStylesProvider = () => HighlightStyles;
 
@@ -31,11 +29,6 @@ type MessageHighlightsPatchRecord = { handle: MessageHighlightPatchHandle };
 
 type PatchState = typeof globalThis & {
     [MESSAGE_HIGHLIGHTS_PATCH_KEY]?: MessageHighlightsPatchRecord;
-};
-
-type ThemeContract = {
-    fg?: ((color: string, text: string) => string) | undefined;
-    getColorMode?: (() => string) | undefined;
 };
 
 type EditorHighlightPrototype = RenderablePrototype & {
@@ -83,63 +76,18 @@ function parseMessageComponent(
 }
 /* oxlint-enable antislop/no-unknown-parameters */
 
-const themeParser = {
-    parse: (module: unknown): HighlightTheme | undefined => {
-        // Pi exports its theme as a proxy whose properties throw until startup initializes it.
-        // Validate the stable proxy boundary now, then resolve methods lazily during rendering.
-        if (!isObjectIdentity(module) || !("theme" in module)) return undefined;
-
-        const theme = module.theme;
-        if (!isObjectIdentity(theme)) return undefined;
-
-        // SAFETY: The object/function guard permits lazy reads of only the two optional methods.
-        const contract = theme as ThemeContract;
-
-        return {
-            fg(color, text): string {
-                const fg = contract.fg;
-                if (typeof fg !== "function") throw new Error("Theme.fg unavailable");
-                return fg.call(theme, color, text);
-            },
-            getColorMode(): "truecolor" | "256color" {
-                const getColorMode = contract.getColorMode;
-                if (typeof getColorMode !== "function") {
-                    throw new Error("Theme.getColorMode unavailable");
-                }
-
-                const mode = getColorMode.call(theme);
-                if (mode !== "truecolor" && mode !== "256color") {
-                    throw new Error("Theme.getColorMode returned an unsupported value");
-                }
-
-                return mode;
-            },
-        };
-    },
-};
-
-async function loadAssistantMessagePrototype(): Promise<RenderablePrototype | undefined> {
-    return loadPiInternalModule("modes/interactive/components/assistant-message.js", {
-        scope: SCOPE,
-        feature: "AssistantMessageComponent patch",
-        parse(module: unknown): RenderablePrototype | undefined {
-            return parseMessageComponent(module, "AssistantMessageComponent");
-        },
-    });
-}
-
-async function loadUserMessagePrototype(): Promise<RenderablePrototype | undefined> {
-    return loadPiInternalModule("modes/interactive/components/user-message.js", {
-        scope: SCOPE,
-        feature: "UserMessageComponent patch",
-        parse(module: unknown): RenderablePrototype | undefined {
-            return parseMessageComponent(module, "UserMessageComponent");
-        },
-    });
-}
-
 function getEditorPrototype(): RenderablePrototype {
     return Editor.prototype;
+}
+
+export async function loadMessageHighlightTargets(): Promise<MessageHighlightTargets | undefined> {
+    // Use Pi's public exports: private dist subpaths can be different classes from the live UI.
+    const module: unknown = await import("@earendil-works/pi-coding-agent");
+    const assistantPrototype = parseMessageComponent(module, "AssistantMessageComponent");
+    const userPrototype = parseMessageComponent(module, "UserMessageComponent");
+    if (assistantPrototype === undefined || userPrototype === undefined) return undefined;
+
+    return { assistantPrototype, userPrototype, editorPrototype: getEditorPrototype() };
 }
 
 function isEditorHighlightTarget(
@@ -181,30 +129,15 @@ function patchEditorPrototype(
 }
 
 export type MessageHighlightTargets = {
-    theme: HighlightTheme | undefined;
     assistantPrototype: RenderablePrototype;
     userPrototype: RenderablePrototype;
     editorPrototype: RenderablePrototype;
 };
 
-export async function loadMessageHighlightTargets(): Promise<MessageHighlightTargets | undefined> {
-    const theme = await loadPiInternalModule("modes/interactive/theme/theme.js", {
-        scope: SCOPE,
-        feature: "theme color lookup",
-        parse: themeParser.parse,
-    });
-    const assistantPrototype = await loadAssistantMessagePrototype();
-    const userPrototype = await loadUserMessagePrototype();
-    const editorPrototype = getEditorPrototype();
-
-    if (assistantPrototype === undefined || userPrototype === undefined) return undefined;
-
-    return { theme, assistantPrototype, userPrototype, editorPrototype };
-}
-
 export function installMessageHighlightPatch(
     targets: MessageHighlightTargets,
     config: MessageHighlightsConfig,
+    getTheme: () => HighlightTheme | undefined,
 ): MessageHighlightPatchHandle {
     const state: PatchState = globalThis;
     const existing = state[MESSAGE_HIGHLIGHTS_PATCH_KEY];
@@ -215,7 +148,7 @@ export function installMessageHighlightPatch(
 
     let currentConfig = config;
     let disposed = false;
-    const getStyles = () => buildHighlightStyles(targets.theme, currentConfig);
+    const getStyles = () => buildHighlightStyles(getTheme(), currentConfig);
     const patches: RenderPatchHandle[] = [];
 
     try {

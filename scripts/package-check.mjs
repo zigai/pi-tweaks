@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadWorkspacePackages } from "./workspace-packages.ts";
 
@@ -76,11 +76,36 @@ try {
     );
 
     const installedModules = path.join(installRoot, "node_modules");
-
     assert.equal(
-        existsSync(path.join(installRoot, "node_modules", "@earendil-works")),
+        existsSync(path.join(installedModules, "@earendil-works")),
         false,
         "managed-install check must not install Pi host peers",
+    );
+
+    const internalsDirectory = path.join(installedModules, "@zigai", "pi-extension-internals");
+    const internalsEntry = path.join(internalsDirectory, "dist", "index.js");
+    assert.ok(existsSync(internalsEntry), "shared internals must publish JavaScript");
+    assert.ok(
+        existsSync(path.join(internalsDirectory, "dist", "index.d.ts")),
+        "shared internals must publish TypeScript declarations",
+    );
+    assert.equal(
+        existsSync(path.join(internalsDirectory, "src", "index.ts")),
+        false,
+        "shared internals must not require raw TypeScript at runtime",
+    );
+
+    execFileSync(
+        process.execPath,
+        [
+            "--input-type=module",
+            "--eval",
+            `import { installLinkedMethodPatch, registerEditorEnhancer } from "@zigai/pi-extension-internals";
+if (typeof installLinkedMethodPatch !== "function" || typeof registerEditorEnhancer !== "function") {
+    throw new Error("shared internals could not be imported natively without Pi host peers");
+}`,
+        ],
+        { cwd: installRoot, encoding: "utf8" },
     );
 
     const extensionEntries = workspaces.extensions.map(({ workspace, entry }) => {
@@ -119,14 +144,66 @@ try {
         )}\n`,
     );
 
-    const piCli = path.join(
+    const piPackageDirectory = path.join(
         packageRoot,
         "node_modules",
         "@earendil-works",
         "pi-coding-agent",
-        "dist",
-        "cli.js",
     );
+    const piCli = path.join(piPackageDirectory, "dist", "bundle", "cli.js");
+    const bundleUrl = pathToFileURL(path.join(piPackageDirectory, "dist/bundle/index.js")).href;
+    const identityProbe = path.join(projectDirectory, "pi-public-identity-probe.ts");
+
+    const publicClasses = [
+        "TreeSelectorComponent",
+        "AssistantMessageComponent",
+        "UserMessageComponent",
+        "InteractiveMode",
+        "ModelSelectorComponent",
+        "Theme",
+    ];
+    writeFileSync(
+        identityProbe,
+        `import * as pi from "@earendil-works/pi-coding-agent";
+export default async function () {
+    const host = globalThis[Symbol.for("zigai.pi-tweaks.package-check-host")];
+    const deferred = await import("@earendil-works/pi-coding-agent");
+    for (const name of ${JSON.stringify(publicClasses)}) {
+        if (pi[name] !== host[name] || deferred[name] !== host[name]) {
+            throw new Error(name + " is not the running Pi class");
+        }
+    }
+}
+`,
+    );
+
+    const loadProbe = `
+        import * as host from ${JSON.stringify(bundleUrl)};
+        globalThis[Symbol.for("zigai.pi-tweaks.package-check-host")] = host;
+        const paths = [...JSON.parse(process.argv[1]), ${JSON.stringify(identityProbe)}];
+        const result = await host.discoverAndLoadExtensions(paths, process.cwd(), process.env.PI_CODING_AGENT_DIR);
+        if (result.errors.length > 0 || result.extensions.length !== paths.length) {
+            console.error(JSON.stringify({ loaded: result.extensions.length, errors: result.errors }));
+            process.exitCode = 1;
+        }
+    `;
+
+    execFileSync(
+        process.execPath,
+        ["--input-type=module", "--eval", loadProbe, JSON.stringify(extensionEntries)],
+        {
+            cwd: projectDirectory,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                PI_CODING_AGENT: "true",
+                PI_PACKAGE_DIR: piPackageDirectory,
+                PI_CODING_AGENT_DIR: agentDirectory,
+                PI_OFFLINE: "1",
+            },
+        },
+    );
+
     const loaded = spawnSync(
         process.execPath,
         [piCli, "--mode", "rpc", "--no-session", "--session-dir", sessionDirectory],

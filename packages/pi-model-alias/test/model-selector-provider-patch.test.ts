@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 import { test } from "vitest";
 
+import { installModelSelectorProviderPatch } from "../src/model-selector-patch.ts";
 import {
-    installModelSelectorProviderPatch,
-    installProviderAliasUiPatches,
-} from "../src/model-selector-patch.ts";
-import { installScopedModelsProviderPatch } from "../src/scoped-model-selector-patch.ts";
+    installScopedModelsProviderPatch,
+    installScopedModelsProviderPatchFromPi,
+} from "../src/scoped-model-selector-patch.ts";
 
 import type { LoadedModelAliasSettings } from "../src/settings.ts";
 
@@ -97,7 +97,9 @@ test("scoped models provider patch uses the latest runtime state after reinstall
     let renderedProviders: string[] = [];
     const prototype: ScopedModelsPrototype = {
         updateList() {
-            renderedProviders = this.filteredItems.map((item) => item.model.provider);
+            renderedProviders = this.filteredItems.map(
+                (item) => item.model?.provider ?? "unavailable",
+            );
         },
         filteredItems: [],
     };
@@ -109,43 +111,153 @@ test("scoped models provider patch uses the latest runtime state after reinstall
     target.selectedIndex = 0;
     target.updateList();
     assert.deepEqual(renderedProviders, ["New Provider"]);
-    assert.equal(target.filteredItems[0]?.model.provider, "openai");
+    assert.equal(target.filteredItems[0]?.model?.provider, "openai");
 });
 
-test("provider alias UI patch waits for scoped selector patch installation", async () => {
-    const prototype: ModelSelectorPrototype = {
-        loadModelsFromSnapshot() {},
-        filterModels() {},
-        updateList() {},
-        allModels: [],
-        scopedModelItems: [],
-        activeModels: [],
-        filteredModels: [],
-        selectedIndex: 0,
-        scope: "all",
-    };
-    let finishScopedInstall: (() => void) | undefined;
-    const scopedInstallFinished = new Promise<void>((resolve) => {
-        finishScopedInstall = resolve;
-    });
-
-    const installPromise = installProviderAliasUiPatches(runtimeState("Provider"), {
-        modelSelectorPrototype: prototype,
-        async installScopedModelsProviderPatchFromPi() {
-            return scopedInstallFinished;
+test("unavailable scoped IDs retain their native identity alongside provider aliases", () => {
+    const rendered: string[][] = [];
+    const missing: ScopedModelsItem = { fullId: "missing/model", enabled: true };
+    const prototype: ScopedModelsPrototype = {
+        filteredItems: [],
+        updateList() {
+            rendered.push(this.filteredItems.map((item) => item.model?.provider ?? item.fullId));
         },
-    });
+    };
+    installScopedModelsProviderPatch(runtimeState("Alias"), prototype);
+    const instance: ScopedModelsPrototype = {
+        ...prototype,
+        filteredItems: [missing, scopedItem()],
+    };
+    instance.updateList();
+    assert.deepEqual(rendered, [["missing/model", "Alias"]]);
+    assert.equal(instance.filteredItems[0], missing);
+    assert.equal(instance.filteredItems[1]?.model?.provider, "openai");
+});
 
-    const pendingResult = await Promise.race([
-        installPromise.then(() => "resolved" as const),
-        Promise.resolve("pending" as const),
+test("live scoped selector interception refreshes before mounting and preserves model identities", () => {
+    const events: string[] = [];
+
+    class ScopedSelector {
+        filteredItems = [scopedItem()];
+        selectedIndex = 0;
+        maxVisible = 8;
+
+        listContainer = {
+            children: [
+                {
+                    text: "gpt-5 [Latest]",
+                    setText(text: string) {
+                        this.text = text;
+                    },
+                },
+            ],
+        };
+
+        constructor() {
+            this.updateList();
+        }
+
+        searchInput = { getValue: () => "" };
+        footerText = { setText(_text: string) {} };
+        onChange = (id: string) => events.push(`changed:${id}`);
+
+        buildItems() {
+            return [scopedItem()];
+        }
+
+        getFooterText() {
+            return "footer";
+        }
+
+        updateList() {
+            events.push(`render:${this.filteredItems[0]?.model?.provider}`);
+        }
+
+        refresh() {
+            this.filteredItems = this.buildItems();
+            this.updateList();
+        }
+    }
+
+    let mounted: ScopedSelector | undefined;
+    const prototype = {
+        showSelector: <Result extends object>(create: (done: () => void) => Result): Result => {
+            const result = create(() => {
+                events.push("done");
+            });
+            if ("component" in result && result.component instanceof ScopedSelector) {
+                mounted = result.component;
+                events.push(`mount:${mounted.filteredItems[0]?.fullId}`);
+                mounted.onChange(mounted.filteredItems[0]?.fullId ?? "");
+            }
+
+            return result;
+        },
+        showModelsSelector: (): void => {
+            prototype.showSelector(() => {
+                const component = new ScopedSelector();
+                return { component, focus: component };
+            });
+        },
+    };
+    const originalShowSelector = prototype.showSelector;
+    const oldHandle = installScopedModelsProviderPatchFromPi(runtimeState("First"), prototype);
+    const patchedShowSelector = prototype.showSelector;
+    const activeHandle = installScopedModelsProviderPatchFromPi(runtimeState("Latest"), prototype);
+    oldHandle?.dispose();
+    assert.equal(prototype.showSelector, patchedShowSelector);
+    assert.notEqual(prototype.showSelector, originalShowSelector);
+    const instance = prototype;
+    instance.showModelsSelector();
+    assert.ok(mounted);
+    assert.equal(mounted.filteredItems[0]?.model?.provider, "openai");
+    assert.equal(
+        Object.hasOwn(
+            ScopedSelector.prototype,
+            Symbol.for("zigai.pi-model-alias.scoped-models-provider-patched"),
+        ),
+        false,
+    );
+    assert.deepEqual(events, [
+        "render:openai",
+        "render:Latest",
+        "mount:openai/gpt-5",
+        "changed:openai/gpt-5",
     ]);
-    assert.equal(pendingResult, "pending");
-    assert.notEqual(finishScopedInstall, undefined);
-    if (finishScopedInstall === undefined) assert.fail("expected scoped install finisher");
-    finishScopedInstall();
+    events.length = 0;
+    instance.showModelsSelector();
+    assert.deepEqual(events, [
+        "render:openai",
+        "render:Latest",
+        "mount:openai/gpt-5",
+        "changed:openai/gpt-5",
+    ]);
 
-    await installPromise;
+    activeHandle?.dispose();
+    activeHandle?.dispose();
+    assert.equal(prototype.showSelector, originalShowSelector);
+    events.length = 0;
+    instance.showModelsSelector();
+    assert.deepEqual(events, ["render:openai", "mount:openai/gpt-5", "changed:openai/gpt-5"]);
+});
+
+test("unexpected scoped selector shape falls back without altering the mounted component", () => {
+    const component = { filteredItems: [scopedItem()] };
+    let mounted: typeof component | undefined;
+    const prototype = {
+        showSelector<Result extends object>(create: (done: () => void) => Result): Result {
+            const result = create(() => {});
+            if ("component" in result && result.component === component) mounted = component;
+            return result;
+        },
+        showModelsSelector(): void {
+            prototype.showSelector(() => ({ component }));
+        },
+    };
+    installScopedModelsProviderPatchFromPi(runtimeState("Alias"), prototype);
+    prototype.showModelsSelector();
+    assert.equal(mounted, component);
+    assert.equal(component.filteredItems[0]?.model?.provider, "openai");
 });
 
 test("model selector patch matches the Pi 0.80.9 runtime prototype", () => {

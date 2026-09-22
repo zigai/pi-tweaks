@@ -207,12 +207,6 @@ class FakeTerminal implements Terminal {
 
 const ESC = String.fromCharCode(0x1b);
 
-function componentModuleUrl(fileName: string): string {
-    const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-    return pathToFileURL(join(dirname(codingAgentEntry), "modes/interactive/components", fileName))
-        .href;
-}
-
 /** Verifies one component prototype exposes the render method the patches wrap. */
 function verifiedRenderPrototype<P extends { render?: unknown }>(
     prototype: P | undefined,
@@ -232,9 +226,7 @@ async function loadAssistantMessageComponent(): Promise<
 > {
     // SAFETY: Resolved from the installed Pi package at runtime; the export is verified
     // callable below before any member is read.
-    const module = (await import(
-        componentModuleUrl("assistant-message.js")
-    )) as AssistantMessageModuleView;
+    const module = (await import("@earendil-works/pi-coding-agent")) as AssistantMessageModuleView;
     const component = module.AssistantMessageComponent;
     if (component === undefined) assert.fail("missing AssistantMessageComponent");
     return component;
@@ -245,7 +237,7 @@ async function loadUserMessageComponent(): Promise<
 > {
     // SAFETY: Resolved from the installed Pi package at runtime; the export is verified
     // present below before any member is read.
-    const module = (await import(componentModuleUrl("user-message.js"))) as UserMessageModuleView;
+    const module = (await import("@earendil-works/pi-coding-agent")) as UserMessageModuleView;
     const component = module.UserMessageComponent;
     if (component === undefined) assert.fail("missing UserMessageComponent");
     return component;
@@ -268,6 +260,8 @@ function createLifecycleApi(): LifecycleApi {
 }
 
 test("message render wrappers restore cleanly across reload cycles", async () => {
+    const originalPiFlag = process.env.PI_CODING_AGENT;
+    process.env.PI_CODING_AGENT = "true";
     const restoreOriginalTheme = suspendPiTheme();
     let restoreInitializedTheme: (() => void) | undefined;
     try {
@@ -307,6 +301,10 @@ test("message render wrappers restore cleanly across reload cycles", async () =>
                 const patch = installMessageHighlightPatch(
                     targets,
                     DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG,
+                    () => ({
+                        fg: (_color, text) => `${ESC}[38;2;135;215;255m${text}${ESC}[39m`,
+                        getColorMode: () => "truecolor",
+                    }),
                 );
                 highlightsLifecycle.shutdownHandlers.push(() => patch.dispose());
                 restoreInitializedTheme ??= await initializePiTheme();
@@ -385,5 +383,7 @@ test("message render wrappers restore cleanly across reload cycles", async () =>
     } finally {
         restoreInitializedTheme?.();
         restoreOriginalTheme();
+        if (originalPiFlag === undefined) delete process.env.PI_CODING_AGENT;
+        else process.env.PI_CODING_AGENT = originalPiFlag;
     }
 });

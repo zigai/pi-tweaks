@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { HighlightTheme } from "./highlight-styles.ts";
 import {
     loadMessageHighlightsSettings,
     type LoadedMessageHighlightsConfig,
@@ -9,7 +10,7 @@ export type MessageHighlightSettingsContext = Pick<
     ExtensionContext,
     "cwd" | "hasUI" | "isProjectTrusted"
 > & {
-    readonly ui: Pick<ExtensionContext["ui"], "notify">;
+    readonly ui: Pick<ExtensionContext["ui"], "notify"> & { readonly theme?: HighlightTheme };
 };
 
 export class MessageHighlightSettingsController {

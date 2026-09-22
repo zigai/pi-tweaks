@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "vitest";
 
 import { assistantMessageRuntime } from "../src/assistant-message-runtime.ts";
@@ -26,24 +24,24 @@ const markdownTheme = {
     underline: identity,
 } satisfies MarkdownTheme;
 
-const codingAgentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-const componentUrl = pathToFileURL(
-    join(dirname(codingAgentEntry), "modes/interactive/components/assistant-message.js"),
-).href;
-
-// This test intentionally resolves Pi's private runtime module, which has no public export.
-const componentModule: unknown = await import(componentUrl);
-const componentValue = assistantMessageRuntime.parse(componentModule);
-if (componentValue === undefined) {
-    assert.fail("missing assistant message module");
-}
-
+// The public root export is the identity Pi virtualizes to its live UI bundle.
+const componentValue = assistantMessageRuntime.parse(
+    await import("@earendil-works/pi-coding-agent"),
+);
+if (componentValue === undefined) assert.fail("missing assistant message component");
 const AssistantMessageComponent = componentValue;
 const assistantMessagePrototype = componentValue.prototype;
 const originalAssistantRender = assistantMessagePrototype.render;
 const originalAssistantUpdateContent = assistantMessagePrototype.updateContent;
 
-await assistantRenderingExtension();
+const originalPiFlag = process.env.PI_CODING_AGENT;
+process.env.PI_CODING_AGENT = "true";
+try {
+    await assistantRenderingExtension();
+} finally {
+    if (originalPiFlag === undefined) delete process.env.PI_CODING_AGENT;
+    else process.env.PI_CODING_AGENT = originalPiFlag;
+}
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
@@ -251,8 +249,12 @@ test("assistant message updates render through the patch and shutdown restores i
             if (event === "session_shutdown") shutdownHandlers.push(handler);
         },
     };
+    const originalPiFlag = process.env.PI_CODING_AGENT;
+    process.env.PI_CODING_AGENT = "true";
     onTestFinished(() => {
         shutdownHandlers[0]?.();
+        if (originalPiFlag === undefined) delete process.env.PI_CODING_AGENT;
+        else process.env.PI_CODING_AGENT = originalPiFlag;
     });
 
     await assistantRenderingExtension(api);

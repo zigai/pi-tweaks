@@ -1,6 +1,6 @@
 import {
     installLinkedRenderPatch,
-    loadPiInternalModule,
+    warnPiInternalPatchUnavailable,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
 
@@ -39,12 +39,12 @@ async function patchUserMessageRendering(): Promise<void> {
     const state: PatchState = globalThis;
     if (state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] !== undefined) return;
 
-    const component = await loadPiInternalModule("modes/interactive/components/user-message.js", {
-        scope: SCOPE,
-        feature: "user message patch",
-        parse: userMessageRuntime.parse,
-    });
-    if (component === undefined) return;
+    // The public export resolves to Pi's active bundle in a running TUI.
+    const component = userMessageRuntime.parse(await import("@earendil-works/pi-coding-agent"));
+    if (component === undefined) {
+        warnPiInternalPatchUnavailable(SCOPE, "user message patch");
+        return;
+    }
 
     state[USER_MESSAGE_PLAINTEXT_PATCH_KEY] = installLinkedRenderPatch(
         component.prototype,

@@ -46,7 +46,15 @@ export function registerMessageHighlights(
             const targets = await loadTargets();
             if (activeGeneration !== generation || targets === undefined) return;
 
-            patch = installMessageHighlightPatch(targets, config);
+            patch = installMessageHighlightPatch(targets, config, () => {
+                if (!ctx.hasUI) return undefined;
+                try {
+                    return ctx.ui.theme;
+                } catch {
+                    // Early renders can precede theme initialization. Retry on the next render.
+                    return undefined;
+                }
+            });
         })();
 
         return activation;

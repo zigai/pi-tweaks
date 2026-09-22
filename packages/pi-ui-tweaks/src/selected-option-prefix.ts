@@ -1,7 +1,7 @@
+import { Theme } from "@earendil-works/pi-coding-agent";
 import { SelectList, truncateToWidth, visibleWidth, type SelectItem } from "@earendil-works/pi-tui";
 import {
     installLinkedMethodPatch,
-    loadPiInternalModule,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
 
@@ -55,10 +55,6 @@ type ThemeFgView = {
     readonly fg?: unknown;
 };
 
-type ThemePrototypeView = {
-    readonly prototype?: unknown;
-};
-
 function normalizeSelectedOptionPrefix(prefix: string): string {
     if (prefix.length === 0) {
         return DEFAULT_SELECTED_OPTION_PREFIX;
@@ -95,14 +91,6 @@ function isThemePrototype(value: unknown): value is ThemePrototype {
     // SAFETY: ThemeFgView exposes only the fg method validated below.
     const view = value as ThemeFgView;
     return typeof view.fg === "function";
-}
-
-function isThemeConstructor(value: unknown): value is ThemePrototypeView {
-    if ((typeof value !== "object" && typeof value !== "function") || value === null) {
-        return false;
-    }
-
-    return "prototype" in value;
 }
 
 export type SelectedOptionPrefixConfig = { readonly selectedOptionPrefix: string };
@@ -253,34 +241,15 @@ export function installSelectedOptionPrefixSelectListPatch(
     return handle;
 }
 
-function isObjectIdentity(value: unknown): value is object {
-    return (typeof value === "object" && value !== null) || typeof value === "function";
-}
-
-/** Decode the selected-option theme patch's private Pi module surface. */
-export const selectedOptionThemeRuntime = {
-    parse: (module: unknown): ThemePrototype | undefined => {
-        if (!isObjectIdentity(module) || !("Theme" in module)) return undefined;
-
-        const theme = module.Theme;
-        if (!isThemeConstructor(theme)) return undefined;
-
-        const candidate = theme.prototype;
-        if (isThemePrototype(candidate)) return candidate;
-        return undefined;
-    },
-};
-
 /** Installs or updates the Theme.fg selected-arrow patch. */
 export async function installSelectedOptionPrefixThemePatch(
     config: SelectedOptionPrefixConfig,
 ): Promise<SelectedOptionPrefixHandle> {
-    const prototype = await loadPiInternalModule("modes/interactive/theme/theme.js", {
-        scope: "pi-ui-tweaks",
-        feature: "selected option prefix patch",
-        parse: selectedOptionThemeRuntime.parse,
-    });
-    if (prototype === undefined) return { update(): void {}, dispose(): void {} };
+    const prototype: unknown = Theme.prototype;
+    if (!isThemePrototype(prototype)) {
+        warnSelectedOptionPrefixPatchUnavailable();
+        return { update(): void {}, dispose(): void {} };
+    }
 
     const installed = prototype[THEME_FG_PATCH_KEY];
     if (installed !== undefined) {

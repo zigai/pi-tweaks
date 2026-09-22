@@ -52,6 +52,44 @@ test("explicit null does not patch Pi's default model selector", async () => {
     handle.dispose();
 });
 
+test("selected model provider badge defers active theme access until rendering", async () => {
+    const target = selector();
+    const original = target.updateList;
+    const handle = await installModelSelectorProviderBadgePatch(
+        { highlightSelectedModelProvider: true },
+        target,
+        () => {
+            throw new Error("theme not ready");
+        },
+    );
+    assert.notEqual(target.updateList, original);
+    handle.dispose();
+    assert.equal(target.updateList, original);
+});
+
+test("selected model provider badge uses the active theme after a theme change", async () => {
+    const target = selector();
+    let activeTheme = theme;
+    const handle = await installModelSelectorProviderBadgePatch(
+        { highlightSelectedModelProvider: true },
+        target,
+        () => activeTheme,
+    );
+    target.updateList();
+    assert.equal(
+        target.listContainer.children[1]?.text.includes("<accent>[anthropic]</accent>"),
+        true,
+    );
+
+    activeTheme = { fg: (_color, text) => text };
+    target.updateList();
+    assert.equal(
+        target.listContainer.children[1]?.text.includes("<muted>[anthropic]</muted>"),
+        true,
+    );
+    handle.dispose();
+});
+
 test("selected model provider badge follows live configuration", async () => {
     const target = selector();
     const handle = await installModelSelectorProviderBadgePatch(

@@ -546,7 +546,7 @@ test("scoped models patch aliases rendered and searched models without changing 
                 }
 
                 return textComponent(
-                    `${prefix}${item.model.id} [${item.model.provider}]${successCheckmark}`,
+                    `${prefix}${item.model?.id ?? item.fullId} [${item.model?.provider ?? "unavailable"}]${successCheckmark}`,
                 );
             });
             container.children.push(

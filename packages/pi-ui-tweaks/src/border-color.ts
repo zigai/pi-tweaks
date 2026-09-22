@@ -1,6 +1,6 @@
+import { Theme } from "@earendil-works/pi-coding-agent";
 import {
     installLinkedMethodPatch,
-    loadPiInternalModule,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
 
@@ -26,14 +26,6 @@ type NeutralBorderPatchRecord = {
     readonly handle: NeutralBorderColorHandle;
 };
 
-type ThemeModuleView = {
-    readonly Theme?: unknown;
-};
-
-type ThemePrototypeView = {
-    readonly prototype?: unknown;
-};
-
 function isThemePrototype(value: unknown): value is ThemePrototype {
     return (
         typeof value === "object" &&
@@ -43,33 +35,17 @@ function isThemePrototype(value: unknown): value is ThemePrototype {
     );
 }
 
-function isThemeModule(value: unknown): value is ThemeModuleView {
-    return (typeof value === "object" || typeof value === "function") && value !== null;
-}
-
-function isThemeConstructor(value: unknown): value is ThemePrototypeView {
-    return (typeof value === "object" || typeof value === "function") && value !== null;
-}
-
 /** Installs or updates the neutral border-color patch. */
 export async function installNeutralBorderColorPatch(
     config: NeutralBorderColorConfig,
 ): Promise<NeutralBorderColorHandle> {
-    const prototype = await loadPiInternalModule("modes/interactive/theme/theme.js", {
-        scope: "pi-ui-tweaks",
-        feature: "neutral border color patch",
-        parse(module: unknown): ThemePrototype | undefined {
-            if (!isThemeModule(module)) return undefined;
-
-            const theme = module.Theme;
-            if (!isThemeConstructor(theme)) return undefined;
-
-            const candidate = theme.prototype;
-            if (isThemePrototype(candidate)) return candidate;
-            return undefined;
-        },
-    });
-    if (prototype === undefined) return { update(): void {}, dispose(): void {} };
+    const prototype: unknown = Theme.prototype;
+    if (!isThemePrototype(prototype)) {
+        console.warn(
+            "[pi-ui-tweaks] neutral border color patch unavailable; Pi internals may have changed",
+        );
+        return { update(): void {}, dispose(): void {} };
+    }
 
     const installed = prototype[THEME_FG_PATCH];
     if (installed !== undefined) {

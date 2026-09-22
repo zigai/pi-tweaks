@@ -31,15 +31,6 @@ export const SettingsObjectSchema = Type.Object(
 
 export type SettingsObject = Static<typeof SettingsObjectSchema>;
 
-export const PiThemeSettingsSchema = Type.Object(
-    {
-        theme: Type.Optional(Type.String()),
-    },
-    { additionalProperties: true },
-);
-
-export type PiThemeSettings = Static<typeof PiThemeSettingsSchema>;
-
 export const extensionSettingsInput = {
     id: "pi-tree",
     title: "Pi Tree",

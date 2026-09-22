@@ -4,11 +4,7 @@ import {
     type LoadedPiExtensionSettings,
 } from "@zigai/pi-extension-settings/pi";
 
-import {
-    SettingsManager,
-    getAgentDir,
-    type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { Value } from "typebox/value";
 
@@ -18,8 +14,6 @@ import {
     MIN_VISIBLE_LINES,
     PREVIEW_FULL_HEIGHT_SETTINGS_KEY,
     PREVIEW_SETTINGS_KEY,
-    PiThemeSettings,
-    PiThemeSettingsSchema,
     SETTINGS_KEY,
     SettingsObject,
     TreeTimestampModeSchema,
@@ -48,8 +42,6 @@ let cachedMode: TreeTimestampMode | null = null;
 let cachedPreviewEnabled: boolean | null = null;
 let cachedMaxVisibleLines: number | null | undefined;
 let cachedPreviewFullHeight: boolean | undefined;
-let cachedThemeName: string | undefined;
-let cachedThemeNameLoaded = false;
 
 export type TreeSettingsContext = Pick<ExtensionContext, "cwd" | "isProjectTrusted">;
 
@@ -63,8 +55,6 @@ function clearReadCaches(): void {
     cachedPreviewEnabled = null;
     cachedMaxVisibleLines = undefined;
     cachedPreviewFullHeight = undefined;
-    cachedThemeName = undefined;
-    cachedThemeNameLoaded = false;
 }
 
 export function setSettingsContext(ctx: TreeSettingsContext): void {
@@ -108,17 +98,6 @@ function readMergedSettingsObject(): SettingsObject {
         [MAX_VISIBLE_LINES_SETTINGS_KEY]: settings[MAX_VISIBLE_LINES_SETTINGS_KEY],
         [PREVIEW_FULL_HEIGHT_SETTINGS_KEY]: settings[PREVIEW_FULL_HEIGHT_SETTINGS_KEY],
     };
-}
-
-function readMergedPiSettingsObject(): PiThemeSettings {
-    const context = settingsReadContext ?? { cwd: process.cwd(), projectTrusted: false };
-    const manager = SettingsManager.create(context.cwd, getAgentDir(), {
-        projectTrusted: context.projectTrusted,
-    });
-    return Value.Parse(PiThemeSettingsSchema, {
-        ...manager.getGlobalSettings(),
-        ...manager.getProjectSettings(),
-    });
 }
 
 async function updateSettingsObject(update: (settings: SettingsObject) => void): Promise<void> {
@@ -184,15 +163,6 @@ export function getPersistedPreviewFullHeight(): boolean {
     const settings = readMergedSettingsObject();
     cachedPreviewFullHeight = settings[PREVIEW_FULL_HEIGHT_SETTINGS_KEY] ?? true;
     return cachedPreviewFullHeight;
-}
-
-export function getConfiguredThemeName(): string | undefined {
-    if (cachedThemeNameLoaded) return cachedThemeName;
-
-    const settings = readMergedPiSettingsObject();
-    cachedThemeName = settings.theme;
-    cachedThemeNameLoaded = true;
-    return cachedThemeName;
 }
 
 const pendingSettingsWrites = new Set<Promise<void>>();

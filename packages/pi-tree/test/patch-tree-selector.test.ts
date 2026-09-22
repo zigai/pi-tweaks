@@ -4,17 +4,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import type { ExtensionAPI, SessionTreeNode } from "@earendil-works/pi-coding-agent";
+import {
+    TreeSelectorComponent,
+    type ExtensionAPI,
+    type SessionTreeNode,
+} from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, setKeybindings } from "@earendil-works/pi-tui";
 import { test } from "vitest";
 
 import treeTimestampsExtension from "../src/index.ts";
 import { PATCH_KEY, patchTreeSelector } from "../src/patch-tree-selector.ts";
-import {
-    loadTreeInternals,
-    type ThemeModule,
-    type TreeSelectorModule,
-} from "../src/internal-imports.ts";
 import type { FlatTreeNode, TreeNode } from "../src/tree-node.ts";
 import type { TreeListInstance } from "../src/tree-state.ts";
 
@@ -24,7 +23,8 @@ type ThemeSnapshot = {
     readonly key: symbol;
     readonly descriptor: PropertyDescriptor | undefined;
 };
-type RuntimeThemeModule = Pick<ThemeModule, "initTheme"> & {
+type RuntimeThemeModule = {
+    initTheme(name: string | undefined, enableWatcher: boolean): void;
     stopThemeWatcher?: () => void;
 };
 
@@ -90,7 +90,7 @@ async function initializePiTheme(): Promise<() => void> {
         descriptor: Object.getOwnPropertyDescriptor(globalThis, key),
     }));
     try {
-        themeModule.initTheme(undefined, false);
+        themeModule.initTheme("light", false);
     } catch (cause) {
         restoreThemeSnapshot(themeModule, snapshots);
         throw cause;
@@ -147,30 +147,18 @@ class NullTreeSelectorComponent {
     }
 }
 
-function fakeTreeInternals(
-    themeNames: Array<string | undefined>,
-): [TreeSelectorModule, ThemeModule] {
-    return [
-        {
-            TreeSelectorComponent: FakeTreeSelectorComponent,
+function fakeTheme() {
+    return {
+        fg(_role: string, text: string): string {
+            return text;
         },
-        {
-            initTheme(name: string | undefined): void {
-                themeNames.push(name);
-            },
-            theme: {
-                fg(_role: string, text: string): string {
-                    return text;
-                },
-                bg(_role: string, text: string): string {
-                    return text;
-                },
-                bold(text: string): string {
-                    return text;
-                },
-            },
+        bg(_role: string, text: string): string {
+            return text;
         },
-    ];
+        bold(text: string): string {
+            return text;
+        },
+    };
 }
 
 type RuntimeTreeList = {
@@ -181,7 +169,7 @@ type RuntimeTreeList = {
     render(width: number): string[];
 };
 
-type RuntimeTreeSelectorInstance = InstanceType<TreeSelectorModule["TreeSelectorComponent"]>;
+type RuntimeTreeSelectorInstance = InstanceType<typeof TreeSelectorComponent>;
 
 type RuntimeGetTreeList = (this: RuntimeTreeSelectorInstance) => object;
 
@@ -319,10 +307,8 @@ test("tree selector patch leaves the original selector method intact when the tr
 
     try {
         await patchTreeSelector({
-            async loadTreeInternals() {
-                const [, themeModule] = fakeTreeInternals([]);
-                return [{ TreeSelectorComponent: InvalidTreeSelectorComponent }, themeModule];
-            },
+            treeSelectorComponent: InvalidTreeSelectorComponent,
+            theme: fakeTheme,
             patchTreeHeaderText() {
                 headerPatchCount += 1;
             },
@@ -349,10 +335,8 @@ test("tree selector patch degrades safely when getTreeList returns null", async 
 
     try {
         await patchTreeSelector({
-            async loadTreeInternals() {
-                const [, themeModule] = fakeTreeInternals([]);
-                return [{ TreeSelectorComponent: NullTreeSelectorComponent }, themeModule];
-            },
+            treeSelectorComponent: NullTreeSelectorComponent,
+            theme: fakeTheme,
             patchTreeHeaderText() {
                 assert.fail("header must not be patched without a valid tree list");
             },
@@ -370,18 +354,12 @@ test("tree selector patch degrades safely when getTreeList returns null", async 
 
 test("tree selector patch updates shared settings state after reinstall", async () => {
     clearPatchState();
-    const themeNames: Array<string | undefined> = [];
-
     try {
         await patchTreeSelector({
-            async loadTreeInternals() {
-                return fakeTreeInternals(themeNames);
-            },
+            treeSelectorComponent: FakeTreeSelectorComponent,
+            theme: fakeTheme,
             patchTreeHeaderText() {},
             settings: {
-                getConfiguredThemeName() {
-                    return "old-theme";
-                },
                 getPersistedMode() {
                     return "off";
                 },
@@ -403,14 +381,10 @@ test("tree selector patch updates shared settings state after reinstall", async 
         assert.equal(firstSelector.getTreeList().maxVisibleLines, 7);
 
         await patchTreeSelector({
-            async loadTreeInternals() {
-                return fakeTreeInternals(themeNames);
-            },
+            treeSelectorComponent: FakeTreeSelectorComponent,
+            theme: fakeTheme,
             patchTreeHeaderText() {},
             settings: {
-                getConfiguredThemeName() {
-                    return "new-theme";
-                },
                 getPersistedMode() {
                     return "absolute";
                 },
@@ -430,7 +404,6 @@ test("tree selector patch updates shared settings state after reinstall", async 
 
         const secondSelector = new FakeTreeSelectorComponent();
         assert.equal(secondSelector.getTreeList().maxVisibleLines, 11);
-        assert.deepEqual(themeNames, ["old-theme", "new-theme"]);
     } finally {
         clearPatchState();
     }
@@ -440,6 +413,7 @@ test("tree selector patch composes input, status, timestamps, preview, and narro
     clearPatchState();
     const persistedModes: string[] = [];
     const persistedPreviewValues: boolean[] = [];
+    let activeTheme = fakeTheme();
     const node: TreeNode = {
         entry: {
             id: "assistant-entry",
@@ -454,14 +428,10 @@ test("tree selector patch composes input, status, timestamps, preview, and narro
 
     try {
         await patchTreeSelector({
-            async loadTreeInternals() {
-                return fakeTreeInternals([]);
-            },
+            treeSelectorComponent: FakeTreeSelectorComponent,
+            theme: () => activeTheme,
             patchTreeHeaderText() {},
             settings: {
-                getConfiguredThemeName() {
-                    return undefined;
-                },
                 getPersistedMode() {
                     return "relative";
                 },
@@ -502,6 +472,14 @@ test("tree selector patch composes input, status, timestamps, preview, and narro
         assert.deepEqual(tree.handledInputs, [FILTER_ALL_KEY]);
         assert.equal(tree.getStatusLabels(), "  Filter: Default | Time: Relative | Preview: On");
         assert.match(tree.render(100).join("\n"), /entry.* │ Selected response preview/);
+        activeTheme = {
+            ...fakeTheme(),
+            fg(_role: string, text: string): string {
+                return `new:${text}`;
+            },
+        };
+        assert.match(tree.render(100).join("\n"), /new:Selected response preview/);
+        assert.match(tree.getEntryDisplayText(node, false), /new:.* ago entry$/);
         assert.deepEqual(tree.render(40), ["native:40"]);
 
         setKeybindings(
@@ -531,6 +509,12 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
     onTestFinished,
 }) => {
     const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const originalPiFlag = process.env.PI_CODING_AGENT;
+    process.env.PI_CODING_AGENT = "true";
+    onTestFinished(() => {
+        if (originalPiFlag === undefined) delete process.env.PI_CODING_AGENT;
+        else process.env.PI_CODING_AGENT = originalPiFlag;
+    });
     const agentDir = await mkdtemp(path.join(tmpdir(), "pi-tree-runtime-"));
     const configPath = path.join(agentDir, "extension-settings", "pi-tree.json");
     const node: SessionTreeNode = {
@@ -559,14 +543,11 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
         },
         children: [],
     };
+
+    // Simulate Pi's normal theme setup so its own selector constructor can render.
     const restoreTheme = await initializePiTheme();
     onTestFinished(restoreTheme);
-    const internals = await loadTreeInternals();
-    if (internals === undefined) {
-        assert.fail("installed Pi tree internals must be loadable");
-    }
-
-    const [{ TreeSelectorComponent }] = internals;
+    const activeTheme = fakeTheme();
     const selectorBeforePatch = new TreeSelectorComponent(
         [node],
         node.entry.id,
@@ -656,6 +637,13 @@ test("registered session lifecycle patches and exercises the installed Pi tree s
             { reason: "startup" },
             {
                 cwd: agentDir,
+                hasUI: true,
+                ui: {
+                    get theme() {
+                        return activeTheme;
+                    },
+                    notify() {},
+                },
                 isProjectTrusted() {
                     return false;
                 },

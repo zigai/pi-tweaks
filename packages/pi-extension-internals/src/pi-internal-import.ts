@@ -1,4 +1,3 @@
-import { getPackageDir } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,15 +8,14 @@ export type PiInternalModuleLoadOptions<T> = {
     readonly parse: (module: unknown) => T | undefined;
 };
 
-function isCodingAgentPackageDirectory(directory: string): boolean {
-    const dependencyDirectory = getPackageDir();
+function isCodingAgentPackageDirectory(directory: string, dependencyDirectory: string): boolean {
     return (
         basename(directory) === basename(dependencyDirectory) &&
         basename(dirname(directory)) === basename(dirname(dependencyDirectory))
     );
 }
 
-function findEntrypointPackageDirectory(): string | undefined {
+function findEntrypointPackageDirectory(dependencyDirectory: string): string | undefined {
     if (process.env.PI_CODING_AGENT !== "true") return undefined;
 
     const entrypoint = process.argv.at(1);
@@ -26,7 +24,7 @@ function findEntrypointPackageDirectory(): string | undefined {
     let directory = dirname(realpathSync(entrypoint));
     for (;;) {
         if (
-            isCodingAgentPackageDirectory(directory) &&
+            isCodingAgentPackageDirectory(directory, dependencyDirectory) &&
             existsSync(join(directory, "package.json"))
         ) {
             return directory;
@@ -39,22 +37,25 @@ function findEntrypointPackageDirectory(): string | undefined {
     }
 }
 
-function resolveRunningPiPackageDirectory(): string {
-    // PI_PACKAGE_DIR is Pi's explicit package-root override and must win over
-    // entrypoint inference. getPackageDir() already validates and normalizes it.
-    if (process.env.PI_PACKAGE_DIR !== undefined) return getPackageDir();
-    return findEntrypointPackageDirectory() ?? getPackageDir();
+async function resolveRunningPiPackageDirectory(): Promise<string> {
+    // Shared protocols must load without a Pi peer in their own node_modules.
+    // Resolve Pi only when an internal loader is actually used.
+    const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+    const packageDirectory = getPackageDir();
+    if (process.env.PI_PACKAGE_DIR !== undefined) return packageDirectory;
+
+    return findEntrypointPackageDirectory(packageDirectory) ?? packageDirectory;
 }
 
 const ENTRYPOINT_IMPORT_PATTERN = /(?:\bfrom\s*|(?:^|;)\s*import\s*)["'](\.\/[^"']+\.js)["']/g;
 
-function resolvePiEntrypointModuleUrls(): string[] {
+async function resolvePiEntrypointModuleUrls(): Promise<string[]> {
     if (process.env.PI_CODING_AGENT !== "true") return [];
 
     const entrypoint = process.argv.at(1);
     if (entrypoint === undefined || entrypoint.length === 0 || !existsSync(entrypoint)) return [];
 
-    const packageDirectory = resolve(resolveRunningPiPackageDirectory());
+    const packageDirectory = resolve(await resolveRunningPiPackageDirectory());
     const entrypointPath = realpathSync(entrypoint);
     const entrypointWithinPackage = relative(packageDirectory, entrypointPath);
     if (
@@ -88,8 +89,8 @@ function resolvePiEntrypointModuleUrls(): string[] {
 }
 
 /** Resolves a path relative to the running Pi coding-agent distribution. */
-function resolvePiInternalModuleUrl(relativePath: string): string {
-    const codingAgentDirectory = resolve(resolveRunningPiPackageDirectory(), "dist");
+async function resolvePiInternalModuleUrl(relativePath: string): Promise<string> {
+    const codingAgentDirectory = resolve(await resolveRunningPiPackageDirectory(), "dist");
 
     if (relativePath.length === 0 || isAbsolute(relativePath)) {
         throw new TypeError("Pi internal module path must be relative to the coding-agent package");
@@ -137,7 +138,10 @@ export async function loadPiInternalModule<T>(
     options: PiInternalModuleLoadOptions<T>,
 ): Promise<T | undefined> {
     try {
-        const parsed = await parseImportedModule(resolvePiInternalModuleUrl(relativePath), options);
+        const parsed = await parseImportedModule(
+            await resolvePiInternalModuleUrl(relativePath),
+            options,
+        );
         if (parsed !== undefined) return parsed;
 
         warnPiInternalPatchUnavailable(options.scope, options.feature);
@@ -155,13 +159,13 @@ export async function loadPiRuntimeModule<T>(
     options: PiInternalModuleLoadOptions<T>,
 ): Promise<T | undefined> {
     try {
-        for (const moduleUrl of resolvePiEntrypointModuleUrls()) {
+        for (const moduleUrl of await resolvePiEntrypointModuleUrls()) {
             const parsed = await parseImportedModule(moduleUrl, options);
             if (parsed !== undefined) return parsed;
         }
 
         const fallback = await parseImportedModule(
-            resolvePiInternalModuleUrl(fallbackRelativePath),
+            await resolvePiInternalModuleUrl(fallbackRelativePath),
             options,
         );
         if (fallback !== undefined) return fallback;

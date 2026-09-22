@@ -1,14 +1,9 @@
+import { TreeSelectorComponent, type SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import { getKeybindings, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
-import {
-    loadTreeInternals,
-    type ThemeModule,
-    type TreeSelectorModule,
-} from "./internal-imports.ts";
 import { patchTreeHeaderText, type TreeHeaderPatchTarget } from "./patch-tree-header.ts";
 import { calculatePreviewLayout, getPreviewText, padToWidth } from "./preview.ts";
 import {
-    getConfiguredThemeName,
     getPersistedMaxVisibleLines,
     getPersistedMode,
     getPersistedPreviewEnabled,
@@ -32,7 +27,7 @@ const PREVIEW_TOGGLE_KEY = "P";
 const TREE_PATCH_STATE = Symbol.for("zigai.pi-tree.patch-state");
 
 type TreePatchState = {
-    getConfiguredThemeName: () => string | undefined;
+    getTheme: () => TreeTheme | undefined;
     getPersistedMode: () => TreeTimestampMode;
     getPersistedPreviewEnabled: () => boolean;
     getPersistedMaxVisibleLines: () => number | null;
@@ -41,7 +36,7 @@ type TreePatchState = {
     persistPreviewEnabled: (enabled: boolean) => void;
 };
 
-type TreePatchSettings = TreePatchState;
+type TreePatchSettings = Omit<TreePatchState, "getTheme">;
 
 type TreeTheme = {
     fg(role: string, text: string): string;
@@ -62,7 +57,18 @@ type TreeListPrototype = {
     render?: (width: number) => string[];
 };
 
-type TreeSelectorInstance = InstanceType<TreeSelectorModule["TreeSelectorComponent"]>;
+type TreeSelectorConstructor = new (
+    entries: SessionTreeNode[],
+    selectedId: string | null,
+    height: number,
+    onSelect: () => undefined,
+    onCancel: () => undefined,
+    onLabel: () => undefined,
+    initialSelectedId: undefined,
+    initialFilterMode: undefined,
+) => object;
+
+type TreeSelectorInstance = InstanceType<TreeSelectorConstructor>;
 
 // oxlint-disable-next-line antislop/no-unknown-returns -- Pi's private method is untyped; every returned value is validated before use.
 type UntrustedGetTreeList = (this: TreeSelectorInstance) => unknown;
@@ -73,14 +79,14 @@ type TreeSelectorPrototype = {
 };
 
 type PatchTreeSelectorOptions = {
-    readonly loadTreeInternals?: () => Promise<[TreeSelectorModule, ThemeModule] | undefined>;
+    readonly treeSelectorComponent?: TreeSelectorConstructor;
+    readonly theme: () => TreeTheme | undefined;
     readonly patchTreeHeaderText?: (prototype: TreeHeaderPatchTarget) => void;
     readonly settings?: TreePatchSettings;
 };
 
 function defaultTreePatchSettings(): TreePatchSettings {
     return {
-        getConfiguredThemeName,
         getPersistedMode,
         getPersistedPreviewEnabled,
         getPersistedMaxVisibleLines,
@@ -131,11 +137,16 @@ function isTreeTheme(value: unknown): value is TreeTheme {
     // SAFETY: Pi's theme is a Proxy whose methods are intentionally absent from `in` and
     // own-property checks. Reading only these three unknown properties is the observable seam.
     const theme = value as TreeThemeProbe;
-    return (
-        typeof theme.fg === "function" &&
-        typeof theme.bg === "function" &&
-        typeof theme.bold === "function"
-    );
+    try {
+        return (
+            typeof theme.fg === "function" &&
+            typeof theme.bg === "function" &&
+            typeof theme.bold === "function"
+        );
+    } catch {
+        // Pi's lazy proxy throws before its theme controller initializes it.
+        return false;
+    }
 }
 
 function isTreeSelectorPrototype(value: unknown): value is TreeSelectorPrototype {
@@ -162,7 +173,7 @@ function isTreeListPrototype(value: unknown): value is TreeListPrototype {
 function isTreePatchState(value: unknown): value is TreePatchState {
     if (!isObjectIdentity(value)) return false;
     return (
-        isCallableProperty(value, "getConfiguredThemeName") &&
+        isCallableProperty(value, "getTheme") &&
         isCallableProperty(value, "getPersistedMode") &&
         isCallableProperty(value, "getPersistedPreviewEnabled") &&
         isCallableProperty(value, "getPersistedMaxVisibleLines") &&
@@ -172,7 +183,7 @@ function isTreePatchState(value: unknown): value is TreePatchState {
     );
 }
 
-function setTreePatchState(settings: TreePatchSettings): TreePatchState {
+function setTreePatchState(settings: TreePatchState): TreePatchState {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, TREE_PATCH_STATE);
     if (descriptor !== undefined && isTreePatchState(descriptor.value)) {
         const existing = descriptor.value;
@@ -233,21 +244,19 @@ function getTreePreviewEnabledFromState(
     return initialEnabled;
 }
 
-export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}): Promise<void> {
-    const patchState = setTreePatchState(options.settings ?? defaultTreePatchSettings());
+export async function patchTreeSelector(options: PatchTreeSelectorOptions): Promise<void> {
+    const patchState = setTreePatchState({
+        ...(options.settings ?? defaultTreePatchSettings()),
+        getTheme: options.theme,
+    });
     const patchHeaderText = options.patchTreeHeaderText ?? patchTreeHeaderText;
-    const loadInternals = options.loadTreeInternals ?? loadTreeInternals;
-    const internals = await loadInternals();
-    if (internals === undefined) return;
+    const SelectorComponent = options.treeSelectorComponent ?? TreeSelectorComponent;
 
-    const [{ TreeSelectorComponent }, { initTheme, theme }] = internals;
-    initTheme(patchState.getConfiguredThemeName(), false);
-
-    if (!isTreeTheme(theme)) return;
+    if (!isTreeTheme(patchState.getTheme())) return;
 
     if (Object.getOwnPropertyDescriptor(globalThis, PATCH_KEY)?.value === true) return;
 
-    const selector = new TreeSelectorComponent(
+    const selector = new SelectorComponent(
         [],
         null,
         24,
@@ -369,6 +378,10 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
                 return originalRender.call(this, width);
             }
 
+            const candidateTheme = patchState.getTheme();
+            if (!isTreeTheme(candidateTheme)) return originalRender.call(this, width);
+
+            const theme = candidateTheme;
             const selectedIndex = this.selectedIndex ?? 0;
             const maxVisibleLines = this.maxVisibleLines ?? filteredNodes.length;
             const startIndex = Math.max(
@@ -543,6 +556,10 @@ export async function patchTreeSelector(options: PatchTreeSelectorOptions = {}):
             const formatted = formatEntryTimestamp(node.entry.timestamp, currentMode);
             if (formatted.length === 0) return content;
 
+            const candidateTheme = patchState.getTheme();
+            if (!isTreeTheme(candidateTheme)) return content;
+
+            const theme = candidateTheme;
             const prefix = theme.fg("muted", `${formatted} `);
             let renderedPrefix = prefix;
             if (isSelected) {

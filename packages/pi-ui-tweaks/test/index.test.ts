@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
-import {
-    initTheme,
-    type SessionShutdownEvent,
-    type SessionStartEvent,
-} from "@earendil-works/pi-coding-agent";
+import { type SessionShutdownEvent, type SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { SelectList } from "@earendil-works/pi-tui";
 import { test } from "vitest";
 
@@ -66,7 +62,6 @@ test("composition root registers session lifecycle handlers", () => {
 });
 
 test("session shutdown disposes installed patches and a later start installs once again", async () => {
-    initTheme("dark");
     const warnings = await captureConsoleWarnings(async () => {
         const handlers = registerLifecycleHandlers();
         const start = handlers.get("session_start");

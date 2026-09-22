@@ -4,7 +4,11 @@ import {
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-import { installProviderAliasUiPatches } from "./model-selector-patch.ts";
+import { installModelSelectorProviderPatch } from "./model-selector-patch.ts";
+import {
+    installScopedModelsProviderPatchFromPi,
+    type ScopedSelectorInterception,
+} from "./scoped-model-selector-patch.ts";
 import {
     aliasForProviderRequest,
     isProviderPayloadObject,
@@ -46,13 +50,18 @@ function setConfigContext(state: ModelAliasExtensionState, ctx: ExtensionContext
     state.projectTrusted = projectTrusted;
 }
 
-export default async function modelAliasExtension(pi: ExtensionAPI): Promise<void> {
+export default function modelAliasExtension(pi: ExtensionAPI): void {
     const state: ModelAliasExtensionState = {};
     const policy = new AliasPolicy({ loadSettings: () => loadModelAliasSettings(state) });
     installRegistryPatch(ModelRegistry.prototype, policy);
-    await installProviderAliasUiPatches(policy);
 
-    pi.on("session_start", async (_event, ctx) => {
+    let scopedInterception: ScopedSelectorInterception | undefined;
+
+    pi.on("session_start", (_event, ctx) => {
+        scopedInterception?.dispose();
+        scopedInterception = undefined;
+        installModelSelectorProviderPatch(policy);
+        scopedInterception = installScopedModelsProviderPatchFromPi(policy);
         setConfigContext(state, ctx);
 
         const registry = ctx.modelRegistry;
@@ -62,6 +71,11 @@ export default async function modelAliasExtension(pi: ExtensionAPI): Promise<voi
             ctx,
             policy.load(() => getNativeModels(registry), true),
         );
+    });
+
+    pi.on("session_shutdown", () => {
+        scopedInterception?.dispose();
+        scopedInterception = undefined;
     });
 
     pi.on("turn_start", (_event, ctx) => {

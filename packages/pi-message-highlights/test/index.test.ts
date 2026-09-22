@@ -18,7 +18,6 @@ function deferredTargets() {
 
 function targets(): MessageHighlightTargets {
     return {
-        theme: undefined,
         assistantPrototype: { render: () => ["https://example.com"] },
         userPrototype: { render: () => ["https://example.com"] },
         editorPrototype: { render: () => [] },

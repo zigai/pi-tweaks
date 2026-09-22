@@ -1,6 +1,6 @@
+import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 import {
     installLinkedMethodPatch,
-    loadPiInternalModule,
     warnPiInternalPatchUnavailable,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
@@ -87,17 +87,6 @@ function isInteractiveModeModule(value: unknown): value is InteractiveModeModule
     );
 }
 
-async function loadInteractiveModePrototype(): Promise<InteractiveModePrototype | undefined> {
-    return loadPiInternalModule("modes/interactive/interactive-mode.js", {
-        scope: PATCH_SCOPE,
-        feature: PATCH_FEATURE,
-        parse(module) {
-            if (!isInteractiveModeModule(module)) return undefined;
-            return module.InteractiveMode.prototype;
-        },
-    });
-}
-
 export function restoreThinkingLevelStatusPatch(prototype?: InteractiveModePrototype): void {
     if (prototype === undefined) return;
 
@@ -116,7 +105,12 @@ export async function applyThinkingLevelStatusPatch(
 ): Promise<() => void> {
     let prototype: InteractiveModePrototype | undefined;
     if (options.loadInteractiveModeModule === undefined) {
-        prototype = await loadInteractiveModePrototype();
+        const module = { InteractiveMode };
+        if (isInteractiveModeModule(module)) {
+            prototype = module.InteractiveMode.prototype;
+        } else {
+            warnPiInternalPatchUnavailable(PATCH_SCOPE, PATCH_FEATURE);
+        }
     } else {
         const loadedModule = await options.loadInteractiveModeModule();
         if (isInteractiveModeModule(loadedModule)) {

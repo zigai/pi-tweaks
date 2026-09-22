@@ -1,7 +1,6 @@
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 import {
     installLinkedMethodPatch,
-    loadPiInternalModule,
     type LinkedMethodPatchHandle,
 } from "@zigai/pi-extension-internals";
 
@@ -45,14 +44,6 @@ type TextLikeView = {
     readonly setText?: unknown;
 };
 
-type ThemeModuleView = {
-    readonly theme?: unknown;
-};
-
-type ThemeFgView = {
-    readonly fg?: unknown;
-};
-
 function isUnknownArray(value: unknown): value is unknown[] {
     return Array.isArray(value);
 }
@@ -90,18 +81,6 @@ function hasSelectedIndex(
     target: ModelSelectorProviderBadgeTarget,
 ): target is ModelSelectorProviderBadgeTarget & { readonly selectedIndex: number } {
     return typeof target.selectedIndex === "number";
-}
-
-function isThemeView(value: unknown): value is ThemeFgView {
-    return (typeof value === "object" || typeof value === "function") && value !== null;
-}
-
-function isThemeModule(value: unknown): value is ThemeModuleView {
-    return (typeof value === "object" || typeof value === "function") && value !== null;
-}
-
-function hasThemeFg(theme: ThemeFgView): theme is ThemeInstance {
-    return typeof theme.fg === "function";
 }
 
 function hasUpdateList(value: unknown): value is ModelSelectorProviderBadgeTarget & {
@@ -183,38 +162,11 @@ function highlightSelectedProviderBadge(
     }
 }
 
-async function loadTheme(): Promise<ThemeInstance | undefined> {
-    return loadPiInternalModule("modes/interactive/theme/theme.js", {
-        scope: "pi-ui-tweaks",
-        feature: "selected model provider badge patch",
-        parse(module: unknown): ThemeInstance | undefined {
-            if (!isThemeModule(module)) return undefined;
-
-            const theme = module.theme;
-            if (!isThemeView(theme)) return undefined;
-
-            if (!hasThemeFg(theme)) {
-                return {
-                    fg(_color, text): string {
-                        return text;
-                    },
-                };
-            }
-
-            return {
-                fg(color, text): string {
-                    return theme.fg(color, text);
-                },
-            };
-        },
-    });
-}
-
 /** Installs or updates the selected-provider badge patch. */
 export async function installModelSelectorProviderBadgePatch(
     config: ModelSelectorProviderBadgeConfig,
     target?: ModelSelectorProviderBadgeTarget | null,
-    providedTheme?: ThemeInstance,
+    providedTheme?: ThemeInstance | (() => ThemeInstance | undefined),
 ): Promise<ModelSelectorProviderBadgeHandle> {
     let prototype = target;
     if (prototype === undefined) prototype = getDefaultModelSelectorTarget();
@@ -231,8 +183,14 @@ export async function installModelSelectorProviderBadgePatch(
         return installed.handle;
     }
 
-    const theme = providedTheme ?? (await loadTheme());
-    if (theme === undefined) return { update(): void {}, dispose(): void {} };
+    if (providedTheme === undefined) {
+        warnModelSelectorProviderBadgePatchUnavailable(new Error("missing active theme"));
+        return { update(): void {}, dispose(): void {} };
+    }
+    const getTheme = (): ThemeInstance | undefined => {
+        if (typeof providedTheme === "function") return providedTheme();
+        return providedTheme;
+    };
 
     currentProviderBadgeConfig = config;
 
@@ -242,7 +200,10 @@ export async function installModelSelectorProviderBadgePatch(
         (predecessor) =>
             function selectedProviderBadgeUpdateList(this: ModelSelectorProviderBadgeTarget): void {
                 predecessor.call(this);
-                highlightSelectedProviderBadge(this, theme);
+                const theme = getTheme();
+                if (theme !== undefined && typeof theme.fg === "function") {
+                    highlightSelectedProviderBadge(this, theme);
+                }
             },
     );
     let disposed = false;
