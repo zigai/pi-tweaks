@@ -66,6 +66,7 @@ test("renders Markdown heading syntax literally in bundled user messages", async
         assert.ok(message.render(80).some((line) => line.includes("# test 1")));
     } finally {
         for (const handler of lifecycle.shutdownHandlers) handler();
+
         if (originalPiFlag === undefined) delete process.env.PI_CODING_AGENT;
         else process.env.PI_CODING_AGENT = originalPiFlag;
     }

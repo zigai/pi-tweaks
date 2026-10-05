@@ -5,8 +5,6 @@ import {
     type MarkdownTheme,
 } from "@earendil-works/pi-tui";
 
-const plainTextUserMessageBoxes = new WeakMap<object, BoxLike>();
-
 type MarkdownInternals = {
     readonly text: string;
     readonly paddingX: number;
@@ -309,10 +307,5 @@ export function ensurePlainTextUserMessage(instance: UserMessageComponentInstanc
         return;
     }
 
-    if (plainTextUserMessageBoxes.get(instance) === contentBox) {
-        return;
-    }
-
     replaceMarkdownChildrenWithPlainText(contentBox);
-    plainTextUserMessageBoxes.set(instance, contentBox);
 }
