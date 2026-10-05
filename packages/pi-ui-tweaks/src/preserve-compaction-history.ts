@@ -152,7 +152,6 @@ export function installPreserveCompactionHistoryPatch(
 
                 const originalClear = this.chatContainer.clear;
                 const originalRebuild = this.rebuildChatFromMessages;
-
                 this.chatContainer.clear = () => {};
                 this.rebuildChatFromMessages = () => {};
 

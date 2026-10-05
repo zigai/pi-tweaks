@@ -237,6 +237,7 @@ test("ModesStore merges a local patch into the latest transactional layer", asyn
         assert.deepEqual(saved.data.modes.remote, { provider: "remote", modelId: "new" });
     } finally {
         await rm(dir, { recursive: true, force: true });
+
         if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
         else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
     }

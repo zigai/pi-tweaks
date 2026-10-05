@@ -30,7 +30,6 @@ test("tree settings scaffold missing global config and schema", async () => {
             isProjectTrusted: () => false,
         };
         setSettingsContext(context);
-
         assert.equal(getPersistedMode(), "relative");
         assert.equal(getPersistedPreviewEnabled(), false);
         assert.equal(getPersistedPreviewFullHeight(), true);

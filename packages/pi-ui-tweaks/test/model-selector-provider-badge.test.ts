@@ -87,6 +87,7 @@ test("selected model provider badge uses the active theme after a theme change",
         target.listContainer.children[1]?.text.includes("<muted>[anthropic]</muted>"),
         true,
     );
+
     handle.dispose();
 });
 

@@ -236,7 +236,7 @@ function parseMentionsWithSpans(
     );
     const parsed: ParsedChainWithSpans[] = [];
 
-    for (let index = 0; index < text.length; ) {
+    for (let index = 0; index < text.length;) {
         let definition: ChainDefinition | undefined;
         for (const candidate of ordered) {
             if (text.startsWith(candidate.trigger, index) && isTriggerBoundary(text, index)) {

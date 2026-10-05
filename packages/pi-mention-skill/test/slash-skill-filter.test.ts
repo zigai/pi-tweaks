@@ -31,6 +31,7 @@ describe("slash skill filter", () => {
             cursorLine: 0,
             cursorCol: 5,
         });
+
         expect(applyCompletion).toHaveBeenCalledWith(["/"], 0, 1, item, "/");
     });
 

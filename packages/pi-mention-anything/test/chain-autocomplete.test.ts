@@ -674,16 +674,13 @@ test("an explicit More row requests and accumulates the next page", async () => 
 });
 
 test("caps local suggestions and provider-retained candidates", async () => {
-    const candidates = Array.from(
-        { length: 1_100 },
-        (_, index): Candidate => ({
-            id: `candidate-${index}`,
-            label: `candidate-${index}`,
-            segment: `candidate-${index}`,
-            selectable: true,
-            navigable: false,
-        }),
-    );
+    const candidates = Array.from({ length: 1_100 }, (_, index): Candidate => ({
+        id: `candidate-${index}`,
+        label: `candidate-${index}`,
+        segment: `candidate-${index}`,
+        selectable: true,
+        navigable: false,
+    }));
     const local = createChainAutocompleteProvider({
         current: fallback,
         sources: [

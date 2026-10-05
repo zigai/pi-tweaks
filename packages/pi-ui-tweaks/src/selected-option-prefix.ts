@@ -248,6 +248,7 @@ export async function installSelectedOptionPrefixThemePatch(
     const prototype: unknown = Theme.prototype;
     if (!isThemePrototype(prototype)) {
         warnSelectedOptionPrefixPatchUnavailable();
+
         return { update(): void {}, dispose(): void {} };
     }
 

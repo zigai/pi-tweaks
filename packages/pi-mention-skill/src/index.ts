@@ -20,6 +20,7 @@ export default function (pi: MentionSkillExtensionApi): void {
 
         const loaded = loadMentionSkillSettingsResult(ctx);
         settingsByContext.set(ctx, loaded);
+
         return loaded;
     };
 
@@ -30,6 +31,7 @@ export default function (pi: MentionSkillExtensionApi): void {
                 ctx.ui.notify(diagnostic.message, diagnostic.severity);
             }
         }
+
         if (ctx.hasUI && loaded.settings.hideSlashSkills) {
             ctx.ui.addAutocompleteProvider(createSlashSkillFilter);
         }

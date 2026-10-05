@@ -12,6 +12,7 @@ import {
 export default function treeTimestampsExtension(pi: Pick<ExtensionAPI, "on">): void {
     pi.on("session_start", async (_event, ctx) => {
         setSettingsContext(ctx);
+
         const loaded = loadTreeSettings();
         if (ctx.hasUI) {
             for (const diagnostic of loaded.diagnostics) {

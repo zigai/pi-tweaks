@@ -145,10 +145,12 @@ test("waits for a staged prerequisite to become visible before publishing its co
                 workspace.name === internals.name && staged && elapsed >= 30_000,
             publish: async (workspace) => {
                 attempts.push(workspace.name);
+
                 if (workspace.name === internals.name) {
                     staged = true;
                     throw new Error("Cannot publish over previously staged version");
                 }
+
                 expect(elapsed).toBeGreaterThanOrEqual(30_000);
             },
         },

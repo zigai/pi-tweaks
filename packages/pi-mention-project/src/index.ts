@@ -49,11 +49,13 @@ export function registerProjectMentionExtension(pi: ProjectMentionExtensionApi):
 
         const settings = mentionProjectSettings(pi, ctx);
         settingsByContext.set(ctx, settings);
+
         return settings;
     };
 
     pi.on("session_start", (_event, ctx) => {
         const loaded = settingsFor(ctx);
+
         if (!ctx.hasUI) return;
 
         for (const diagnostic of loaded.diagnostics) {

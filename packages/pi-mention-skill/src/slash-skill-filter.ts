@@ -10,6 +10,7 @@ function withoutSlashSkills(
     const items = suggestions.items.filter((item) => !item.value.startsWith(SKILL_COMMAND_PREFIX));
     if (items.length === suggestions.items.length) return suggestions;
     if (items.length === 0) return null;
+
     return { ...suggestions, items };
 }
 

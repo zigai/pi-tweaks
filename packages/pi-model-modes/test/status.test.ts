@@ -17,6 +17,7 @@ test("thinking level status patches and restores the public InteractiveMode", as
         Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus"),
         original,
     );
+
     restore();
     assert.deepEqual(
         Object.getOwnPropertyDescriptor(InteractiveMode.prototype, "showStatus"),

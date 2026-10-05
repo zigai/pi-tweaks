@@ -98,6 +98,7 @@ export async function publishWorkspace(
                 await wait(15_000);
                 published = await services.isPublished(workspace);
             }
+
             if (!published) throw error;
         }
     }

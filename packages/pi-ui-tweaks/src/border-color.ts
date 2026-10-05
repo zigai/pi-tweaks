@@ -44,6 +44,7 @@ export async function installNeutralBorderColorPatch(
         console.warn(
             "[pi-ui-tweaks] neutral border color patch unavailable; Pi internals may have changed",
         );
+
         return { update(): void {}, dispose(): void {} };
     }
 

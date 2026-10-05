@@ -185,8 +185,10 @@ export async function installModelSelectorProviderBadgePatch(
 
     if (providedTheme === undefined) {
         warnModelSelectorProviderBadgePatchUnavailable(new Error("missing active theme"));
+
         return { update(): void {}, dispose(): void {} };
     }
+
     const getTheme = (): ThemeInstance | undefined => {
         if (typeof providedTheme === "function") return providedTheme();
         return providedTheme;
@@ -200,6 +202,7 @@ export async function installModelSelectorProviderBadgePatch(
         (predecessor) =>
             function selectedProviderBadgeUpdateList(this: ModelSelectorProviderBadgeTarget): void {
                 predecessor.call(this);
+
                 const theme = getTheme();
                 if (theme !== undefined && typeof theme.fg === "function") {
                     highlightSelectedProviderBadge(this, theme);

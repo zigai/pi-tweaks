@@ -87,6 +87,7 @@ export function loadTreeSettings(): LoadedPiExtensionSettings<
             },
         },
     );
+
     return cachedSettings;
 }
 

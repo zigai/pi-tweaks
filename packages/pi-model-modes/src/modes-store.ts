@@ -218,6 +218,7 @@ function modesFromConfig(parsed: ModesFileJson, fallbackMode: ModeSpec): ModesFi
     const defaultModel = sanitizeDefaultModelSpec(parsed.defaultModel);
     if (defaultModel !== undefined) file.defaultModel = defaultModel;
     ensureDefaultModeEntries(file, fallbackMode);
+
     return file;
 }
 
@@ -236,7 +237,9 @@ export class ModesStore {
         ) {
             path = loaded.projectConfigPath;
         }
+
         this.contexts.set(path, context);
+
         return path;
     }
 
@@ -268,10 +271,13 @@ export class ModesStore {
         const context = this.contexts.get(filePath);
         if (context === undefined)
             throw new Error("Mode settings path was not resolved for this session.");
+
         loadModelModesSettings(context);
+
         const projectPath = getProjectModesPath(context.cwd);
         let scope: "global" | "project" = "global";
         if (context.projectTrusted && filePath === projectPath) scope = "project";
+
         let saved: ModesFile | undefined;
         const result = await updatePiExtensionSettings(
             modelModesSettingsDefinition,
@@ -306,6 +312,7 @@ export class ModesStore {
             case "invalid-update":
                 throw new Error(result.message);
         }
+
         if (saved === undefined) throw new Error("Mode settings update produced no result.");
         return { data: saved, mtimeMs: await getMtimeMs(filePath) };
     }
