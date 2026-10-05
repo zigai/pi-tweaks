@@ -122,7 +122,6 @@ export class TurnTokenThroughputTracker {
 
         let streamDurationMs = 0;
         const stepStartMs = this.step.startedAtMs ?? this.step.firstOutputAtMs;
-
         if (stepStartMs === undefined) {
             if (visibleOutputTokens > 0) {
                 this.hasIncompleteStep = true;

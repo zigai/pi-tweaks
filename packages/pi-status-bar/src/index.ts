@@ -7,7 +7,7 @@ import type {
     ExtensionEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { installLoaderPatch } from "./loader-patch.ts";
+import { installLoaderPatch, setStatusBarRunTimer } from "./loader-patch.ts";
 import { setRightMessagesConfig } from "./right-message.ts";
 import {
     DEFAULT_RIGHT_MESSAGES_CONFIG,
@@ -41,6 +41,7 @@ type StatusBarMessage = Pick<MessageStartEvent["message"], "role">;
 type StatusBarEndMessage =
     | (Pick<Extract<MessageEndEvent["message"], { role: "assistant" }>, "role"> & {
           readonly stopReason?: string;
+
           readonly usage: Pick<
               Extract<MessageEndEvent["message"], { role: "assistant" }>["usage"],
               "output" | "reasoning"
@@ -95,6 +96,7 @@ export function createStatusBarLifecycle(appendState: (state: WorkedForState) =>
     async function session_start(_event: Pick<ExtensionEvent, "type">, ctx: StatusBarContext) {
         applyStatusBarResolvedConfig(ctx);
         runStartedAt = undefined;
+        setStatusBarRunTimer(undefined);
         throughput.reset();
         agentRunning = false;
         idleWidgetContext = ctx;
@@ -114,6 +116,7 @@ export function createStatusBarLifecycle(appendState: (state: WorkedForState) =>
     async function agent_start(_event: Pick<ExtensionEvent, "type">, ctx: StatusBarContext) {
         if (runStartedAt === undefined) {
             runStartedAt = performance.now();
+            setStatusBarRunTimer(Date.now());
             throughput.reset();
             idleWorkedForText = undefined;
             idleTokensPerSecond = undefined;
@@ -162,6 +165,7 @@ export function createStatusBarLifecycle(appendState: (state: WorkedForState) =>
         }
 
         runStartedAt = undefined;
+        setStatusBarRunTimer(undefined);
         agentRunning = false;
         idleWidgetContext = ctx;
         idleWorkedForText = formatDuration(duration);
@@ -174,6 +178,7 @@ export function createStatusBarLifecycle(appendState: (state: WorkedForState) =>
 
     async function session_shutdown(_event: Pick<ExtensionEvent, "type">, ctx: StatusBarContext) {
         runStartedAt = undefined;
+        setStatusBarRunTimer(undefined);
         throughput.reset();
         agentRunning = false;
         idleWidgetContext = undefined;

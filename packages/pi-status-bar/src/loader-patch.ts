@@ -2,12 +2,16 @@ import { installLinkedMethodPatch } from "@zigai/pi-extension-internals";
 import { Loader, visibleWidth } from "@earendil-works/pi-tui";
 
 import { getRightMessageMinGap, renderRightMessage } from "./right-message.ts";
-import { getStatusBarSnapshot, subscribeStatusBarUpdates } from "./status-bar-api.ts";
+import {
+    getStatusBarSnapshot,
+    subscribeStatusBarUpdates,
+    type StatusBarSnapshot,
+} from "./status-bar-api.ts";
 
 const LOADER_TIME_PATCH_CONTROLLER_KEY = Symbol.for(
     "zigai.pi-status-bar.loader-time-patch-controller",
 );
-const LOADER_TIME_PATCH_VERSION = 5;
+const LOADER_TIME_PATCH_VERSION = 6;
 const MIN_VISIBLE_RIGHT_MESSAGE_WIDTH = 4;
 const STATIC_LOADER_REFRESH_INTERVAL_MS = 1_000;
 
@@ -34,6 +38,7 @@ type LoaderDisplay = {
     readonly leftText: string;
     readonly messageColorFn: (text: string) => string;
     readonly startedAt: number;
+    readonly runTimer?: LoaderTimer;
 };
 
 type LoaderTimer = {
@@ -134,6 +139,7 @@ function getPatchState(): PatchState {
 }
 
 const loaderTimers = new WeakMap<object, LoaderTimer>();
+let runTimer: LoaderTimer | undefined;
 const loaderDisplays = new WeakMap<object, LoaderDisplay>();
 const activeLoaders = new Set<Loader>();
 let activeLoaderRefreshInterval: ReturnType<typeof setInterval> | undefined;
@@ -152,17 +158,19 @@ function getLoaderTimer(loader: Loader, now: number): LoaderTimer {
     return timer;
 }
 
-function getElapsedMs(loader: Loader, now: number): LoaderElapsed {
-    const snapshot = getStatusBarSnapshot();
-    const timer = getLoaderTimer(loader, now);
-    if (timer.resetVersion !== snapshot.active.timerResetVersion) {
+function updateTimer(
+    timer: LoaderTimer,
+    active: StatusBarSnapshot["active"],
+    now: number,
+): LoaderElapsed {
+    if (timer.resetVersion !== active.timerResetVersion) {
         timer.startedAt = now;
         timer.accumulatedPausedMs = 0;
         delete timer.pausedAt;
-        timer.resetVersion = snapshot.active.timerResetVersion;
+        timer.resetVersion = active.timerResetVersion;
     }
 
-    if (snapshot.active.timerPaused) {
+    if (active.timerPaused) {
         timer.pausedAt ??= now;
     } else if (timer.pausedAt !== undefined) {
         timer.accumulatedPausedMs += Math.max(0, now - timer.pausedAt);
@@ -174,6 +182,14 @@ function getElapsedMs(loader: Loader, now: number): LoaderElapsed {
         elapsedMs: Math.max(0, effectiveNow - timer.startedAt - timer.accumulatedPausedMs),
         startedAt: timer.startedAt + timer.accumulatedPausedMs,
     };
+}
+
+function getElapsedMs(loader: Loader, now: number): LoaderElapsed {
+    if ("kind" in loader && loader.kind === "working" && runTimer !== undefined) {
+        return updateTimer(runTimer, getStatusBarSnapshot().active, now);
+    }
+
+    return updateTimer(getLoaderTimer(loader, now), getStatusBarSnapshot().active, now);
 }
 
 function formatElapsed(seconds: number): string {
@@ -207,11 +223,14 @@ function applyStatusBarDisplay(loader: Loader): void {
     }
 
     const leftText = `${indicator}${internals.messageColorFn(message)}`;
+    let displayedRunTimer: LoaderTimer | undefined;
+    if ("kind" in loader && loader.kind === "working") displayedRunTimer = runTimer;
 
     loaderDisplays.set(loader, {
         leftText,
         messageColorFn: (text: string) => internals.messageColorFn(text),
         startedAt: elapsed.startedAt,
+        runTimer: displayedRunTimer,
     });
 
     internals.setText(leftText);
@@ -260,7 +279,25 @@ function requestLoaderUpdate(loader: Loader): void {
 }
 
 function requestActiveLoaderRenders(): void {
+    if (runTimer !== undefined) {
+        updateTimer(runTimer, getStatusBarSnapshot().active, Date.now());
+    }
+
     for (const loader of activeLoaders) requestLoaderUpdate(loader);
+}
+
+export function setStatusBarRunTimer(startedAt: number | undefined): void {
+    if (startedAt === undefined) {
+        runTimer = undefined;
+    } else {
+        runTimer = {
+            startedAt,
+            accumulatedPausedMs: 0,
+            resetVersion: getStatusBarSnapshot().active.timerResetVersion,
+        };
+    }
+
+    requestActiveLoaderRenders();
 }
 
 function clearActiveLoaderRefreshInterval(): void {
@@ -359,7 +396,17 @@ export function installLoaderPatch(): () => void {
             function patchedRender(this: Loader, width: number): string[] {
                 if (!active) return predecessor.call(this, width);
 
-                const display = loaderDisplays.get(this);
+                let display = loaderDisplays.get(this);
+                if (
+                    runTimer !== undefined &&
+                    "kind" in this &&
+                    this.kind === "working" &&
+                    display?.runTimer !== runTimer
+                ) {
+                    applyStatusBarDisplay(this);
+                    display = loaderDisplays.get(this);
+                }
+
                 if (display === undefined) return predecessor.call(this, width);
                 return renderDisplay(this, display, width, predecessor);
             },

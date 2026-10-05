@@ -6,7 +6,7 @@ import { Loader, type TUI } from "@earendil-works/pi-tui";
 import { RenderCountingTui } from "./tui-fixture.ts";
 
 import { createStatusBarLifecycle } from "../src/index.ts";
-import { resetStatusBarStateForTests } from "../src/status-bar-api.ts";
+import { configureStatusBar, resetStatusBarStateForTests } from "../src/status-bar-api.ts";
 import {
     resetWorkedForWidgetCache,
     WIDGET_KEY,
@@ -42,6 +42,24 @@ type LoaderPrototypeOwner = {
     updateDisplay: (this: Loader) => void;
 };
 type LoaderPrototypeBoundary = Loader | LoaderPrototypeOwner;
+
+class WorkingLoader extends Loader {
+    readonly kind = "working";
+}
+
+function createWorkingLoader(): WorkingLoader {
+    return new WorkingLoader(
+        new RenderCountingTui(),
+        (text) => text,
+        (text) => text,
+        "Working",
+        { frames: ["⠙"] },
+    );
+}
+
+function renderedLoaderText(loader: Loader): string {
+    return loader.render(80)[1]?.trim() ?? "";
+}
 
 function isLoaderPrototypeOwner(value: unknown): value is LoaderPrototypeOwner {
     return (
@@ -159,6 +177,82 @@ function renderedWidgetText(widget: WidgetFactory | undefined): string {
     const component = widget(new RenderCountingTui(), { fg: (_role, text) => text });
     return component.render(80)[0] ?? "";
 }
+
+test("working time survives indicator replacements and restarts for a new run", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    resetStatusBarStateForTests();
+    const harness = createHarness();
+
+    try {
+        await harness.invoke("session_start");
+        await harness.invoke("agent_start");
+        const first = createWorkingLoader();
+        vi.advanceTimersByTime(2_100);
+        assert.equal(renderedLoaderText(first), "⠙ Working (2s)");
+        first.stop();
+
+        vi.advanceTimersByTime(1_000);
+        await harness.invoke("agent_start");
+        const resumed = createWorkingLoader();
+        assert.equal(renderedLoaderText(resumed), "⠙ Working (3s)");
+        const separate = new Loader(
+            new RenderCountingTui(),
+            (text) => text,
+            (text) => text,
+            "Loading",
+            { frames: ["⠙"] },
+        );
+        assert.equal(renderedLoaderText(separate), "⠙ Loading (0s)");
+        separate.stop();
+        resumed.stop();
+
+        await harness.invoke("agent_settled");
+        vi.advanceTimersByTime(1_000);
+        await harness.invoke("agent_start");
+        const next = createWorkingLoader();
+        assert.equal(renderedLoaderText(next), "⠙ Working (0s)");
+        next.stop();
+    } finally {
+        await harness.invoke("session_shutdown");
+        vi.useRealTimers();
+    }
+});
+
+test("working timer pause and reset survive indicator replacements", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    resetStatusBarStateForTests();
+    const harness = createHarness();
+    const handle = configureStatusBar({});
+
+    try {
+        await harness.invoke("session_start");
+        await harness.invoke("agent_start");
+        const first = createWorkingLoader();
+        vi.advanceTimersByTime(2_100);
+        handle.pauseTimer();
+        first.stop();
+
+        vi.advanceTimersByTime(2_000);
+        const paused = createWorkingLoader();
+        assert.equal(renderedLoaderText(paused), "⠙ Working (2s)");
+        handle.resumeTimer();
+        vi.advanceTimersByTime(1_000);
+        assert.equal(renderedLoaderText(paused), "⠙ Working (3s)");
+        paused.stop();
+        handle.resetTimer();
+
+        vi.advanceTimersByTime(1_000);
+        const reset = createWorkingLoader();
+        assert.equal(renderedLoaderText(reset), "⠙ Working (1s)");
+        reset.stop();
+    } finally {
+        handle.dispose();
+        await harness.invoke("session_shutdown");
+        vi.useRealTimers();
+    }
+});
 
 test("status extension covers completion, abort, restore, and cleanup lifecycles", async () => {
     vi.useFakeTimers();
