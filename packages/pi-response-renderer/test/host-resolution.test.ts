@@ -17,6 +17,7 @@ test("patches the public assistant component and restores it on shutdown", async
     } finally {
         shutdown?.();
     }
+
     expect(AssistantMessageComponent.prototype.render).toBe(originalRender);
     expect(AssistantMessageComponent.prototype.updateContent).toBe(originalUpdate);
 });

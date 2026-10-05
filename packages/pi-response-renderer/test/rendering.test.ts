@@ -29,6 +29,7 @@ const componentValue = assistantMessageRuntime.parse(
     await import("@earendil-works/pi-coding-agent"),
 );
 if (componentValue === undefined) assert.fail("missing assistant message component");
+
 const AssistantMessageComponent = componentValue;
 const assistantMessagePrototype = componentValue.prototype;
 const originalAssistantRender = assistantMessagePrototype.render;
@@ -253,6 +254,7 @@ test("assistant message updates render through the patch and shutdown restores i
     process.env.PI_CODING_AGENT = "true";
     onTestFinished(() => {
         shutdownHandlers[0]?.();
+
         if (originalPiFlag === undefined) delete process.env.PI_CODING_AGENT;
         else process.env.PI_CODING_AGENT = originalPiFlag;
     });

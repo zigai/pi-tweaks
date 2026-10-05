@@ -11,7 +11,12 @@ export type AssistantMessageComponentInstance = AssistantMessageComponentPrototy
 
 export type AssistantMessageComponentPrototype = {
     render: (this: AssistantMessageComponentInstance, width: number) => string[];
-    updateContent: (this: AssistantMessageComponentInstance, message: AssistantMessage) => void;
+
+    updateContent: (
+        this: AssistantMessageComponentInstance,
+        message: AssistantMessage,
+        isStreaming?: boolean,
+    ) => void;
 };
 
 type AssistantMessageComponentConstructor = {
@@ -61,9 +66,6 @@ export const assistantMessageRuntime = {
         } catch {
             return undefined;
         }
-        // Pi 0.84.4 assistant-message.d.ts/js defines these constructor arguments, string[]
-        // rendering and updateContent(AssistantMessage); its private contentContainer is a
-        // TUI Container. Extra optional upstream arguments are deliberately not exposed.
         // Contract tests exercise the installed implementation and reject malformed exports.
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- SAFETY: Constructability and both lifecycle methods are checked above; Pi's private assistant-message contract establishes call signatures and instance state, which runtime reflection cannot prove.
         return component as AssistantMessageComponentConstructor;

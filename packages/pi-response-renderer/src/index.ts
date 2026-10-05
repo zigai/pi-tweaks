@@ -184,6 +184,7 @@ async function patchMarkdownFences(): Promise<void> {
     const patchedAssistantUpdateContent = function (
         this: AssistantMessageComponentInstance,
         message: AssistantMessage,
+        isStreaming?: boolean,
     ): void {
         const contentContainer = this.contentContainer;
         const originalAddChild = contentContainer?.addChild;
@@ -198,7 +199,7 @@ async function patchMarkdownFences(): Promise<void> {
         }
 
         try {
-            originalUpdateContent.call(this, message);
+            originalUpdateContent.call(this, message, isStreaming);
         } finally {
             if (contentContainer !== undefined && originalAddChild !== undefined) {
                 contentContainer.addChild = originalAddChild;
