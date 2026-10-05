@@ -1,6 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import { getFooterSlotSnapshots, subscribeFooterSlotUpdates } from "./footer-slot-api.ts";
+import { getFooterRoute } from "./footer-session-status.ts";
 import {
     createGitAheadBehindTracker,
     formatGitAheadBehind,
@@ -112,7 +113,7 @@ function getMcpText(ctx: FooterContext, footerData: FooterData): string | null {
     const mcpStatus = statuses.find((status) => /^MCP:/i.test(status));
     if (mcpStatus !== undefined && mcpStatus.length > 0) return mcpStatus;
 
-    const serverCount = ctx.mcpServers?.length;
+    const serverCount = ctx.getMcpServerCount?.() ?? ctx.mcpServers?.length;
     if (serverCount !== undefined) {
         return `MCP: ${serverCount} servers`;
     }
@@ -228,7 +229,13 @@ function buildFooterItems(
     const pathText = collapseHome(ctx.cwd);
     const providerId = ctx.model?.provider ?? "no-provider";
     const providerLabel = getProviderDisplayName(ctx, providerId);
-    const modelLabel = ctx.model?.name ?? ctx.model?.id ?? "no-model";
+    let modelLabel = ctx.model?.name ?? ctx.model?.id ?? "no-model";
+    const route = getFooterRoute(ctx);
+    if (route !== undefined) {
+        modelLabel += ` → ${route.id}`;
+        if (route.thinkingLevel !== undefined) modelLabel += ` • ${route.thinkingLevel}`;
+    }
+
     const usage = ctx.getContextUsage();
     const contextText = getContextText(usage, ctx.model?.contextWindow);
     const mcpText = getMcpText(ctx, footerData);

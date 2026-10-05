@@ -1,9 +1,5 @@
 import { installKeyedLinkedMethodPatch } from "@zigai/pi-extension-internals";
-import {
-    InteractiveMode,
-    type ExtensionContext,
-    type SessionShutdownEvent,
-} from "@earendil-works/pi-coding-agent";
+import { InteractiveMode, type SessionShutdownEvent } from "@earendil-works/pi-coding-agent";
 
 import {
     FOOTER_COMPONENT_KIND,
@@ -12,6 +8,7 @@ import {
     type FooterComponentKind,
 } from "./footer-component.ts";
 import { createFooterComponent, type PlainFooterTheme } from "./footer-rendering.ts";
+import { getFooterRoute } from "./footer-session-status.ts";
 import type { FooterConfig } from "./settings.ts";
 import type { ContextUsage, FooterContext, FooterData, FooterModel } from "./footer-model.ts";
 
@@ -117,6 +114,7 @@ function cloneModel(ctx: FooterContext): FooterModel | undefined {
     if (model === undefined) return undefined;
 
     const cloned: FooterModel = {
+        api: model.api,
         provider: model.provider,
         id: model.id,
         contextWindow: model.contextWindow,
@@ -134,10 +132,9 @@ function cloneModel(ctx: FooterContext): FooterModel | undefined {
 }
 
 function cloneMcpServers(ctx: FooterContext): unknown[] | undefined {
-    const servers = ctx.mcpServers;
-    if (!Array.isArray(servers)) return undefined;
-
-    return Array.from<unknown>({ length: servers.length });
+    const count = ctx.getMcpServerCount?.() ?? ctx.mcpServers?.length;
+    if (count === undefined) return undefined;
+    return Array.from<unknown>({ length: count });
 }
 
 function createFooterSnapshot(
@@ -152,6 +149,7 @@ function createFooterSnapshot(
             cwd: ctx.cwd,
             model: cloneModel(ctx),
             mcpServers: cloneMcpServers(ctx),
+            routedModel: getFooterRoute(ctx),
             getContextUsage() {
                 return usage;
             },
@@ -271,7 +269,7 @@ export function installLiveFooter(
 }
 
 export function rememberFooterForTransition(
-    ctx: ExtensionContext,
+    ctx: FooterContext,
     reason: SessionShutdownEvent["reason"],
     thinkingLevel: string,
     config: FooterConfig,

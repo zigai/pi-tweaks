@@ -7,6 +7,7 @@ import {
 } from "./footer-transition.ts";
 import { DEFAULT_FOOTER_CONFIG, loadFooterSettings, type LoadedFooterConfig } from "./settings.ts";
 import { installFooterShrinkPaddingPatch } from "./tui-footer-shrink-padding.ts";
+import { createLiveFooterContext } from "./footer-session-status.ts";
 
 const reportedConfigErrors = new Set<string>();
 
@@ -37,7 +38,7 @@ export default function uiEnhancements(pi: ExtensionAPI) {
     const installFooter = (ctx: ExtensionContext) => {
         const loaded = loadAndReportFooterSettings(ctx);
         activeFooterConfig = loaded.config;
-        installLiveFooter(ctx, getThinkingLevel, activeFooterConfig);
+        installLiveFooter(createLiveFooterContext(ctx, pi), getThinkingLevel, activeFooterConfig);
     };
 
     pi.on("session_start", async (_event, ctx) => {
@@ -45,7 +46,13 @@ export default function uiEnhancements(pi: ExtensionAPI) {
     });
 
     pi.on("session_shutdown", async (event, ctx) => {
-        rememberFooterForTransition(ctx, event.reason, getThinkingLevel(), activeFooterConfig);
+        rememberFooterForTransition(
+            createLiveFooterContext(ctx, pi),
+            event.reason,
+            getThinkingLevel(),
+            activeFooterConfig,
+        );
+
         shrinkPaddingHandle?.dispose();
     });
 }

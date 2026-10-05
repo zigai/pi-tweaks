@@ -15,7 +15,14 @@ export type FooterLayout = {
     readonly hidden: readonly FooterSlotId[];
 };
 
+export type FooterRoute = {
+    provider: string;
+    id: string;
+    thinkingLevel?: string;
+};
+
 export type FooterModel = {
+    api?: string;
     provider: string;
     id: string;
     name?: string;
@@ -32,6 +39,9 @@ export type FooterContext = {
     model?: FooterModel;
     modelRegistry?: ProviderDisplayNameRegistry;
     mcpServers?: unknown[];
+    getMcpServerCount?(): number | undefined;
+    routedModel?: FooterRoute;
+    sessionManager?: Pick<ExtensionContext["sessionManager"], "buildSessionProjection">;
     getContextUsage(): ContextUsage;
 };
 
