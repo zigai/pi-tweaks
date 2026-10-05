@@ -24,6 +24,7 @@ test("rendering reads the current theme after theme changes", () => {
     } finally {
         patch.dispose();
     }
+
     expect(assistantPrototype.render).toBe(original);
 });
 

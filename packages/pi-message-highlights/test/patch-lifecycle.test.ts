@@ -383,6 +383,7 @@ test("message render wrappers restore cleanly across reload cycles", async () =>
     } finally {
         restoreInitializedTheme?.();
         restoreOriginalTheme();
+
         if (originalPiFlag === undefined) delete process.env.PI_CODING_AGENT;
         else process.env.PI_CODING_AGENT = originalPiFlag;
     }

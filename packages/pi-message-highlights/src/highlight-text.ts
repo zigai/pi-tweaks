@@ -82,12 +82,18 @@ export type HighlightStyles = {
     readonly filepath: string;
 };
 
+type TextIntensity = {
+    readonly bold: boolean;
+    readonly faint: boolean;
+};
+
 type TextToken = {
     readonly kind: "text";
     readonly text: string;
     readonly plainStart: number;
     readonly plainEnd: number;
     readonly foreground: string | undefined;
+    readonly intensity: TextIntensity;
 };
 
 type ControlToken = {
@@ -212,6 +218,50 @@ function resolveForegroundAfterSgr(
     return foreground;
 }
 
+function resolveIntensityAfterSgr(sequence: string, current: TextIntensity): TextIntensity {
+    const numbers = parseSgrNumbers(sequence);
+    if (numbers === undefined) return current;
+
+    let { bold, faint } = current;
+    for (let index = 0; index < numbers.length; index += 1) {
+        const code = numbers[index];
+        if (code === 0 || code === 22) {
+            bold = false;
+            faint = false;
+        } else if (code === 1) {
+            bold = true;
+        } else if (code === 2) {
+            faint = true;
+        } else if (code === 38 || code === 48 || code === 58) {
+            const mode = numbers[index + 1];
+            if (mode === 5) index += 2;
+            if (mode === 2) index += 4;
+        }
+    }
+
+    return { bold, faint };
+}
+
+function restoreIntensity(style: string, original: TextIntensity): string {
+    let styled = original;
+
+    for (let index = 0; index < style.length; index += 1) {
+        if (style[index] !== ESC) continue;
+
+        const sequence = readEscapeSequence(style, index);
+        styled = resolveIntensityAfterSgr(sequence, styled);
+        index += sequence.length - 1;
+    }
+
+    if (styled.bold === original.bold && styled.faint === original.faint) return "";
+
+    let restored = `${ESC}[22m`;
+    if (original.bold) restored += `${ESC}[1m`;
+    if (original.faint) restored += `${ESC}[2m`;
+
+    return restored;
+}
+
 type TokenizedAnsi = {
     readonly tokens: Token[];
     readonly plainText: string;
@@ -221,12 +271,14 @@ function tokenizeAnsi(text: string): TokenizedAnsi {
     const tokens: Token[] = [];
     let plainText = "";
     let foreground: string | undefined;
+    let intensity: TextIntensity = { bold: false, faint: false };
     let index = 0;
 
     while (index < text.length) {
         if (text[index] === ESC) {
             const sequence = readEscapeSequence(text, index);
             foreground = resolveForegroundAfterSgr(sequence, foreground);
+            intensity = resolveIntensityAfterSgr(sequence, intensity);
             tokens.push({ kind: "control", text: sequence });
             index += sequence.length;
             continue;
@@ -239,12 +291,14 @@ function tokenizeAnsi(text: string): TokenizedAnsi {
         }
 
         const tokenText = text.slice(start, index);
+
         tokens.push({
             kind: "text",
             text: tokenText,
             plainStart: plainText.length,
             plainEnd: plainText.length + tokenText.length,
             foreground,
+            intensity,
         });
         plainText += tokenText;
     }
@@ -379,6 +433,7 @@ function appendTextWithHighlights(
         output.push(range.style);
         output.push(token.text.slice(highlightStart, highlightEnd));
         output.push(restoreForeground(token.foreground));
+        output.push(restoreIntensity(range.style, token.intensity));
         tokenOffset = highlightEnd;
     }
 

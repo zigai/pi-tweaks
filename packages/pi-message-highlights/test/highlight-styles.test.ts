@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { Theme } from "@earendil-works/pi-coding-agent";
+import { highlightMessageLine } from "../src/highlight-text.ts";
 
 import { buildHighlightStyles, type HighlightTheme } from "../src/highlight-styles.ts";
 import {
@@ -19,6 +21,76 @@ function theme(colorMode: "truecolor" | "256color" = "truecolor"): HighlightThem
         },
     };
 }
+
+test("native faint theme URL styling does not leak into surrounding text", () => {
+    const systemTheme = new Theme(
+        {
+            accent: "",
+            border: "",
+            borderAccent: "",
+            borderMuted: "",
+            success: "",
+            error: "",
+            warning: "",
+            muted: "",
+            dim: "",
+            text: "",
+            thinkingText: "",
+            userMessageText: "",
+            customMessageText: "",
+            customMessageLabel: "",
+            toolTitle: "",
+            toolOutput: "",
+            mdHeading: "",
+            mdLink: "",
+            mdLinkUrl: "",
+            mdCode: "",
+            mdCodeBlock: "",
+            mdCodeBlockBorder: "",
+            mdQuote: "",
+            mdQuoteBorder: "",
+            mdHr: "",
+            mdListBullet: "",
+            toolDiffAdded: "",
+            toolDiffRemoved: "",
+            toolDiffContext: "",
+            syntaxComment: "",
+            syntaxKeyword: "",
+            syntaxFunction: "",
+            syntaxVariable: "",
+            syntaxString: "",
+            syntaxNumber: "",
+            syntaxType: "",
+            syntaxOperator: "",
+            syntaxPunctuation: "",
+            thinkingOff: "",
+            thinkingMinimal: "",
+            thinkingLow: "",
+            thinkingMedium: "",
+            thinkingHigh: "",
+            thinkingXhigh: "",
+            bashMode: "",
+        },
+        {
+            selectedBg: "",
+            userMessageBg: "",
+            customMessageBg: "",
+            toolPendingBg: "",
+            toolSuccessBg: "",
+            toolErrorBg: "",
+        },
+        "256color",
+        { dim: ["muted"] },
+    );
+    const styles = buildHighlightStyles(systemTheme, {
+        urlColor: { kind: "theme", color: "muted" },
+    });
+    assert.equal(styles.url, `${ESC}[39m${ESC}[2m`);
+    assert.equal(
+        highlightMessageLine("See https://example.com then NORMAL", styles),
+        `See ${styles.url}https://example.com${ESC}[39m${ESC}[22m then NORMAL`,
+    );
+});
 
 test("buildHighlightStyles defaults URLs to the original blue", () => {
     const styles = buildHighlightStyles(undefined, DEFAULT_MESSAGE_HIGHLIGHTS_CONFIG);

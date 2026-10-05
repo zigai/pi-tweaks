@@ -52,6 +52,33 @@ function stripAnsi(text: string): string {
     return output.join("").replace(/<url>|<path>/g, "");
 }
 
+test.each([
+    ["", ""],
+    [`${ESC}[1m`, `${ESC}[1m`],
+    [`${ESC}[2m`, undefined],
+    [`${ESC}[1;2m`, undefined],
+])("restores surrounding intensity after faint URL highlighting (%j)", (opening, restored) => {
+    const faintStyles: HighlightStyles = {
+        url: `${ESC}[39m${ESC}[2m`,
+        filepath: "",
+    };
+    let closing = "";
+    if (restored !== undefined) closing = `${ESC}[22m${restored}`;
+
+    assert.equal(
+        highlightMessageLine(`${opening}See https://example.com then NORMAL`, faintStyles),
+        `${opening}See ${faintStyles.url}https://example.com${ESC}[39m${closing} then NORMAL`,
+    );
+});
+
+test("does not interpret RGB components as intensity controls", () => {
+    const rgbStyles: HighlightStyles = { url: `${ESC}[38;2;1;2;22m`, filepath: "" };
+    assert.equal(
+        highlightMessageLine("See https://example.com then NORMAL", rgbStyles),
+        `See ${rgbStyles.url}https://example.com${ESC}[39m then NORMAL`,
+    );
+});
+
 test("highlights URLs and file paths without changing visible text", () => {
     const line = "Open https://example.com/docs and packages/pi-footer/src/index.ts.";
     const highlighted = highlightMessageLine(line, styles);
