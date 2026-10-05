@@ -159,6 +159,7 @@ function settingsMtime(path: string): number {
 function settingsSignature(globalPath: string, projectPath?: string): string {
     let projectMtime = "untrusted";
     if (projectPath !== undefined) projectMtime = String(settingsMtime(projectPath));
+
     return `${settingsMtime(globalPath)}:${projectMtime}`;
 }
 
@@ -175,8 +176,8 @@ export function loadModelAliasSettings(
         configPath = projectConfigPath;
         watchedProjectPath = projectConfigPath;
     }
-    const cacheSignature = settingsSignature(globalConfigPath, watchedProjectPath);
 
+    const cacheSignature = settingsSignature(globalConfigPath, watchedProjectPath);
     if (state.configCache !== undefined && state.configCacheSignature === cacheSignature) {
         return state.configCache;
     }
@@ -204,6 +205,7 @@ export function loadModelAliasSettings(
         if (diagnostics.length > 0) {
             loaded.diagnostic = `Failed to load ${configPath}: ${diagnostics.join("; ")}`;
         }
+
         state.configCache = loaded;
         state.configCacheSignature = settingsSignature(globalConfigPath, watchedProjectPath);
         return loaded;

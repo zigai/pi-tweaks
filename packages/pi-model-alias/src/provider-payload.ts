@@ -37,6 +37,7 @@ export function aliasForProviderRequest(
     settings: ModelAliasSettings,
 ): AliasConfig | undefined {
     if (model === undefined) return undefined;
+    if ("api" in model && model.api === "pi-virtual") return undefined;
 
     const modelAlias = getAliasForLookup(model.provider, model.id, settings);
     if (modelAlias !== undefined) return modelAlias;

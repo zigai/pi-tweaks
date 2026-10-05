@@ -1,7 +1,10 @@
+import { PHYSICAL_MODEL_ID } from "@zigai/pi-extension-internals";
+
 export type ModelLike = {
     provider: string;
     id: string;
     name?: string;
+    [PHYSICAL_MODEL_ID]?: string;
 };
 
 export type AliasConfig = {
@@ -76,6 +79,10 @@ export function applyAlias(model: ModelLike, alias: AliasConfig): ModelLike {
     if (alias.name !== undefined) {
         aliased.name = alias.name;
     }
+
+    Object.defineProperty(aliased, PHYSICAL_MODEL_ID, {
+        value: model[PHYSICAL_MODEL_ID] ?? model.id,
+    });
 
     return aliased;
 }

@@ -1,6 +1,7 @@
 import { AliasPolicy } from "../src/alias-policy.ts";
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { PHYSICAL_MODEL_ID } from "@zigai/pi-extension-internals";
 import { test } from "vitest";
 
 import {
@@ -125,7 +126,8 @@ function textValues(children: ProviderRowComponent[]): string[] {
 test("aliases models without mutating unrelated models", () => {
     const loaded = loadedConfig(aliases);
     const aliased = aliasModels(nativeModels, loaded.settings);
-
+    assert.equal(aliased[0]?.[PHYSICAL_MODEL_ID], "gpt-5");
+    assert.equal(aliased[1]?.[PHYSICAL_MODEL_ID], "claude-opus");
     assert.deepEqual(aliased, [
         { provider: "openai", id: "fast", name: "Fast" },
         { provider: "anthropic", id: "smart", name: "Claude Opus" },
@@ -193,6 +195,18 @@ test("resolves provider request aliases from selected model or request payload",
         undefined,
     );
     assert.equal(aliasForProviderRequest({ model: "fast" }, undefined, loaded.settings), undefined);
+});
+
+test("virtual selection aliases never replace the dispatched physical payload model", () => {
+    const loaded = loadedConfig([
+        { provider: "router", model: "auto", alias: "short", name: "Short Router" },
+    ]);
+    const selected = { provider: "router", id: "short", api: "pi-virtual" };
+
+    assert.equal(
+        aliasForProviderRequest({ model: "native-chat" }, selected, loaded.settings),
+        undefined,
+    );
 });
 
 test("model selector patch aliases snapshot display and search while preserving native models", () => {
@@ -609,11 +623,13 @@ test("registry patch aliases list and lookup methods and updates config at runti
         registry.getAvailable().map((model) => model.id),
         ["fast"],
     );
+    assert.equal(registry.getAll()[0]?.name, "Fast");
     assert.deepEqual(registry.find("openai", "fast"), {
         provider: "openai",
         id: "fast",
         name: "Fast",
     });
+    assert.deepEqual(registry.find("openai", "gpt-5"), registry.find("openai", "fast"));
     assert.equal(registry.getProviderDisplayName("openai"), "OPENAI");
     loaded = loadedConfig([], undefined, [{ provider: "openai", name: "OpenAI Work" }]);
     installRegistryPatch(registry, state);

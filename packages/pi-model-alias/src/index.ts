@@ -1,10 +1,12 @@
 import {
     ModelRegistry,
+    ModelRuntime,
     type ExtensionAPI,
     type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
 import { installModelSelectorProviderPatch } from "./model-selector-patch.ts";
+import { installModelRuntimeAliasPatch } from "./model-runtime-patch.ts";
 import {
     installScopedModelsProviderPatchFromPi,
     type ScopedSelectorInterception,
@@ -55,11 +57,13 @@ export default function modelAliasExtension(pi: ExtensionAPI): void {
     const policy = new AliasPolicy({ loadSettings: () => loadModelAliasSettings(state) });
     installRegistryPatch(ModelRegistry.prototype, policy);
 
+    let runtimePatch = installModelRuntimeAliasPatch(ModelRuntime.prototype, policy);
     let scopedInterception: ScopedSelectorInterception | undefined;
 
     pi.on("session_start", (_event, ctx) => {
         scopedInterception?.dispose();
         scopedInterception = undefined;
+        runtimePatch ??= installModelRuntimeAliasPatch(ModelRuntime.prototype, policy);
         installModelSelectorProviderPatch(policy);
         scopedInterception = installScopedModelsProviderPatchFromPi(policy);
         setConfigContext(state, ctx);
@@ -76,6 +80,8 @@ export default function modelAliasExtension(pi: ExtensionAPI): void {
     pi.on("session_shutdown", () => {
         scopedInterception?.dispose();
         scopedInterception = undefined;
+        runtimePatch?.dispose();
+        runtimePatch = undefined;
     });
 
     pi.on("turn_start", (_event, ctx) => {

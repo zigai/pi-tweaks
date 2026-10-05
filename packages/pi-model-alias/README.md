@@ -4,7 +4,7 @@
 
 Shorter local model IDs and customizable model and provider labels for Pi.
 
-A model alias maps a provider's real `model` ID to the shorter `alias` accepted by Pi. Its optional `name` changes only the displayed label; omitting it preserves Pi's native model name. Pi rewrites aliases to real model IDs before provider requests. Provider aliases change displayed provider names without changing provider IDs.
+A model alias maps a provider's real `model` ID to the shorter `alias` accepted by Pi. Its optional `name` changes only the displayed label; omitting it preserves Pi's native model name. Pi keeps alias IDs and labels locally, resolves native IDs before virtual routing, and sends physical model IDs to providers. Provider aliases change displayed provider names without changing provider IDs.
 
 ## Install
 
