@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, test } from "vitest";
+import { PHYSICAL_MODEL_ID } from "@zigai/pi-extension-internals";
 
 import type { ModelLike } from "../src/model-filter.ts";
 import type { PatchedModelRegistry } from "../src/model-registry-patch.ts";
@@ -79,6 +80,29 @@ test("include rules constrain matching providers while excludes always hide mode
         visible.map((model) => `${model.provider}/${model.id}`),
         ["openai/gpt-5", "anthropic/claude-opus", "local.v1/llama"],
     );
+});
+
+test("filter rules use the physical model identity for aliased models", () => {
+    const settings = loadedConfig(
+        modelFilter.normalizeRules([{ provider: "openai", models: ["gpt-5*"] }]),
+        modelFilter.normalizeRules([{ provider: "openai", models: ["*-mini"] }]),
+    ).settings;
+    const visibleAlias = { provider: "openai", id: "quick", [PHYSICAL_MODEL_ID]: "gpt-5" };
+    const hiddenAlias = { provider: "openai", id: "compact", [PHYSICAL_MODEL_ID]: "gpt-5-mini" };
+    const registry: PatchedModelRegistry = {
+        getAll: () => [visibleAlias, hiddenAlias],
+        getAvailable: () => [visibleAlias, hiddenAlias],
+        find: (_provider, modelId) =>
+            [visibleAlias, hiddenAlias].find(
+                (model) => model.id === modelId || model[PHYSICAL_MODEL_ID] === modelId,
+            ),
+    };
+    modelFilter.installRegistryPatch(registry, () => settings);
+    assert.deepEqual(registry.getAll(), [visibleAlias]);
+    assert.deepEqual(registry.getAvailable(), [visibleAlias]);
+    assert.equal(registry.find("openai", "gpt-5"), visibleAlias);
+    assert.equal(registry.find("openai", "quick"), visibleAlias);
+    assert.equal(registry.find("openai", "compact"), undefined);
 });
 
 test("loadModelFilterSettings falls back for missing and malformed config files", async () => {
@@ -196,6 +220,21 @@ test("registry patch filters list and lookup results and remains idempotent", ()
         },
     };
     const registry: PatchedModelRegistry = {
+        getModelsOfType(type, providerId) {
+            if (type !== "chat") return [];
+            if (providerId === undefined) return models;
+            return models.filter((model) => model.provider === providerId);
+        },
+        getModelOfType(type, providerId, modelId) {
+            if (type !== "chat") return undefined;
+            return models.find((model) => model.provider === providerId && model.id === modelId);
+        },
+        async getAvailableOfType(type, providerId) {
+            return this.getModelsOfType?.(type, providerId) ?? [];
+        },
+        findOfType(type, providerId, modelId) {
+            return this.getModelOfType?.(type, providerId, modelId);
+        },
         getAll() {
             return models;
         },
@@ -238,6 +277,24 @@ test("model runtime patch filters synchronous and asynchronous model views", asy
         },
     };
     const runtime: PatchedModelRuntime = {
+        getModelsOfType(type, providerId) {
+            if (type !== "chat") return [];
+            return this.getModels(providerId);
+        },
+        getModelOfType(type, providerId, modelId) {
+            if (type !== "chat") return undefined;
+            return this.getModel(providerId, modelId);
+        },
+        getAllModels(providerId) {
+            return this.getModels(providerId);
+        },
+        async getAvailableOfType(type, providerId, options) {
+            if (type !== "chat") return [];
+            return this.getAvailable(providerId, options);
+        },
+        async getAllAvailable(providerId, options) {
+            return this.getAvailable(providerId, options);
+        },
         getModels(providerId?: string) {
             if (providerId === undefined) return models;
             return models.filter((model) => model.provider === providerId);

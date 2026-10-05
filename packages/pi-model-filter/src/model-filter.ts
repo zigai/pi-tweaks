@@ -1,6 +1,9 @@
+import { PHYSICAL_MODEL_ID } from "@zigai/pi-extension-internals";
+
 export type ModelLike = {
     provider: string;
     id: string;
+    [PHYSICAL_MODEL_ID]?: string;
 };
 
 export type FilterRuleConfig = {
@@ -26,7 +29,10 @@ function findMatchingRule(
 ): NormalizedFilterRule | undefined {
     for (const rule of rules) {
         if (!rule.providerRegex.test(model.provider)) continue;
-        if (rule.modelRegexes.some((regex) => regex.test(model.id))) return rule;
+
+        if (rule.modelRegexes.some((regex) => regex.test(model[PHYSICAL_MODEL_ID] ?? model.id))) {
+            return rule;
+        }
     }
 
     return undefined;

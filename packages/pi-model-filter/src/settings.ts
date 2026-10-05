@@ -29,6 +29,7 @@ export const modelFilterSettingsDefinition = definePrevalidatedExtensionSettings
 export default modelFilterSettingsDefinition;
 
 type ParsedFilterRuleConfig = Static<typeof filterRuleSchema>;
+
 type ParsedFilterConfig = {
     readonly include?: readonly ParsedFilterRuleConfig[];
     readonly exclude?: readonly ParsedFilterRuleConfig[];
@@ -67,6 +68,7 @@ function settingsMtime(path: string): number {
 function settingsSignature(globalPath: string, projectPath?: string): string {
     let projectMtime = "untrusted";
     if (projectPath !== undefined) projectMtime = String(settingsMtime(projectPath));
+
     return `${settingsMtime(globalPath)}:${projectMtime}`;
 }
 
@@ -83,8 +85,8 @@ export function loadModelFilterSettings(
         configPath = projectConfigPath;
         watchedProjectPath = projectConfigPath;
     }
-    const cacheSignature = settingsSignature(globalConfigPath, watchedProjectPath);
 
+    const cacheSignature = settingsSignature(globalConfigPath, watchedProjectPath);
     if (state.configCache !== undefined && state.configCacheSignature === cacheSignature) {
         return state.configCache;
     }
@@ -111,6 +113,7 @@ export function loadModelFilterSettings(
         if (diagnostics.length > 0) {
             loaded.diagnostic = `Failed to load ${configPath}: ${diagnostics.join("; ")}`;
         }
+
         state.configCache = loaded;
         state.configCacheSignature = settingsSignature(globalConfigPath, watchedProjectPath);
         return loaded;

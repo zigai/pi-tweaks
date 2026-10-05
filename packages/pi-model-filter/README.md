@@ -63,6 +63,7 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-model-filter.js
 - `include` allowlists models for matching providers.
 - `exclude` hides matching models and always wins over `include`.
 - Providers without `include` rules stay visible unless excluded.
+- The same rules apply to chat, image, and classifier catalogs and lookups.
 
 ## How is this different from `/scoped-models`?
 
@@ -86,6 +87,8 @@ This extension filters models from Pi's model registry views, including:
 - `modelRegistry.getAll()`
 - `modelRegistry.getAvailable()`
 - `modelRegistry.find()`
+- Typed registry catalogs and lookups (`getModelsOfType`, `getAvailableOfType`, `getModelOfType`, `findOfType`)
+- Runtime catalogs and lookups, including typed views, `getAllModels()`, and `getAllAvailable()`
 
 It does not delete provider definitions, model definitions, or credentials.
 
