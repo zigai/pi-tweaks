@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 test("package root exposes only supported runtime capabilities", () => {
     expect(Object.keys(internals).sort()).toEqual([
+        "PHYSICAL_MODEL_ID",
         "installKeyedLinkedMethodPatch",
         "installLinkedMethodPatch",
         "installLinkedRenderPatch",

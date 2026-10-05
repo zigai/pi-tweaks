@@ -1,4 +1,5 @@
 export { registerEditorEnhancer } from "./editor-enhancer-registry.ts";
+export { PHYSICAL_MODEL_ID } from "./model-identity.ts";
 export type {
     EditorEnhancer,
     EditorEnhancerContext,
