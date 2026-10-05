@@ -36,7 +36,6 @@ const EXTENSION_ID = "pi-model-modes";
 const BUNDLED_SETTINGS_SCHEMA_URL = new URL("../config.schema.json", import.meta.url);
 
 export type ModeShortcuts = Static<typeof modeShortcutsSchema>;
-
 type SettingsObject = ExtensionSettingsLayer<typeof extensionSettingsInput.schema>;
 type ModelModesSettings = ResolvedSettings<typeof modelModesSettingsDefinition>;
 
@@ -151,7 +150,7 @@ export function shouldShowThinkingLevelStatus(context: SettingsReadContext): boo
     return readModeSettings(context).showThinkingLevelStatus;
 }
 
-export function setUseThinkingBorderColors(
+export async function setUseThinkingBorderColors(
     context: SettingsReadContext,
     useThinkingBorderColors: boolean,
 ): Promise<void> {
@@ -160,7 +159,7 @@ export function setUseThinkingBorderColors(
     });
 }
 
-export function setShowThinkingLevelStatus(
+export async function setShowThinkingLevelStatus(
     context: SettingsReadContext,
     showThinkingLevelStatus: boolean,
 ): Promise<void> {
