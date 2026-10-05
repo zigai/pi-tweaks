@@ -1,6 +1,6 @@
 {
   "name": "@zigai/pi-extension-internals",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Shared composition protocols and guarded Pi-internal loading for Pi extensions.",
   "keywords": [
     "pi",
@@ -36,6 +36,6 @@
     "prepack": "npm run build"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "^1.0.0"
   }
 }
