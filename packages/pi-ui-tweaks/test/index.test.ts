@@ -47,6 +47,7 @@ function headlessContext(): UiTweaksLifecycleContext {
             },
             notify(): void {},
             setEditorComponent(): void {},
+            setWidget(): void {},
         },
     };
 }

@@ -25,6 +25,7 @@ export type UiTweaksConfig = {
     readonly pasteCollapseUseToolExpandKey: boolean;
     readonly preserveCompactionHistory: boolean;
     readonly restoreContentAfterAutocompleteClose: boolean;
+    readonly refreshTmuxHyperlinks: boolean;
     readonly selectedOptionPrefix: string;
 };
 
@@ -59,6 +60,7 @@ export type UiTweaksSettings = {
     pasteCollapseUseToolExpandKey?: boolean;
     preserveCompactionHistory?: boolean;
     restoreContentAfterAutocompleteClose?: boolean;
+    refreshTmuxHyperlinks?: boolean;
     selectedOptionPrefix?: string;
 };
 
@@ -153,6 +155,10 @@ export const extensionSettingsInput = {
             restoreContentAfterAutocompleteClose: Type.Boolean({
                 default: true,
                 description: "Restore editor content after closing autocomplete.",
+            }),
+            refreshTmuxHyperlinks: Type.Boolean({
+                default: true,
+                description: "Refresh Markdown links when a tmux client attaches or detaches.",
             }),
             selectedOptionPrefix: Type.String({
                 minLength: 1,

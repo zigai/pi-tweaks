@@ -50,6 +50,7 @@ const UiTweaksConfigSchema = Type.Object(
         pasteCollapseUseToolExpandKey: Type.Optional(Type.Boolean()),
         preserveCompactionHistory: Type.Optional(Type.Boolean()),
         restoreContentAfterAutocompleteClose: Type.Optional(Type.Boolean()),
+        refreshTmuxHyperlinks: Type.Optional(Type.Boolean()),
         selectedOptionPrefix: Type.Optional(Type.String({ minLength: 1 })),
     },
     { additionalProperties: false },
@@ -74,6 +75,7 @@ const DEFAULT_UI_TWEAKS_CONFIG: UiTweaksConfig = {
     pasteCollapseUseToolExpandKey: DEFAULT_PASTE_COLLAPSE_USE_TOOL_EXPAND_KEY,
     preserveCompactionHistory: false,
     restoreContentAfterAutocompleteClose: true,
+    refreshTmuxHyperlinks: true,
     selectedOptionPrefix: "→ ",
 };
 
@@ -142,6 +144,7 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
             pasteCollapseUseToolExpandKey: false,
             preserveCompactionHistory: false,
             restoreContentAfterAutocompleteClose: false,
+            refreshTmuxHyperlinks: false,
             selectedOptionPrefix: DEFAULT_UI_TWEAKS_CONFIG.selectedOptionPrefix,
         };
     }
@@ -190,6 +193,8 @@ function buildUiTweaksConfig(settings: UiTweaksSettings): UiTweaksConfig {
         restoreContentAfterAutocompleteClose:
             settings.restoreContentAfterAutocompleteClose ??
             DEFAULT_UI_TWEAKS_CONFIG.restoreContentAfterAutocompleteClose,
+        refreshTmuxHyperlinks:
+            settings.refreshTmuxHyperlinks ?? DEFAULT_UI_TWEAKS_CONFIG.refreshTmuxHyperlinks,
         selectedOptionPrefix:
             settings.selectedOptionPrefix ?? DEFAULT_UI_TWEAKS_CONFIG.selectedOptionPrefix,
     };

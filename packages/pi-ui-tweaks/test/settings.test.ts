@@ -44,6 +44,7 @@ test("loadUiTweaksSettings scaffolds missing global config and schema", async ()
             pasteCollapseUseToolExpandKey: true,
             preserveCompactionHistory: false,
             restoreContentAfterAutocompleteClose: true,
+            refreshTmuxHyperlinks: true,
             selectedOptionPrefix: "→ ",
         });
         assert.match(await readFile(schemaPath, "utf8"), /Pi UI Tweaks settings/);
@@ -86,6 +87,7 @@ test("ui tweaks settings default to enabled tweaks", () => {
     assert.equal(loaded.config.pasteCollapseUseToolExpandKey, true);
     assert.equal(loaded.config.preserveCompactionHistory, false);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, true);
+    assert.equal(loaded.config.refreshTmuxHyperlinks, true);
     assert.equal(loaded.config.selectedOptionPrefix, "→ ");
     assert.deepEqual(loaded.errors, []);
 });
@@ -192,6 +194,7 @@ test("ui tweaks enabled false disables every tweak", () => {
     assert.equal(loaded.config.pasteCollapseUseToolExpandKey, false);
     assert.equal(loaded.config.preserveCompactionHistory, false);
     assert.equal(loaded.config.restoreContentAfterAutocompleteClose, false);
+    assert.equal(loaded.config.refreshTmuxHyperlinks, false);
     assert.equal(loaded.config.selectedOptionPrefix, "→ ");
 });
 

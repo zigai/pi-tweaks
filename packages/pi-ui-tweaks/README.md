@@ -36,6 +36,7 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-ui-tweaks.json`
 | `pasteCollapseUseToolExpandKey` | boolean | `true` | Reuse Pi's configured tool-expansion key for pasted content. |
 | `preserveCompactionHistory` | boolean | `false` | Keep pre-compaction messages visible in transcript history. |
 | `restoreContentAfterAutocompleteClose` | boolean | `true` | Restore editor content after closing autocomplete. |
+| `refreshTmuxHyperlinks` | boolean | `true` | Refresh Markdown links when a tmux client attaches or detaches. |
 | `selectedOptionPrefix` | string | `"→ "` | Prefix displayed before selected list options. |
 
 ```json
@@ -60,6 +61,7 @@ Global settings are stored in `~/.pi/agent/extension-settings/pi-ui-tweaks.json`
   "pasteCollapseUseToolExpandKey": true,
   "preserveCompactionHistory": false,
   "restoreContentAfterAutocompleteClose": true,
+  "refreshTmuxHyperlinks": true,
   "selectedOptionPrefix": "→ "
 }
 ```

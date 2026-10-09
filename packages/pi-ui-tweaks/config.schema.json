@@ -118,6 +118,11 @@
       "default": true,
       "description": "Restore editor content after closing autocomplete."
     },
+    "refreshTmuxHyperlinks": {
+      "type": "boolean",
+      "default": true,
+      "description": "Refresh Markdown links when a tmux client attaches or detaches."
+    },
     "selectedOptionPrefix": {
       "type": "string",
       "minLength": 1,

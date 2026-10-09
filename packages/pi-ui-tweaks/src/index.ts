@@ -26,6 +26,7 @@ import {
     type UiTweaksConfig,
 } from "./settings.ts";
 import { installSlashCommandSourcePatch } from "./slash-command-source.ts";
+import { installTerminalHyperlinkRefresh } from "./terminal-hyperlinks.ts";
 
 const reportedConfigErrors = new Set<string>();
 
@@ -42,7 +43,7 @@ export type UiTweaksLifecycleContext = Pick<
 > & {
     readonly ui: Pick<
         ExtensionContext["ui"],
-        "getEditorComponent" | "notify" | "setEditorComponent"
+        "getEditorComponent" | "notify" | "setEditorComponent" | "setWidget"
     > & {
         readonly theme?: ExtensionContext["ui"]["theme"];
     };
@@ -95,6 +96,7 @@ async function installUiTweaks(
         installModelSelectorProviderBadgePatch(config, undefined, () => ctx.ui.theme),
         installSelectedOptionPrefixThemePatch(config),
     ]);
+    const terminalHyperlinks = installTerminalHyperlinkRefresh(ctx, config.refreshTmuxHyperlinks);
 
     return [
         {
@@ -115,6 +117,10 @@ async function installUiTweaks(
         { update: (next) => compaction.update(next), dispose: () => compaction.dispose() },
         { update: (next) => selectList.update(next), dispose: () => selectList.dispose() },
         { update: (next) => slashSource.update(next), dispose: () => slashSource.dispose() },
+        {
+            update: (next) => terminalHyperlinks.update(next.refreshTmuxHyperlinks),
+            dispose: () => terminalHyperlinks.dispose(),
+        },
         { update: (next) => border.update(next), dispose: () => border.dispose() },
         { update: (next) => providerBadge.update(next), dispose: () => providerBadge.dispose() },
         { update: (next) => selectedTheme.update(next), dispose: () => selectedTheme.dispose() },
